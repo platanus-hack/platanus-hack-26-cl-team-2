@@ -62,6 +62,8 @@ export function summarize(event: TraceEvent): string {
     }
     case "agent.done":
       return String(p.summary ?? "");
+    case "agent.woken":
+      return `se reactiva · ${String(p.unread)} mensaje(s) sin leer tras terminar`;
     case "agent.error":
       return String(p.error ?? "");
     case "sandbox.tool_attempt":
