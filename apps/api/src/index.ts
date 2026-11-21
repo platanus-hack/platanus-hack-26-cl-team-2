@@ -1,4 +1,7 @@
+import { existsSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import { serve } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
@@ -298,6 +301,23 @@ app.get("/api/runs/:id/events", (c) => {
     unsubscribe();
   });
 });
+
+/**
+ * Production (Render): serve the built web app from the same server, so the page and the
+ * API share one URL and the web's relative /api and /health calls work without CORS.
+ * Locally there is no apps/web/dist, so Vite's dev server keeps doing this.
+ */
+const webDist = resolve(process.cwd(), process.env.WEB_DIST_DIR ?? "../web/dist");
+if (existsSync(resolve(webDist, "index.html"))) {
+  const root = relative(process.cwd(), webDist) || ".";
+  app.use("/*", serveStatic({ root }));
+  // Client-side routes fall back to index.html; unknown /api paths stay 404.
+  app.get("*", async (c, next) => {
+    if (c.req.path.startsWith("/api/")) return next();
+    return serveStatic({ path: `${root}/index.html` })(c, next);
+  });
+  console.log(`[api] serving web app from ${webDist}`);
+}
 
 serve({ fetch: app.fetch, port: config.port }, async (info) => {
   const db = await pingDatabase();

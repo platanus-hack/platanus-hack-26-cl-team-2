@@ -1,0 +1,25 @@
+# Render Blueprint: one web service that runs the API and serves the built web app.
+# SQLite lives on the instance disk: it is wiped on every deploy and re-seeded at start
+# with the same senior agents (db:seed is idempotent). Runs live in memory anyway.
+services:
+  - type: web
+    name: mesh-lab
+    runtime: node
+    plan: starter
+    buildCommand: npx -y pnpm@9.15.0 install --frozen-lockfile && npx -y pnpm@9.15.0 --filter @sandbox/web build
+    startCommand: npx -y pnpm@9.15.0 --filter @sandbox/api db:seed && npx -y pnpm@9.15.0 --filter @sandbox/api exec tsx src/index.ts
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-4-6
+      - key: ANTHROPIC_JUDGE_MODEL
+        value: claude-haiku-4-5-20251001
+      - key: ANTHROPIC_REFINE_MODEL
+        value: claude-haiku-4-5-20251001
+      - key: MAX_TURNS_PER_AGENT
+        value: "12"
