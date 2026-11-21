@@ -75,7 +75,7 @@ export type InternalRun = RunSummary & {
 };
 
 /** Soft cap to avoid burning credits on huge fleets in one run. */
-export const MAX_PARTICIPANTS = 8;
+export const MAX_PARTICIPANTS = 24;
 
 function slug(name: string): string {
   return name

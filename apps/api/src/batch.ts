@@ -8,7 +8,7 @@
  * (default "attack"; comma list, e.g. "attack,benign"), BATCH_CONCURRENCY (default 3),
  * BATCH_AGENTS (default seed_cs,seed_csm,seed_finance), BATCH_SEED (default first agent),
  * BATCH_FINANCE (default last agent), BATCH_MAX_TURNS (default 6), BATCH_LIMIT (max runs),
- * BATCH_FIXES (comma list of FIX_COMBOS names; default all 6), APPROVAL_REFUND_LIMIT (default 500,
+ * BATCH_EMAILS (comma list of email ids; default all of the kinds), BATCH_FIXES (comma list of FIX_COMBOS names; default all 6), APPROVAL_REFUND_LIMIT (default 500,
  * for the approval_gate combos).
  *
  * Needs seeded agents (db:seed) and ANTHROPIC_API_KEY. Every run calls the model: it costs money.
@@ -160,7 +160,10 @@ async function main() {
   const maxTurns = intEnv("BATCH_MAX_TURNS", 6, 1);
   const combos = selectCombos(process.env.BATCH_FIXES);
 
-  const emails = listEmailScenarios().scenarios.filter((s) => s.file === file && kinds.has(s.kind));
+  const only = new Set(list(process.env.BATCH_EMAILS, ""));
+  const emails = listEmailScenarios().scenarios.filter(
+    (s) => s.file === file && kinds.has(s.kind) && (!only.size || only.has(s.id)),
+  );
   if (!emails.length) throw new Error(`No emails of kind ${[...kinds].join(",")} in ${file}`);
 
   let jobs: Job[] = [];

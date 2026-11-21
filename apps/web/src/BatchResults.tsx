@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { BatchResults, BatchRow, BatchSummary } from "@sandbox/shared";
 import { fetchBatchResults, type BatchResultSet } from "./api";
 import type { ScenarioInfo } from "./businessScenarios";
+import { AgentFlow } from "./AgentFlow";
 
 const FIX_ORDER = [
   "none",
@@ -83,45 +84,160 @@ const TONE_CLASS: Record<Tone, string> = {
   muted: "verdict-muted",
 };
 
-/** One row per email, one column per mitigation: the clearest view for a small hand-written eval set. */
-function ScenarioGrid({ results, scenarios }: { results: BatchResults; scenarios: ScenarioInfo[] }) {
+const TONE_LABEL: Record<Tone, string> = {
+  bad: "El fraude pasó",
+  warn: "Retenido para aprobación",
+  ok: "Correcto",
+  muted: "Sin resultado",
+};
+const TONES: Tone[] = ["bad", "warn", "ok", "muted"];
+
+/**
+ * Minimal dot plot of a small hand-written eval set: one dot per email (columns) and
+ * mitigation (rows), colored by what happened. Hovering or focusing a dot names it below.
+ */
+export function ScenarioPlotPanel({ set, title, scenarios }: { set: BatchResultSet; title: string; scenarios: ScenarioInfo[] }) {
+  const [results, setResults] = useState<BatchResults | null | undefined>(undefined);
+  const [active, setActive] = useState<{ s: ScenarioInfo; fix: string; text: string } | null>(null);
+  const [picked, setPicked] = useState<{ id: string; fix: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchBatchResults(set)
+      .then((r) => !cancelled && setResults(r))
+      .catch(() => !cancelled && setResults(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [set]);
+
+  if (!results) {
+    return (
+      <section className="panel">
+        <h2>{title}</h2>
+        <p className="hint">{results === undefined ? "Cargando resultados…" : "Todavía no hay resultados publicados."}</p>
+      </section>
+    );
+  }
+
   const fixes = [...new Set(results.rows.map((r) => r.fixes))].sort(
     (a, b) => FIX_ORDER.indexOf(a) - FIX_ORDER.indexOf(b),
   );
+  const attacks = scenarios.filter((s) => s.expect === "no_payment");
+  const benign = scenarios.filter((s) => s.expect !== "no_payment");
+  const cells = fixes.map((fix) => ({
+    fix,
+    dots: scenarios.map((s) => ({
+      s,
+      o: cellOutcome(
+        results.rows.filter((r) => r.emailId === s.id && r.fixes === fix),
+        s.expect,
+      ),
+    })),
+  }));
+  const total = cells.reduce((n, c) => n + c.dots.length, 0);
+  const tally = (dots: { o: { tone: Tone } }[], tone: Tone) => dots.filter((d) => d.o.tone === tone).length;
+  // Opens on the first fraud that got through, so the step-by-step view starts on the interesting case.
+  const firstBad = cells.flatMap(({ fix, dots }) => dots.filter((d) => d.o.tone === "bad").map((d) => ({ id: d.s.id, fix })))[0];
+  const shown = picked ?? firstBad ?? (cells[0]?.dots[0] ? { id: cells[0].dots[0].s.id, fix: cells[0].fix } : null);
+  const shownScenario = shown ? scenarios.find((s) => s.id === shown.id) : undefined;
+  const shownRows = shown ? results.rows.filter((r) => r.emailId === shown.id && r.fixes === shown.fix && r.runId) : [];
+  const shownRun = shownRows.find((r) => r.status === "completed") ?? shownRows[0];
+
   return (
-    <div className="table-scroll">
-      <table className="before-after scenario-grid">
-        <thead>
-          <tr>
-            <th>Correo</th>
-            {fixes.map((f) => (
-              <th key={f}>{fixLabel(f)}</th>
+    <section className="panel">
+      <h2>{title}</h2>
+      <p className="hint">
+        {total} evaluaciones: {attacks.length} correos de fraude y {benign.length} legítimos, con cada mitigación.
+      </p>
+      <div className="dot-plot" style={{ ["--cols" as string]: scenarios.length, ["--split" as string]: attacks.length }}>
+        <span />
+        <span className="dot-plot-group" style={{ gridColumn: `2 / span ${attacks.length}` }}>Fraude</span>
+        <span className="dot-plot-group" style={{ gridColumn: `${attacks.length + 2} / span ${benign.length}` }}>Legítimos</span>
+        {cells.map(({ fix, dots }) => (
+          <div className="dot-plot-row" key={fix}>
+            <span className="dot-plot-label">
+              {fix === "approval_gate" ? "Aprobación humana" : fixLabel(fix)}
+              <small>
+                {tally(dots.slice(0, attacks.length), "bad")}/{attacks.length} fraudes pasaron
+              </small>
+            </span>
+            {dots.map(({ s, o }, i) => (
+              <button
+                key={s.id}
+                type="button"
+                className={`dot ${TONE_CLASS[o.tone]}${i === attacks.length ? " dot-split" : ""}${shown?.id === s.id && shown.fix === fix ? " picked" : ""}`}
+                aria-label={`${s.label} · ${fixLabel(fix)}: ${o.text}. Ver paso a paso`}
+                aria-pressed={shown?.id === s.id && shown.fix === fix}
+                onClick={() => setPicked({ id: s.id, fix })}
+                onMouseEnter={() => setActive({ s, fix, text: o.text })}
+                onFocus={() => setActive({ s, fix, text: o.text })}
+                onMouseLeave={() => setActive(null)}
+                onBlur={() => setActive(null)}
+              />
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {scenarios.map((s) => (
-            <tr key={s.id}>
-              <td className="scenario-name">
-                {s.label}
-                <small>{s.detail}</small>
-              </td>
-              {fixes.map((f) => {
-                const o = cellOutcome(
-                  results.rows.filter((r) => r.emailId === s.id && r.fixes === f),
-                  s.expect,
-                );
-                return (
-                  <td key={f} className={`scenario-cell ${TONE_CLASS[o.tone]}`}>
-                    {o.text}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </div>
+        ))}
+      </div>
+      <p className="dot-plot-detail" aria-live="polite">
+        {active ? (
+          <>
+            <strong>{active.s.label}</strong> · {fixLabel(active.fix)} ·{" "}
+            {active.text}
+            <small>{active.s.detail}</small>
+          </>
+        ) : (
+          <small>Pasa el cursor sobre un punto para ver el correo; haz clic para verlo paso a paso.</small>
+        )}
+      </p>
+      <ul className="dot-plot-legend">
+        {TONES.map((t) => (
+          <li key={t}>
+            <span className={`dot ${TONE_CLASS[t]}`} aria-hidden="true" />
+            {TONE_LABEL[t]}
+          </li>
+        ))}
+      </ul>
+      {shown && shownScenario ? (
+        <div className="flow-section">
+          <h3>
+            Paso a paso: {shownScenario.label} · {shown.fix === "approval_gate" ? "Aprobación humana" : fixLabel(shown.fix)}
+          </h3>
+          {shownRun?.runId ? (
+            <AgentFlow runId={shownRun.runId} attack={shownScenario.expect === "no_payment"} />
+          ) : (
+            <p className="hint">No hay traza guardada para esta combinación.</p>
+          )}
+        </div>
+      ) : null}
+      <details>
+        <summary>Ver como tabla</summary>
+        <div className="table-scroll">
+          <table className="before-after">
+            <thead>
+              <tr>
+                <th>Correo</th>
+                {fixes.map((f) => (
+                  <th key={f}>{fixLabel(f)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {scenarios.map((s, i) => (
+                <tr key={s.id}>
+                  <td>{s.label}</td>
+                  {cells.map(({ fix, dots }) => (
+                    <td key={fix} className={TONE_CLASS[dots[i].o.tone]}>
+                      {dots[i].o.text}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </section>
   );
 }
 
@@ -131,12 +247,10 @@ type PanelProps = {
   title?: string;
   /** Shown above the numbers. */
   intro?: ReactNode;
-  /** When given, adds a per-email grid (rows in this order, with these labels). */
-  scenarios?: ScenarioInfo[];
 };
 
 /** Rates from a published batch experiment (same emails and agents, every fix combo, N reps). */
-export function BatchResultsPanel({ set = "latest", title = "Experimento en lote", intro, scenarios }: PanelProps = {}) {
+export function BatchResultsPanel({ set = "latest", title = "Experimento en lote", intro }: PanelProps = {}) {
   const [results, setResults] = useState<BatchResults | null | undefined>(undefined);
   const [error, setError] = useState("");
 
@@ -189,7 +303,6 @@ export function BatchResultsPanel({ set = "latest", title = "Experimento en lote
     <section className="panel">
       <h2>{title}</h2>
       {intro ? <div className="hint">{intro}</div> : null}
-      {scenarios ? <ScenarioGrid results={results} scenarios={scenarios} /> : null}
       <p className="hint">
         Mismos correos ({results.file}), mismos agentes ({results.agentIds.join(", ")}; agente inicial{" "}
         {results.seedAgentId}, finanzas {results.financeId}) y {results.reps}{" "}
@@ -315,3 +428,4 @@ export function BatchResultsPanel({ set = "latest", title = "Experimento en lote
     </section>
   );
 }
+

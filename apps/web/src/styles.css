@@ -876,21 +876,98 @@ button {
 }
 
 /* Business evals: one row per email, one column per mitigation */
-.scenario-grid td.scenario-name {
-  min-width: 16rem;
+.dot-plot {
+  display: grid;
+  gap: 0.75rem 0.35rem;
+  margin: 1rem 0 0.5rem;
+  grid-template-columns: max-content repeat(var(--cols), 1.1rem);
+  align-items: center;
+  overflow-x: auto;
 }
 
-.scenario-grid td.scenario-name small {
+.dot-plot-row {
+  display: contents;
+}
+
+.dot-plot-group {
+  color: var(--muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dot-plot-label {
+  font-size: 0.85rem;
+  padding-right: 1rem;
+  white-space: nowrap;
+}
+
+.dot-plot-label small {
   display: block;
   color: var(--muted);
   font-size: 0.75rem;
-  line-height: 1.35;
-  margin-top: 0.15rem;
 }
 
-.scenario-grid td.scenario-cell {
-  font-weight: 600;
-  white-space: nowrap;
+.dot {
+  width: 0.85rem;
+  height: 0.85rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: currentColor;
+  cursor: pointer;
+  justify-self: center;
+  transition: transform 0.12s;
+}
+
+.dot.verdict-muted {
+  background: transparent;
+  border: 2px solid currentColor;
+}
+
+.dot:hover,
+.dot:focus-visible {
+  transform: scale(1.4);
+  outline: none;
+}
+
+.dot-split,
+.dot-plot-group + .dot-plot-group {
+  margin-left: 0.5rem;
+}
+
+.dot-plot-detail {
+  min-height: 2.6rem;
+  font-size: 0.85rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.dot-plot-detail small {
+  display: block;
+  color: var(--muted);
+}
+
+.dot-plot-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.dot-plot-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dot-plot-legend .dot {
+  cursor: default;
+  width: 0.7rem;
+  height: 0.7rem;
 }
 
 .finance-on {
@@ -1019,3 +1096,291 @@ button {
 .table-scroll {
   overflow-x: auto;
 }
+
+/* ---------- step-by-step agent flow (AgentFlow.tsx) ---------- */
+.dot.picked {
+  box-shadow: 0 0 0 3px var(--bg-1), 0 0 0 5px currentColor;
+}
+
+.flow-section {
+  border-top: 1px solid var(--line);
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+}
+
+.flow-section h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+}
+
+.flow {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.flow-stage {
+  border: 1px solid var(--line);
+  background: var(--bg-0);
+  padding: 0.5rem;
+  overflow-x: auto;
+}
+
+.flow-graph {
+  display: block;
+  width: 100%;
+  min-width: 520px;
+  height: auto;
+}
+
+.flow-col-label {
+  fill: var(--muted);
+  font: 500 10px var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.flow-node rect {
+  fill: var(--bg-2);
+  stroke: var(--line);
+  stroke-width: 1.5;
+  transition: fill 0.2s, stroke 0.2s;
+}
+
+.flow-node text {
+  fill: var(--ink);
+  font: 600 13px var(--font-mono);
+}
+
+.flow-node text.sub {
+  fill: var(--muted);
+  font: 400 10.5px var(--font-mono);
+}
+
+.flow-node.active rect {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.flow-node.finance rect {
+  stroke-dasharray: 5 3;
+}
+
+.flow-node.active.finance rect {
+  stroke-dasharray: none;
+}
+
+.flow-node.tool.bad rect {
+  stroke: var(--danger);
+  stroke-width: 2.5;
+}
+
+.flow-node.tool.warn rect {
+  stroke: var(--agent-b);
+  stroke-width: 2.5;
+}
+
+.flow-node.tool.blocked rect {
+  stroke: var(--muted);
+  stroke-width: 2.5;
+}
+
+.flow-node .badge {
+  fill: var(--ok);
+  font: 600 12px var(--font-mono);
+}
+
+.flow-edge {
+  fill: none;
+  stroke-width: 1.5;
+}
+
+.flow-edge.past {
+  stroke: var(--muted);
+  opacity: 0.45;
+}
+
+.flow-edge.active {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.flow-edge.bad {
+  stroke: var(--danger);
+}
+
+.flow-edge.warn {
+  stroke: var(--agent-b);
+}
+
+.flow-marker.past {
+  fill: var(--muted);
+}
+
+.flow-marker.active {
+  fill: var(--accent);
+}
+
+.flow-marker.bad {
+  fill: var(--danger);
+}
+
+.flow-marker.warn {
+  fill: var(--agent-b);
+}
+
+.flow-edge-count {
+  fill: var(--muted);
+  font: 500 11px var(--font-mono);
+}
+
+.flow-pulse {
+  fill: var(--accent);
+}
+
+.flow-pulse.bad {
+  fill: var(--danger);
+}
+
+.flow-pulse.warn {
+  fill: var(--agent-b);
+}
+
+.flow-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.flow-counter {
+  color: var(--muted);
+  font: 500 0.8rem var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.flow-strip {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.flow-strip button {
+  width: 0.8rem;
+  height: 0.8rem;
+  padding: 0;
+  border: 2px solid var(--muted);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.flow-strip button.message {
+  border-color: var(--accent);
+}
+
+.flow-strip button.tool {
+  border-color: var(--agent-b);
+  border-radius: 2px;
+}
+
+.flow-strip button.tool.bad {
+  border-color: var(--danger);
+}
+
+.flow-strip button.seen {
+  background: var(--muted);
+}
+
+.flow-strip button.message.seen {
+  background: var(--accent);
+}
+
+.flow-strip button.tool.seen {
+  background: var(--agent-b);
+}
+
+.flow-strip button.tool.bad.seen {
+  background: var(--danger);
+}
+
+.flow-strip button.current {
+  transform: scale(1.4);
+}
+
+.flow-card {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  padding: 0.9rem 1rem;
+}
+
+.flow-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.flow-kind {
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font: 500 0.7rem var(--font-mono);
+  letter-spacing: 0.08em;
+  padding: 0.2rem 0.45rem;
+  text-transform: uppercase;
+}
+
+.flow-kind.bad {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.flow-kind.warn {
+  border-color: var(--agent-b);
+  color: var(--agent-b);
+}
+
+.flow-route {
+  font-weight: 600;
+}
+
+.flow-args {
+  color: var(--muted);
+  font: 400 0.8rem var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.flow-body {
+  margin: 0;
+  max-width: 72ch;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.flow-why {
+  margin: 0;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+  padding-left: 0.6rem;
+}
+
+.flow-why b {
+  display: block;
+  font: 500 0.7rem var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-pulse {
+    display: none;
+  }
+}
+
+.flow-idle { margin: 0.25rem 0 0; font-size: 0.8rem; }

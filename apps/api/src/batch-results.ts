@@ -62,7 +62,7 @@ export function normalizeBatchResults(data: unknown): BatchResults {
  * last `batch` run; the others are named files next to it, e.g. the business-fraud evals
  * (email-harness/scenarios/redteam_business.json) in results/batch-business.json.
  */
-export const BATCH_RESULT_SETS = ["latest", "business"] as const;
+export const BATCH_RESULT_SETS = ["latest", "business", "org20"] as const;
 export type BatchResultSet = (typeof BATCH_RESULT_SETS)[number];
 
 export function isBatchResultSet(value: string): value is BatchResultSet {

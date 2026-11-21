@@ -485,7 +485,7 @@ export async function generateEnterprise(body: {
 }
 
 /** Published batch result sets the API serves (see BATCH_RESULT_SETS in apps/api). */
-export type BatchResultSet = "latest" | "business";
+export type BatchResultSet = "latest" | "business" | "org20";
 
 /** A published batch experiment ("latest" by default), or null if none has been published yet. */
 export async function fetchBatchResults(set: BatchResultSet = "latest"): Promise<BatchResults | null> {
