@@ -145,6 +145,21 @@ export const agentVulnAssessmentsSqlite = sqliteTable(
   (t) => [index("agent_vuln_assessments_agent_idx").on(t.agentId)],
 );
 
+export const commObservationsSqlite = sqliteTable(
+  "comm_observations",
+  {
+    runId: text("run_id").notNull(),
+    fromAgentId: text("from_agent_id").notNull(),
+    toAgentId: text("to_agent_id").notNull(),
+    messageCount: integer("message_count").notNull(),
+    observedAt: integer("observed_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("comm_observations_run_pair_idx").on(t.runId, t.fromAgentId, t.toAgentId),
+    index("comm_observations_pair_idx").on(t.fromAgentId, t.toAgentId),
+  ],
+);
+
 export const vulnEvalBatchesSqlite = sqliteTable("vuln_eval_batches", {
   id: text("id").primaryKey(),
   status: text("status").notNull(),

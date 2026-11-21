@@ -118,6 +118,18 @@ function ensureSqliteTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS agent_vuln_assessments_agent_idx
       ON agent_vuln_assessments (agent_id);
 
+    CREATE TABLE IF NOT EXISTS comm_observations (
+      run_id TEXT NOT NULL,
+      from_agent_id TEXT NOT NULL,
+      to_agent_id TEXT NOT NULL,
+      message_count INTEGER NOT NULL,
+      observed_at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS comm_observations_run_pair_idx
+      ON comm_observations (run_id, from_agent_id, to_agent_id);
+    CREATE INDEX IF NOT EXISTS comm_observations_pair_idx
+      ON comm_observations (from_agent_id, to_agent_id);
+
     CREATE TABLE IF NOT EXISTS vuln_eval_batches (
       id TEXT PRIMARY KEY NOT NULL,
       status TEXT NOT NULL,

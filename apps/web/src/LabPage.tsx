@@ -166,6 +166,8 @@ export function LabPage({
   const [senderCheckOn, setSenderCheckOn] = useState(false);
   const [provenanceTagOn, setProvenanceTagOn] = useState(false);
   const [approvalGateOn, setApprovalGateOn] = useState(false);
+  /** Communication bias: tell agents who they usually talk to (from past runs). */
+  const [commBiasOn, setCommBiasOn] = useState(true);
   const [preview, setPreview] = useState<RiskPathAnalysis | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -611,6 +613,7 @@ export function LabPage({
         seedAgentId: scenarioSource === "peer" ? peerToId : seedAgentId,
         maxTurnsPerAgent: maxTurns,
         financeAgentIds: selectedIds.filter((id) => finance[id]),
+        commBias: commBiasOn,
         ...(scenarioSource === "email" && selectedEmail
           ? {
               emailScenario: {
@@ -940,6 +943,18 @@ export function LabPage({
         </p>
 
         <div className="controls">
+          <label
+            className="check"
+            title="Cada agente ve con quién habló más en ejecuciones anteriores (pesos de Organización). Es una sugerencia, no una regla: puede escribirle a cualquiera."
+          >
+            <input
+              type="checkbox"
+              checked={commBiasOn}
+              onChange={(e) => setCommBiasOn(e.target.checked)}
+              disabled={busy}
+            />
+            Sesgo de comunicación (pesos observados)
+          </label>
           <label>
             Máximo de turnos por agente
             <input
