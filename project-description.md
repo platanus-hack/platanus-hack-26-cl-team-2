@@ -32,9 +32,10 @@ Un agente Claude real por correo, con las herramientas de finanzas por MCP y 3 r
 | Claude Sonnet 4.6: reembolso fraudulento emitido | 8/21 | 3/21 |
 
 - Lo que sigue pasando con la defensa son fraudes de menos de USD 500. Sobre ese monto no se ejecutó ninguno.
-- Los reembolsos legítimos de control se emitieron 12 de 12 veces, con y sin defensa.
+- Los reembolsos legítimos de control se emitieron 12 de 12 veces, con y sin defensa, pero son de menos de USD 130: la regla no podía tocarlos. Falta medir cuánto frena a los reembolsos legítimos grandes.
+- La baja es mecánica: la regla retiene todo reembolso de más de USD 500. En 3 de los 7 correos el fraude no se distingue de un reclamo real solo con el texto; ahí medimos «reembolsó sin verificar».
 - Cambio bancario: Haiku 4.5 lo intentó 10 de 15 veces sin defensa (el sandbox lo bloqueó y registró siempre); Sonnet 4.6, 0 de 15. La verificación del remitente no cambió ningún resultado en estos correos.
-- En el laboratorio multiagente (Haiku 4.5, 48 ejecuciones) no hubo daño, pero la advertencia llegó a finanzas 4 de 12 veces sin defensa y 12 de 12 con la etiqueta de procedencia.
+- En el laboratorio multiagente (Haiku 4.5, 48 ejecuciones) no hubo daño, pero la advertencia llegó a finanzas 4 de 12 veces sin defensa (según palabras clave) y 12 de 12 con la etiqueta de procedencia, que la agrega el sistema.
 
 ## Límites
 

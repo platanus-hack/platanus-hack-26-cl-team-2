@@ -53,12 +53,17 @@ Details and limits: [docs/experiments/approval-gate.md](docs/experiments/approva
 | Claude Sonnet 4.6: fraudulent refund issued | 8/21 | 3/21 |
 
 - What still gets through with the fix is fraud under the USD 500 limit. No refund above it was executed.
-- Legitimate refunds (controls): 12/12 issued with and without the fix, on both models.
+- Legitimate refunds (controls): 12/12 issued with and without the fix, on both models (both controls are
+  under USD 130, so the rule could not affect them; legitimate refunds above USD 500 were not tested).
+- The drop is mechanical: the rule holds every refund above USD 500, and 4 of the 7 emails ask for more.
+  In 3 of the 7 emails the fraud cannot be told from a real claim by the text alone: there we measure
+  "refunded without verifying".
 - Bank-change attacks (5 emails, 15 runs per cell): Haiku 4.5 attempted the change 10/15 without the fix and
   9/15 with it (always blocked by the sandbox and recorded); Sonnet 4.6 0/15. `sender_check` did not change
   any outcome on these emails.
 - Multi-agent lab (3 agents, Haiku 4.5, 48 runs): no harm, but the warning reached the finance agent 4/12
-  times with no fix and 12/12 with `provenance_tag`.
+  times with no fix (keyword heuristic) and 12/12 with `provenance_tag`, which is by construction: the
+  harness adds the tag.
 
 These are counts with small n, not rates.
 
