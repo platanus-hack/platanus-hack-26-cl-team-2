@@ -4,6 +4,12 @@ import { saveProfile } from "../api";
 import { areaLabel } from "./labels";
 import "./prompt-creator.css";
 
+/** crypto.randomUUID only exists in secure contexts (HTTPS/localhost); a LAN demo over http lacks it. */
+const newId = (): string =>
+  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
 type Props = { hasDatabase: boolean; onSaved?: () => Promise<void> };
 const example = JSON.stringify({
   companyName: "Nexo TI",
@@ -46,7 +52,7 @@ export function parsePromptImport(raw: string, requireCompany = false): AgentPro
     const systemContext = context ? `${context}\n\n${prompt}` : prompt;
     if (systemContext.length > 12000) throw new Error(`${name}: contexto y prompt superan 12000 caracteres.`);
     return {
-      id: crypto.randomUUID(), name, title: name, areaId: areaId as AreaId,
+      id: newId(), name, title: name, areaId: areaId as AreaId,
       knobs: { seniority: "mid", motivation: "quality", proactivity: "medium" },
       systemContext, operatingStyle: [], goalTemplate: "", refinedByModel: false,
       orgHints: { ...(companyName ? { companyName } : {}), notes: "mesh:prompt-only" },

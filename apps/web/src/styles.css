@@ -1132,6 +1132,13 @@ button {
   height: auto;
 }
 
+/* On a phone, show the whole graph (finance and tools columns included) instead of a sideways scroll. */
+@media (max-width: 720px) {
+  .flow-graph {
+    min-width: 0;
+  }
+}
+
 .flow-col-label {
   fill: var(--muted);
   font: 500 10px var(--font-mono);

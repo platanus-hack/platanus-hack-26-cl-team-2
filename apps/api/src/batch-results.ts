@@ -5,11 +5,16 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { BatchResults, BatchRow, BatchSummary } from "@sandbox/shared";
+
+/** apps/api/results, resolved from this file rather than process.cwd(): Render runs from apps/api,
+ * but Vercel runs the function from the repo root. */
+const RESULTS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../results");
 
 /** Read lazily, so a BATCH_RESULTS_PATH loaded from .env (by config.ts) is honoured. */
 export function batchResultsPath(): string {
-  return process.env.BATCH_RESULTS_PATH?.trim() || resolve(process.cwd(), "results/batch-latest.json");
+  return process.env.BATCH_RESULTS_PATH?.trim() || resolve(RESULTS_DIR, "batch-latest.json");
 }
 
 /** Pure: what goes into the committed file. Per-run error text is dropped (it can echo provider details). */

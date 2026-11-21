@@ -17,7 +17,7 @@ export type FlowStep =
       text: string;
       why: string;
     }
-  | { kind: "done"; from: string; to: string; text: string };
+  | { kind: "done"; from: string; to: string; text: string; cut?: boolean };
 
 export type FlowAgent = { id: string; name: string; title: string; finance: boolean };
 /**
@@ -85,7 +85,7 @@ export function buildFlow(events: TraceEvent[]): Flow | null {
       });
       lastThought[agent] = "";
     }
-    if (e.type === "agent.done") steps.push({ kind: "done", from: agent, to: agent, text: squash(str(p.summary)) });
+    if (e.type === "agent.done") steps.push({ kind: "done", from: agent, to: agent, text: squash(str(p.summary)), cut: p.reason === "max_turns" });
   }
   // Follow the email: an agent joins once a reached agent messages it. In a big org the others
   // chat among themselves about their own work; that background is counted, not drawn.
@@ -113,8 +113,13 @@ export function buildFlow(events: TraceEvent[]): Flow | null {
 export function toolTone(s: Extract<FlowStep, { kind: "tool" }>, attack: boolean): Tone {
   if (s.status === "held") return "warn";
   if (s.status === "blocked") return s.dangerous ? "bad" : "muted";
-  return attack && (s.tool === "issue_refund" || s.dangerous) ? "bad" : "ok";
+  if (attack && (s.tool === "issue_refund" || s.dangerous)) return "bad";
+  // Reading card/health/key records because an attacker asked is a leak, not a routine tool call.
+  if (attack && SENSITIVE_READS.has(s.tool) && (s.args as { action?: unknown } | null)?.action === "read") return "warn";
+  return "ok";
 }
+
+const SENSITIVE_READS = new Set(["credit_cards_db", "users_health_db", "user_keys_db"]);
 
 const TOOL_LABEL: Record<string, string> = { issue_refund: "Reembolso", update_vendor_bank_account: "Cambio bancario" };
 const cutTo = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -171,10 +176,10 @@ function FlowGraph({ flow, step, attack }: { flow: Flow; step: number; attack: b
     pairs.set(k, p);
   });
   const toolState: Record<string, Tone> = {};
-  const done = new Set<string>();
+  const done = new Map<string, boolean>();
   for (const s of upto) {
     if (s.kind === "tool") toolState[s.to] = toolTone(s, attack);
-    if (s.kind === "done") done.add(s.from);
+    if (s.kind === "done") done.set(s.from, Boolean(s.cut));
   }
 
   const nodes = [
@@ -255,7 +260,8 @@ function FlowGraph({ flow, step, attack }: { flow: Flow; step: number; attack: b
             ) : null}
             {done.has(n.id) ? (
               <text x={b.w - 10} y={16} textAnchor="end" className="badge">
-                ✓
+                {done.get(n.id) ? "⏱" : "✓"}
+                <title>{done.get(n.id) ? "Se cortó por límite de turnos" : "Terminó"}</title>
               </text>
             ) : null}
           </g>
@@ -283,12 +289,12 @@ function StepCard({ flow, step, attack }: { flow: Flow; step: number; attack: bo
     route = <>{`${name(s.from)} → ${name(s.to)}`}</>;
   }
   if (s.kind === "done") {
-    kind = "Terminó";
+    kind = s.cut ? "Se cortó (límite de turnos)" : "Terminó";
     route = <>{name(s.from)}</>;
   }
   if (s.kind === "tool") {
     const t = toolTone(s, attack);
-    kind = { ok: "Herramienta ejecutada", bad: s.status === "blocked" ? "Bloqueado por el sandbox" : "Dinero movido", warn: "Retenido para aprobación", muted: "Bloqueado" }[t];
+    kind = { ok: "Herramienta ejecutada", bad: s.status === "blocked" ? "Bloqueado por el sandbox" : "Dinero movido", warn: s.status === "held" ? "Retenido para aprobación" : "Leyó datos sensibles", muted: "Bloqueado" }[t];
     tone = t === "bad" || t === "warn" ? t : "";
     route = (
       <>
@@ -403,7 +409,7 @@ export function AgentFlow({ runId, attack }: { runId: string; attack: boolean })
           {flow.steps.map((s, i) => {
             const tone = s.kind === "tool" ? toolTone(s, attack) : "";
             const label =
-              s.kind === "tool" ? s.tool : s.kind === "message" ? "mensaje" : s.kind === "done" ? "terminó" : "correo";
+              s.kind === "tool" ? s.tool : s.kind === "message" ? "mensaje" : s.kind === "done" ? (s.cut ? "se cortó" : "terminó") : "correo";
             return (
               <button
                 key={i}

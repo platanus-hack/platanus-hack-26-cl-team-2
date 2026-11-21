@@ -44,11 +44,14 @@ export function GeneratorPage({ hasDatabase, onOpenEvals }: Props) {
     }
   }
 
-  const onDelete = (id: string) =>
-    run(async () => {
+  const onDelete = (id: string) => {
+    const name = agents.find((a) => a.id === id)?.name ?? id;
+    if (!window.confirm(`¿Eliminar el agente "${name}"? No se puede deshacer.`)) return;
+    return run(async () => {
       await deleteAgent(id);
       return "Agente eliminado.";
     });
+  };
 
   return (
     <section className="panel generator">
