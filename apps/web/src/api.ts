@@ -1,6 +1,7 @@
 import type {
   AgentKnobs,
   AgentOrigin,
+  CommGraph,
   BatchResults,
   AgentProfile,
   AgentVulnAssessment,
@@ -734,6 +735,22 @@ export async function fetchBatchResults(): Promise<BatchResults | null> {
   const data = await res.json().catch(() => ({ error: `La API respondió ${res.status} sin datos del lote` }));
   if (!res.ok) throw new Error(data.error ?? "No se pudieron cargar los resultados del lote");
   return data.results ?? null;
+}
+
+/** Who talks to whom, summed over every saved run (weights for the org map). */
+export async function getCommGraph(): Promise<CommGraph> {
+  const res = await fetch("/api/comm-graph");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error ?? "No se pudo cargar el grafo de comunicación");
+  return data.graph as CommGraph;
+}
+
+/** Re-count every saved run's messages (admin write). */
+export async function rebuildCommGraph(): Promise<{ runs: number; pairs: number; graph: CommGraph }> {
+  const res = await fetch("/api/comm-graph/rebuild", { method: "POST", headers: writeHeaders(true), body: "{}" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error ?? "No se pudo recontar");
+  return data;
 }
 
 export type VulnBatchOptions = {

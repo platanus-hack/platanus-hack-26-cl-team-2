@@ -7,6 +7,11 @@ const LEVEL_LABEL: Record<RiskPath["level"], string> = {
   systemic: "sistémica",
 };
 
+/** 0.004 -> "<1%", 0.237 -> "24%". */
+function pct(n: number): string {
+  return n > 0 && n < 0.01 ? "<1%" : `${Math.round(n * 100)}%`;
+}
+
 function nodeLabel(id: string, names: Record<string, string>): string {
   return id === "email" ? "correo externo" : (names[id] ?? id);
 }
@@ -124,6 +129,13 @@ export function RiskPathsPanel({
                   : ""}
                 {analysis.fixes.length ? ` · mitigaciones: ${analysis.fixes.map(fixLabel).join(", ")}` : ""}
               </p>
+              {analysis.paths.length ? (
+                <p className="hint">
+                  {analysis.weighted
+                    ? `Ordenadas por probabilidad × severidad, según ${analysis.weighted.messages} mensaje(s) entre estos agentes en ejecuciones anteriores. La probabilidad de una ruta es la de cada salto multiplicada.`
+                    : "Estos agentes aún no se han enviado mensajes en ejecuciones anteriores: las rutas se ordenan solo por severidad."}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -133,6 +145,14 @@ export function RiskPathsPanel({
                 <li key={p.id} data-severity={p.severity}>
                   <span>
                     <strong>{p.id}</strong> · severidad {SEVERITY_LABEL[p.severity]} · {LEVEL_LABEL[p.level]}
+                    {p.likelihood !== undefined ? (
+                      <>
+                        {" "}· probabilidad <strong>{pct(p.likelihood)}</strong>
+                        <span className="likelihood-bar" aria-hidden="true">
+                          <span style={{ width: `${Math.max(2, Math.round(p.likelihood * 100))}%` }} />
+                        </span>
+                      </>
+                    ) : null}
                   </span>
                   <Chain
                     nodes={p.nodes}
@@ -141,7 +161,9 @@ export function RiskPathsPanel({
                     hopTitle={(i) => {
                       const h = p.hops[i];
                       if (!h) return "";
-                      return `${h.channel === "email" ? "correo" : "mensaje entre agentes"}: origen ${h.provenanceVisible ? "visible" : "perdido"}, veredicto del remitente ${h.verdictVisible ? "visible" : "no visible"}`;
+                      const base = `${h.channel === "email" ? "correo" : "mensaje entre agentes"}: origen ${h.provenanceVisible ? "visible" : "perdido"}, veredicto del remitente ${h.verdictVisible ? "visible" : "no visible"}`;
+                      if (h.channel !== "peer_message" || h.likelihood === undefined) return base;
+                      return `${base} · ${pct(h.likelihood)} de lo que ${nodeLabel(h.from, analysis.names)} envía a este grupo va a ${nodeLabel(h.to, analysis.names)} (${h.messages ?? 0} mensaje(s) antes)`;
                     }}
                     tail="herramientas de finanzas"
                   />

@@ -3,6 +3,7 @@ export {
   agents,
   agentContextFiles,
   agentVulnAssessments,
+  commObservations,
   vulnEvalBatches,
   vulnEvalBatchResults,
   demoOrgs,

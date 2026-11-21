@@ -15,6 +15,7 @@
     "db:push:sqlite": "drizzle-kit push --config drizzle.sqlite.config.ts",
     "db:seed": "tsx src/db/seed.ts",
     "batch": "tsx src/batch.ts",
+    "comm-bias-batch": "tsx src/comm-bias-batch.ts",
     "mcp:server": "tsx src/mcp/server.ts",
     "mcp:quick": "tsx src/mcp/quick-test.ts",
     "mcp:claude-code": "tsx src/mcp/claude-code-exp.ts"
