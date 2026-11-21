@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   CreateStoredRunRequest,
   EmailScenarioSummary,
@@ -91,6 +91,9 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
   const [finance, setFinance] = useState<Record<string, boolean>>({});
   const [maxTurns, setMaxTurns] = useState(6);
   const [run, setRun] = useState<RunSummary | null>(null);
+  /** Id of the run on screen: late replies from an earlier run must not overwrite it. */
+  const currentRunId = useRef<string | null>(null);
+  currentRunId.current = run?.id ?? null;
   const [events, setEvents] = useState<TraceEvent[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +177,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
         if (run) {
           void fetchRun(run.id)
             .then((d) => {
+              if (currentRunId.current !== run.id) return;
               setEvaluation(d.evaluation);
               setRunRiskPaths(d.riskPaths ?? null);
             })
@@ -194,6 +198,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
     setJudgeError(null);
     try {
       const { judgment: j, evaluation: ev } = await judgeRun(id);
+      if (currentRunId.current !== null && currentRunId.current !== id) return;
       setJudgment(j);
       setEvaluation(ev);
     } catch (err) {
@@ -306,6 +311,8 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
   useEffect(() => {
     if (selectedIds.length === 0 || !selectedIds.includes(seedAgentId)) {
       setPreview(null);
+      setPreviewLoading(false);
+      setPreviewError(null);
       return;
     }
     const ctrl = new AbortController();
@@ -335,6 +342,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
         })
         .catch((err) => {
           if (ctrl.signal.aborted) return;
+          setPreview(null);
           setPreviewError(err instanceof Error ? err.message : String(err));
         })
         .finally(() => {
@@ -431,6 +439,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
 
   const runFinished =
     !busy &&
+    !judging &&
     run !== null &&
     (run.status === "completed" || run.status === "failed") &&
     lastLaunch?.emailScenario !== undefined;
@@ -790,20 +799,19 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
         </label>
       </section>
 
+      <RiskPathsPanel
+        title="Rutas de riesgo (MESH) — previstas para esta configuración"
+        analysis={preview}
+        loading={previewLoading}
+        error={previewError}
+      />
       {runRiskPaths ? (
         <RiskPathsPanel
           title="Rutas de riesgo (MESH) — esta ejecución"
           analysis={runRiskPaths.predicted}
           observed={runRiskPaths.observed}
         />
-      ) : (
-        <RiskPathsPanel
-          title="Rutas de riesgo (MESH) — previstas para esta configuración"
-          analysis={preview}
-          loading={previewLoading}
-          error={previewError}
-        />
-      )}
+      ) : null}
 
       <section className="panel">
         <h2>Traza en vivo</h2>

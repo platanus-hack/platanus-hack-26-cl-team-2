@@ -109,7 +109,7 @@ app.get("/api/runs/:id", (c) => {
     events: traceBus.history(run.id),
     judgment: internal?.judgment ?? null,
     evaluation: internal ? evaluateInternalRun(internal) : null,
-    riskPaths: internal ? riskPathsForRun(internal) : null,
+    riskPaths: internal?.email ? riskPathsForRun(internal) : null,
   });
 });
 
@@ -313,7 +313,8 @@ if (existsSync(resolve(webDist, "index.html"))) {
   app.use("/*", serveStatic({ root }));
   // Client-side routes fall back to index.html; unknown /api paths stay 404.
   app.get("*", async (c, next) => {
-    if (c.req.path.startsWith("/api/")) return next();
+    // Missing files (e.g. an old hashed asset after a deploy) must 404, not return HTML.
+    if (c.req.path.startsWith("/api/") || /\.[A-Za-z0-9]+$/.test(c.req.path)) return next();
     return serveStatic({ path: `${root}/index.html` })(c, next);
   });
   console.log(`[api] serving web app from ${webDist}`);
