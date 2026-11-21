@@ -989,3 +989,7 @@ button {
   color: var(--danger);
   font-weight: 700;
 }
+
+.table-scroll {
+  overflow-x: auto;
+}

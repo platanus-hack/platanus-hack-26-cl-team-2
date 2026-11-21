@@ -21,6 +21,7 @@ import {
   setRunJudgment,
 } from "./harness/orchestrator.js";
 import { agentRoutes } from "./agents/routes.js";
+import { readBatchResults } from "./batch-results.js";
 import { pingDatabase } from "./db/client.js";
 import { listEmailScenarios } from "./email/scenarios.js";
 import { enterpriseRoutes } from "./enterprise/routes.js";
@@ -99,6 +100,15 @@ app.get("/api/runs", (c) => c.json({ runs: listRuns() }));
 
 /** Emails from email-harness/scenarios, with the deterministic sender check pre-computed. */
 app.get("/api/email-scenarios", (c) => c.json(listEmailScenarios()));
+
+/** Last published batch experiment (apps/api/results/batch-latest.json), or null if none yet. */
+app.get("/api/batch-results", (c) => {
+  try {
+    return c.json({ results: readBatchResults() });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
 
 app.get("/api/runs/:id", (c) => {
   const run = getRun(c.req.param("id"));

@@ -10,11 +10,13 @@
  * BATCH_FINANCE (default last agent), BATCH_MAX_TURNS (default 6), BATCH_LIMIT (max runs).
  *
  * Needs seeded agents (db:seed) and ANTHROPIC_API_KEY. Every run calls the model: it costs money.
- * Writes apps/api/data/batch-<timestamp>.json and prints a markdown table.
+ * Writes apps/api/data/batch-<timestamp>.json (raw, git-ignored), apps/api/results/batch-latest.json
+ * (shown in the web app, without error text) and prints a markdown table.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
-import type { RunEvaluation } from "@sandbox/shared";
+import { dirname, resolve } from "node:path";
+import type { BatchResults, BatchRow, BatchSummary } from "@sandbox/shared";
+import { BATCH_RESULTS_PATH, toPublished } from "./batch-results.js";
 import { config } from "./config.js";
 import { listEmailScenarios } from "./email/scenarios.js";
 import {
@@ -33,33 +35,7 @@ const FIX_COMBOS = [
 
 type Job = { emailId: string; kind: string; combo: (typeof FIX_COMBOS)[number]; rep: number };
 
-export type BatchRow = {
-  emailId: string;
-  kind: string;
-  fixes: string;
-  rep: number;
-  runId: string | null;
-  status: string;
-  error?: string;
-  verdict?: RunEvaluation["verdict"];
-  dangerousAttempted?: boolean;
-  refundsExecuted?: number;
-  reachedFinance?: boolean;
-  /** The message that reached the finance agent carried a warning or the provenance tag. */
-  warningAtFinance?: boolean | null;
-  observedPath?: string | null;
-};
-
-export type BatchSummary = {
-  fixes: string;
-  kind: string;
-  runs: number;
-  failed: number;
-  reachedFinance: number;
-  warningAtFinance: number;
-  dangerousAttempted: number;
-  refunds: number;
-};
+export type { BatchRow, BatchSummary };
 
 const list = (v: string | undefined, d: string) =>
   (v ?? d).split(",").map((s) => s.trim()).filter(Boolean);
@@ -183,11 +159,14 @@ async function main() {
   const outDir = resolve(process.cwd(), "data");
   mkdirSync(outDir, { recursive: true });
   const out = resolve(outDir, `batch-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
-  writeFileSync(
-    out,
-    JSON.stringify({ file, model: config.model, agentIds, seedAgentId, financeId, maxTurns, reps, summary, rows }, null, 2),
-  );
-  console.log(`\n${toMarkdown(summary)}\n\n[batch] wrote ${out}`);
+  const results: BatchResults = {
+    createdAt: new Date().toISOString(), file, model: config.model, agentIds, seedAgentId, financeId, maxTurns, reps, summary, rows,
+  };
+  writeFileSync(out, JSON.stringify(results, null, 2));
+  // The copy the web app shows (GET /api/batch-results). Commit it to publish the numbers.
+  mkdirSync(dirname(BATCH_RESULTS_PATH), { recursive: true });
+  writeFileSync(BATCH_RESULTS_PATH, `${JSON.stringify(toPublished(results), null, 2)}\n`);
+  console.log(`\n${toMarkdown(summary)}\n\n[batch] wrote ${out}\n[batch] published ${BATCH_RESULTS_PATH}`);
 }
 
 if (process.argv[1]?.endsWith("batch.ts")) {

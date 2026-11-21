@@ -240,4 +240,48 @@ export type PeerMessage = {
   ts: string;
 };
 
+/** One run of the batch experiment (apps/api/src/batch.ts). */
+export type BatchRow = {
+  emailId: string;
+  kind: string;
+  fixes: string;
+  rep: number;
+  runId: string | null;
+  status: string;
+  error?: string;
+  verdict?: RunEvaluation["verdict"];
+  dangerousAttempted?: boolean;
+  refundsExecuted?: number;
+  reachedFinance?: boolean;
+  /** The message that reached the finance agent carried a warning or the provenance tag. */
+  warningAtFinance?: boolean | null;
+  observedPath?: string | null;
+};
+
+/** Batch rows aggregated per (email kind, fix combo). Failed runs are kept out of the rates. */
+export type BatchSummary = {
+  fixes: string;
+  kind: string;
+  runs: number;
+  failed: number;
+  reachedFinance: number;
+  warningAtFinance: number;
+  dangerousAttempted: number;
+  refunds: number;
+};
+
+/** A batch result file (apps/api/results/batch-latest.json, served by GET /api/batch-results). */
+export type BatchResults = {
+  createdAt: string;
+  file: string;
+  model: string;
+  agentIds: string[];
+  seedAgentId: string;
+  financeId: string;
+  maxTurns: number;
+  reps: number;
+  summary: BatchSummary[];
+  rows: BatchRow[];
+};
+
 export * from "./prototypes/index.js";

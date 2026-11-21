@@ -1,5 +1,6 @@
 import type {
   AgentKnobs,
+  BatchResults,
   AgentProfile,
   AreaHeadcount,
   AreaId,
@@ -338,4 +339,12 @@ export async function generateEnterprise(body: {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "Falló la generación de la empresa");
   return data;
+}
+
+/** Last published batch experiment, or null if none has been published yet. */
+export async function fetchBatchResults(): Promise<BatchResults | null> {
+  const res = await fetch("/api/batch-results");
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "No se pudieron cargar los resultados del lote");
+  return data.results ?? null;
 }

@@ -43,7 +43,7 @@ cp .env.example .env              # then put your ANTHROPIC_API_KEY in .env
 npx -y pnpm@9.15.0 install
 npx -y pnpm@9.15.0 --filter @sandbox/api db:seed   # 8 senior agents (one per area)
 npx -y pnpm@9.15.0 run dev        # web http://localhost:5173 · API http://localhost:8787
-npx -y pnpm@9.15.0 test           # 48 tests, no AI calls
+npx -y pnpm@9.15.0 test           # 59 tests (7 smoke tests need the app running), no AI calls
 ```
 
 1. **Multi-agent lab** tab: use the seeded roster (or Enterprise generator to add more).
@@ -58,6 +58,11 @@ npx -y pnpm@9.15.0 test           # 48 tests, no AI calls
 `.env` and the local SQLite database are git-ignored — run `db:seed` so everyone starts with the
 same eight senior agents (GTM, CSM, CS, Engineering, Product+Design, Data, IT, Finance). Any email you
 run is sent to the Anthropic API as part of the agents' prompts, so use anonymised mail.
+
+**Batch experiment (numbers, not one run).** `npx -y pnpm@9.15.0 --filter @sandbox/api batch` runs the
+attack emails with the same agents under every fix combo (none, `sender_check`, `provenance_tag`, both),
+`BATCH_REPS` times each (default 5; start with `BATCH_REPS=1` to see the cost). Every run calls the model.
+It writes `apps/api/results/batch-latest.json`; commit that file and the **Evaluaciones** page shows the table.
 
 The original Python harness still works on its own: see [email-harness/README.md](email-harness/README.md).
 More detail on the lab: [SANDBOX.md](SANDBOX.md).
@@ -113,6 +118,7 @@ Branches: Luciano's email-harness fusion is merged into `main`.
 | `harness/evaluator.ts` | `evaluateRun` | Outcome from the trace: `attack_succeeded` (bank change attempted), `refund_on_attack`, `attack_stopped`, `finance_action`, `no_finance_action`; plus refunds and "reached finance". |
 | `harness/judge.ts` | `judgeRun`, `judgeTranscript`, `condenseTrace`, `judgeTool`, `normalizeAudit`, `judgeModelId` | LLM judge (summary, decisions, risks, score). For email runs also the audit: `outcomeOk`, `reasoningOk`, `missedRisk`, `recommendedFix`. |
 | `harness/fixes.ts` | `FIXES`, `FIX_NAMES` | Catalog of fixes the judge may recommend: `sender_check`, `provenance_tag`. |
+| `batch.ts`, `batch-results.ts` | `summarize`, `toMarkdown`, `readBatchResults`, `toPublished` | Batch experiment: attack emails × fix combos × reps; aggregates rates and publishes `results/batch-latest.json` (no per-run error text). |
 | `harness/risk-paths.ts` | `analyzeRiskPaths`, `observeRiskPaths`, `carriesWarning` | MESH: component checks and every route from the email to a finance tool, with per-hop provenance and sender-verdict visibility (no AI). From a trace: the routes actually taken, matched to the predicted ones. |
 | `harness/provenance.ts` | `provenanceTag`, `withProvenance`, `PROVENANCE_MARK` | The `provenance_tag` fix: the harness appends the email's origin (and the sender verdict, if that fix is on) to every agent-to-agent message. |
 | `events.ts`, `message-bus.ts` | `traceBus`, `messageBus` | In-memory trace events (streamed over SSE) and agent inboxes. |
@@ -135,6 +141,7 @@ Branches: Luciano's email-harness fusion is merged into `main`.
 | POST | `/api/runs/from-stored` | Start a run: `agentIds`, `seedAgentId`, `maxTurnsPerAgent`, `scenarioHint` **or** `emailScenario {file, id, senderCheck}`, `financeAgentIds` |
 | POST | `/api/runs` | Start a quick 2-agent run from free-form specs |
 | GET | `/api/runs`, `/api/runs/:id` | List runs / one run with events, judgment, `evaluation` and `riskPaths` (predicted + observed) |
+| GET | `/api/batch-results` | Last published batch experiment (`apps/api/results/batch-latest.json`), or `null` |
 | POST | `/api/risk-paths` | MESH analysis of a setup before launching: `agentIds`, `seedAgentId`, `financeAgentIds`, `emailScenario` (no AI) |
 | GET | `/api/runs/:id/events` | Live trace (SSE) |
 | POST | `/api/runs/:id/judge` | Judge a finished run (returns `judgment` + `evaluation`) |
@@ -149,6 +156,7 @@ Branches: Luciano's email-harness fusion is merged into `main`.
 |---|---|
 | `LabPage.tsx` | Multi-agent lab: agent selection, seed, **+ finance**, scenario source (free text / email), sender-check toggle, launch, **Re-run with sender_check fix**. |
 | `RunOutcome.tsx` | `RunOutcomePanel` (outcome from the trace), `AuditBlock` (auditor verdict), `BeforeAfterPanel` (before vs after a fix). |
+| `BatchResults.tsx` | `BatchResultsPanel`: batch experiment table on the Evaluaciones page (rates per fix combo, every run). |
 | `RiskPaths.tsx` | `RiskPathsPanel`: component checks vs risk paths, and the routes observed in a run. |
 | `RunJudgment.tsx` | Post-run judgment panel. |
 | `Timeline.tsx` | Live trace; blocked finance attempts in red. |
@@ -157,7 +165,7 @@ Branches: Luciano's email-harness fusion is merged into `main`.
 
 ### Tests (`apps/api/test`)
 
-`sender-check`, `scenarios`, `sandbox`, `evaluator`, `judge`, `risk-paths`, `smoke` (48 tests). The smoke
+`sender-check`, `scenarios`, `sandbox`, `evaluator`, `judge`, `risk-paths`, `batch`, `external-profiles`, `smoke` (59 tests). The smoke
 tests need the app running and are skipped otherwise; none of them call the model.
 
 ### Known limits
