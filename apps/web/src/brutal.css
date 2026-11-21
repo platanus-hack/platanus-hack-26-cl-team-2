@@ -1,63 +1,68 @@
 /*
- * Retro cyber-brutalist theme. Loaded last (main.tsx), so it overrides styles.css, mesh.css and
- * debugger.css without touching them: a CRT terminal (phosphor green on black, scanlines, glow),
- * hard 2px borders, square corners, offset block shadows, pixel headings and window title bars.
+ * Brutalist poster theme. Loaded last (main.tsx), so it overrides styles.css, mesh.css and
+ * debugger.css without touching them. Black ground, thin 1px line art, flat pastel-green
+ * blocks with black condensed type, hatched stripes, barcodes and a speckled grid.
  * Delete the import to go back.
  */
 :root {
-  --bg-0: #020602;
-  --bg-1: #050d06;
-  --bg-2: #0a170c;
-  --ink: #a9cdb1;
-  --muted: #5f8668;
-  --line: #17301c;
-  --edge: #2c6a3b;
-  --accent: #4fc46d;
-  --accent-ink: #020602;
-  --accent-dim: #0c2d14;
-  --fill: #10301a;
-  --glow: 0 0 4px rgba(79, 196, 109, 0.25);
-  --agent-a: #3cb8c9;
-  --agent-b: #d99a1e;
-  --danger: #e0475f;
-  --ok: #4fc46d;
-  --font-display: "Press Start 2P", "Courier New", monospace;
+  --bg-0: #060606;
+  --bg-1: #0b0b0b;
+  --bg-2: #141414;
+  --ink: #efefe9;
+  --muted: #9a9a94;
+  --line: rgba(239, 239, 233, 0.28);
+  --edge: rgba(239, 239, 233, 0.75);
+  --accent: #8ff0a4;
+  --accent-ink: #060606;
+  --agent-a: #7fd7ff;
+  --agent-b: #ffc247;
+  --danger: #ff6b5a;
+  --ok: #8ff0a4;
+  --hatch: repeating-linear-gradient(-55deg, var(--accent) 0 3px, transparent 3px 8px);
+  --barcode: repeating-linear-gradient(
+    90deg,
+    var(--accent) 0 2px,
+    transparent 2px 4px,
+    var(--accent) 4px 5px,
+    transparent 5px 8px,
+    var(--accent) 8px 11px,
+    transparent 11px 13px
+  );
+  --font-display: "Bebas Neue", "Oswald", "Arial Narrow", sans-serif;
   --font-mono: "Space Mono", ui-monospace, monospace;
 }
 
 /* ---------- base ---------- */
 body {
   background-color: var(--bg-0);
+  /* Speckles in the accent color over a faint line grid. */
   background-image:
-    radial-gradient(ellipse at 50% 40%, rgba(79, 196, 109, 0.035), transparent 70%),
-    linear-gradient(rgba(79, 196, 109, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(79, 196, 109, 0.03) 1px, transparent 1px);
-  background-size: auto, 24px 24px, 24px 24px;
+    radial-gradient(circle at 13px 21px, var(--accent) 1.2px, transparent 1.6px),
+    radial-gradient(circle at 71px 9px, var(--accent) 0.9px, transparent 1.3px),
+    radial-gradient(circle at 47px 83px, var(--accent) 1.6px, transparent 2px),
+    linear-gradient(rgba(239, 239, 233, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(239, 239, 233, 0.05) 1px, transparent 1px);
+  background-size: 97px 97px, 131px 131px, 173px 173px, 40px 40px, 40px 40px;
   background-attachment: fixed;
   font-family: var(--font-mono);
 }
 
-/* CRT: scanlines plus a dark vignette, above everything but never in the way of clicks. */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 9999;
-  background:
-    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px),
-    radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.55));
-}
-
 ::selection {
-  background: var(--fill);
-  color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 .mesh-shell *,
 .mesh-shell *::before,
 .mesh-shell *::after {
   border-radius: 0 !important;
+}
+
+/* Circles stay circles, like the poster's dot field. */
+.mesh-shell .dot,
+.mesh-shell .mesh-status,
+.mesh-shell .mesh-walk-node {
+  border-radius: 50% !important;
 }
 
 .mesh-shell,
@@ -74,16 +79,8 @@ body::after {
   font-family: var(--font-display);
   font-weight: 400;
   text-transform: uppercase;
-  letter-spacing: 0;
-  line-height: 1.35;
-}
-
-.mesh-shell h2 {
-  font-size: 0.95rem;
-}
-
-.mesh-shell h3 {
-  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  line-height: 1;
 }
 
 button:focus-visible,
@@ -92,12 +89,12 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 g:focus-visible {
-  outline: 3px solid var(--accent);
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 
 .mesh-shell code {
-  background: var(--bg-2);
+  background: none;
   color: var(--accent);
   border: 1px solid var(--line);
   padding: 0 0.3em;
@@ -110,39 +107,48 @@ g:focus-visible {
 
 .mesh-sidebar {
   background: var(--bg-0);
-  border-right: 2px solid var(--edge);
+  border-right: 1px solid var(--edge);
 }
 
+/* Logo: a flat accent block with black type, like the poster's icon tile. */
 .mesh-logo {
+  display: block;
+  background: var(--accent);
+  color: var(--accent-ink);
   font-family: var(--font-display);
   font-weight: 400;
-  font-size: 22px;
+  font-size: 44px;
+  line-height: 0.9;
   letter-spacing: 0.04em;
-  color: var(--accent);
-  text-shadow: var(--glow);
+  padding: 14px 14px 12px;
 }
 
 .mesh-logo span {
-  color: var(--accent);
-  background: var(--fill);
-  display: inline-block;
-  padding: 2px 6px;
+  color: var(--accent-ink);
   font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
   font-weight: 700;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--accent-ink);
 }
 
 .mesh-workspace {
-  border: 2px solid var(--edge);
+  border: 1px solid var(--edge);
   color: var(--accent);
-  box-shadow: 4px 4px 0 var(--accent-dim);
+  position: relative;
+}
+
+.mesh-label {
+  letter-spacing: 0.2em;
 }
 
 .mesh-sidebar nav button {
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-size: 12.5px;
-  font-weight: 600;
-  border: 2px solid transparent;
+  letter-spacing: 0.1em;
+  font-size: 12px;
+  border: 1px solid transparent;
 }
 
 .mesh-sidebar nav button:hover {
@@ -151,10 +157,19 @@ g:focus-visible {
 }
 
 .mesh-sidebar nav button.active {
-  background: var(--fill);
-  color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
   border-color: var(--accent);
-  box-shadow: 4px 4px 0 var(--edge);
+  font-weight: 700;
+}
+
+/* Hatched band above the footer. */
+.mesh-sidebar-footer::before {
+  content: "";
+  display: block;
+  height: 12px;
+  margin-bottom: 18px;
+  background: var(--hatch);
 }
 
 .mesh-status {
@@ -162,52 +177,43 @@ g:focus-visible {
   height: 8px;
 }
 
+/* Top bar: thin rule with a partly filled progress bar under it, as on the poster's header. */
 .mesh-topbar {
-  border-bottom: 2px solid var(--edge);
+  border-bottom: 1px solid var(--edge);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 11.5px;
+  letter-spacing: 0.14em;
+  font-size: 11px;
+  background: linear-gradient(var(--accent), var(--accent)) right 32px bottom 0 / 38% 6px no-repeat;
 }
 
 .mesh-pill {
-  background: var(--bg-0);
-  border: 2px solid var(--accent);
+  background: none;
+  border: 1px solid var(--accent);
   color: var(--accent);
   text-transform: uppercase;
+  letter-spacing: 0.16em;
   font-weight: 700;
-  letter-spacing: 0.08em;
 }
 
-.mesh-label {
-  letter-spacing: 0.14em;
-}
-
+/* Kicker: framed between two barcodes, like "MONOLITH VISION". */
 .mesh-heading .mesh-label {
   color: var(--accent);
-  background: var(--fill);
+  border: 1px solid var(--accent);
   display: inline-block;
-  padding: 3px 8px;
+  padding: 4px 46px;
   font-weight: 700;
+  background:
+    var(--barcode) left 6px center / 32px 12px no-repeat,
+    var(--barcode) right 6px center / 32px 12px no-repeat;
 }
 
 .mesh-heading h1 {
   background: none;
   color: var(--accent);
   -webkit-text-fill-color: currentColor;
-  font-size: clamp(20px, 2.8vw, 38px);
-  line-height: 1.25;
-  text-shadow: 1px 0 0 rgba(224, 71, 95, 0.6), -1px 0 0 rgba(60, 184, 201, 0.6), 0 0 8px rgba(79, 196, 109, 0.3);
-}
-
-.mesh-heading h1::after {
-  content: "_";
-  animation: crt-blink 1s steps(1) infinite;
-}
-
-@keyframes crt-blink {
-  50% {
-    opacity: 0;
-  }
+  font-size: clamp(44px, 6vw, 92px);
+  letter-spacing: 0.01em;
+  margin: 14px 0 6px;
 }
 
 /* ---------- surfaces ---------- */
@@ -222,60 +228,51 @@ g:focus-visible {
 .results-limits,
 .dbg-graph,
 .dbg-inspector {
-  background: var(--bg-1);
-  border: 2px solid var(--edge);
-  box-shadow: 8px 8px 0 var(--accent-dim);
+  background: var(--bg-0);
+  border: 1px solid var(--edge);
+  box-shadow: none;
 }
 
 .mesh-shell .panel {
-  padding: 0 1.5rem 1.5rem;
-  margin-bottom: 1.75rem;
+  position: relative;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
   animation: none;
 }
 
-/* Each panel's heading is a window title bar across its top edge. */
-.mesh-shell .panel > h2:first-child {
-  margin: 0 -1.5rem 1.1rem;
-  padding: 0.55rem 1.5rem;
-  background: var(--fill);
-  color: var(--accent);
-  display: flex;
-  gap: 0.6rem;
+/* Hatched tab on each panel's top-right corner. */
+.mesh-shell .panel::after {
+  content: "";
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 84px;
+  height: 14px;
+  background: var(--hatch);
+  pointer-events: none;
 }
 
-.mesh-shell .panel > h2:first-child::after {
-  content: "\25A1  \00D7";
-  white-space: pre;
-  margin-left: auto;
-}
-
-.mesh-shell .panel h2::before,
-.mesh-walk h2::before {
-  content: "> ";
-}
-
+/* Panel title: a flat accent bar with black condensed type ("GEOMETRY OF STRENGTH"). */
+.mesh-shell .panel > h2:first-child,
 .mesh-walk h2 {
+  display: inline-block;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 1.9rem;
+  padding: 6px 12px 3px;
+  margin: 0 0 1rem;
+}
+
+.mesh-shell h3 {
+  font-size: 1.3rem;
   color: var(--accent);
-  text-shadow: var(--glow);
-}
-
-.mesh-shell .hint,
-.mesh-shell p,
-.mesh-shell small {
-  text-shadow: none;
-}
-
-.mesh-shell a,
-.verdict-ok,
-.mesh-label {
-  text-shadow: var(--glow);
 }
 
 .mesh-callout,
 .mesh-discovery,
 .results-headline {
   background: var(--bg-0);
-  border: 2px solid var(--accent);
+  border: 1px solid var(--accent);
   border-left-width: 10px;
   color: var(--ink);
 }
@@ -283,49 +280,35 @@ g:focus-visible {
 /* ---------- controls ---------- */
 .btn,
 .mesh-shell .btn {
-  background: var(--fill);
-  color: var(--accent);
-  border: 2px solid var(--accent);
-  font-weight: 800;
-  text-transform: uppercase;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 1px solid var(--accent);
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.15rem;
   letter-spacing: 0.08em;
-  box-shadow: 4px 4px 0 var(--edge);
-  transition: transform 0.08s ease, box-shadow 0.08s ease;
+  text-transform: uppercase;
+  box-shadow: none;
+  transition: background 0.1s ease, color 0.1s ease;
 }
 
 .btn:hover:not(:disabled) {
   filter: none;
-  transform: translate(-2px, -2px);
-  box-shadow: 6px 6px 0 var(--edge);
-}
-
-.btn:active:not(:disabled) {
-  transform: translate(4px, 4px);
-  box-shadow: 0 0 0 var(--edge);
+  transform: none;
+  background: var(--bg-0);
+  color: var(--accent);
 }
 
 .btn.ghost,
 .mesh-shell .btn.ghost {
   background: var(--bg-0);
-  color: var(--accent);
+  color: var(--ink);
   border-color: var(--edge);
-  box-shadow: 4px 4px 0 var(--accent-dim);
 }
 
 .btn.ghost:hover:not(:disabled) {
-  box-shadow: 6px 6px 0 var(--accent-dim);
-}
-
-.mesh-shell .btn::before {
-  content: "[ ";
-}
-
-.mesh-shell .btn::after {
-  content: " ]";
-}
-
-.btn:disabled {
-  box-shadow: none;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .mesh-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
@@ -333,7 +316,7 @@ g:focus-visible {
 .mesh-shell textarea {
   background: var(--bg-0);
   color: var(--ink);
-  border: 2px solid var(--line);
+  border: 1px solid var(--edge);
 }
 
 .mesh-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
@@ -351,7 +334,7 @@ g:focus-visible {
 
 .dbg-ctrls,
 .dbg-mode {
-  border: 2px solid var(--edge);
+  border: 1px solid var(--edge);
 }
 
 .dbg-ctrls button,
@@ -362,8 +345,8 @@ g:focus-visible {
 
 .dbg-ctrls button.play,
 .dbg-mode button[aria-pressed="true"] {
-  background: var(--fill);
-  color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 /* ---------- data ---------- */
@@ -374,14 +357,14 @@ g:focus-visible {
 
 .before-after thead th {
   color: var(--accent);
-  border-bottom: 2px solid var(--edge);
+  border-bottom: 1px solid var(--edge);
 }
 
 .mesh-shell details > summary {
   cursor: pointer;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
@@ -391,16 +374,17 @@ g:focus-visible {
 
 .dot-plot-group {
   color: var(--accent);
+  letter-spacing: 0.2em;
 }
 
 .mesh-evals-console,
 .dbg-json {
   background: var(--bg-0);
-  color: var(--ok);
+  color: var(--accent);
 }
 
 .mesh-walk-node {
-  border: 2px solid var(--edge);
+  border: 1px solid var(--edge);
   background: var(--bg-0);
   color: var(--accent);
 }
@@ -408,13 +392,17 @@ g:focus-visible {
 .mesh-walk-path li.hit .mesh-walk-node {
   border-color: var(--danger);
   background: var(--danger);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .mesh-walk-path li.safe .mesh-walk-node {
   border-color: var(--accent);
-  background: var(--fill);
-  color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.mesh-walk-line {
+  background: var(--edge);
 }
 
 .mesh-walk-line.hit {
@@ -424,18 +412,18 @@ g:focus-visible {
 @media (max-width: 720px) {
   .mesh-sidebar {
     border-right: 0;
-    border-bottom: 2px solid var(--edge);
+    border-bottom: 1px solid var(--edge);
+  }
+
+  .mesh-logo {
+    font-size: 34px;
   }
 
   .mesh-shell .panel {
     padding: 1rem;
-    box-shadow: 5px 5px 0 var(--accent-dim);
   }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .btn,
-  .mesh-shell .btn {
-    transition: none;
+  .mesh-shell .panel::after {
+    display: none;
   }
 }
