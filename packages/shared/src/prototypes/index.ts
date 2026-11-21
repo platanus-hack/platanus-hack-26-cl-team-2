@@ -31,6 +31,7 @@ export {
 } from "./areas/index.js";
 
 export { composeProfile, listAreas } from "./compose.js";
+export { splitAgentPrompt } from "./promptSections.js";
 export { EXTERNAL_PERSONAS, composeExternalProfile, type ExternalPersona } from "./external.js";
 export {
   profileToAgentSpecInput,
