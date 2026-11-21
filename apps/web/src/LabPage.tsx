@@ -28,9 +28,11 @@ import {
 } from "./RunOutcome";
 import { RiskPathsPanel } from "./RiskPaths";
 import { Timeline } from "./Timeline";
+import { selectObservedRun } from "./mesh/runSelection";
 
 type Props = {
   hasApiKey: boolean;
+  onRunCreated?: (run: RunSummary) => void;
 };
 
 const MAX_PARTICIPANTS = 8;
@@ -39,14 +41,20 @@ type FixName = "sender_check" | "provenance_tag";
 
 const FIX_BUTTON: Record<FixName, { label: string; title: string }> = {
   sender_check: {
-    label: "Re-run with sender_check fix",
-    title: "Same agents, seed, finance tools and email; only adds the sender check (seed only)",
+    label: "Repetir con verificación del remitente",
+    title:
+      "Mismos agentes, agente inicial, herramientas y correo; solo se agrega la verificación del remitente (solo la ve el agente inicial)",
   },
   provenance_tag: {
-    label: "Re-run with provenance_tag fix",
+    label: "Repetir con etiqueta de procedencia",
     title:
-      "Same setup; the harness appends the email's origin (and sender verdict, if on) to every agent-to-agent message",
+      "Misma configuración; el sistema agrega el origen del correo (y el veredicto del remitente, si está activo) a cada mensaje entre agentes",
   },
+};
+
+const FIX_LABEL: Record<FixName, string> = {
+  sender_check: "verificación del remitente",
+  provenance_tag: "etiqueta de procedencia",
 };
 
 function fixesOf(req: CreateStoredRunRequest | null): FixName[] {
@@ -58,13 +66,17 @@ function fixesOf(req: CreateStoredRunRequest | null): FixName[] {
   ];
 }
 
-export function LabPage({ hasApiKey }: Props) {
+function fixesLabel(fixes: FixName[]): string {
+  return fixes.length ? fixes.map((f) => FIX_LABEL[f]).join(" + ") : "sin mitigación";
+}
+
+export function LabPage({ hasApiKey, onRunCreated }: Props) {
   const [catalog, setCatalog] = useState<StoredAgent[]>([]);
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
   const [seedAgentId, setSeedAgentId] = useState("");
   const [areaFilter, setAreaFilter] = useState<string>("all");
   const [scenarioHint, setScenarioHint] = useState(
-    "A strategic customer is escalating a reliability issue that may block renewal. Decide who to involve and drive a concrete next step.",
+    "Un cliente estratégico reporta un problema de confiabilidad que podría impedir su renovación. Decide a quién involucrar y define un siguiente paso concreto.",
   );
   const [scenarioSource, setScenarioSource] = useState<"text" | "email">("text");
   const [emails, setEmails] = useState<EmailScenarioSummary[]>([]);
@@ -201,6 +213,8 @@ export function LabPage({ hasApiKey }: Props) {
     try {
       const data = await fetchRun(id);
       setRun(data.run);
+      selectObservedRun(data.run.id);
+      onRunCreated?.(data.run);
       setEvents(data.events ?? []);
       setJudgment(data.judgment ?? null);
       setEvaluation(data.evaluation ?? null);
@@ -347,7 +361,7 @@ export function LabPage({ hasApiKey }: Props) {
       if (turningOn) {
         const currentlyOn = Object.values(prev).filter(Boolean).length;
         if (currentlyOn >= MAX_PARTICIPANTS) {
-          setError(`Max ${MAX_PARTICIPANTS} agents per run (token safety).`);
+          setError(`Max ${MAX_PARTICIPANTS} agentes per run (token safety).`);
           return prev;
         }
       }
@@ -387,6 +401,8 @@ export function LabPage({ hasApiKey }: Props) {
       const { run: created } = await createRunFromStored(body);
       setLastLaunch(body);
       setRun(created);
+      selectObservedRun(created.id);
+      onRunCreated?.(created);
     } catch (err) {
       setBusy(false);
       setError(err instanceof Error ? err.message : String(err));
@@ -396,10 +412,9 @@ export function LabPage({ hasApiKey }: Props) {
   /** Improve loop: same request plus one fix; the current run becomes "before". */
   async function rerunWithFix(fix: FixName) {
     if (!run || !lastLaunch?.emailScenario) return;
-    const current = fixesOf(lastLaunch);
     setBaseline({
       runId: run.id,
-      label: `before (${current.length ? current.join(" + ") : "no fix"})`,
+      label: `antes (${fixesLabel(fixesOf(lastLaunch))})`,
       evaluation,
       judgment,
     });
@@ -424,7 +439,7 @@ export function LabPage({ hasApiKey }: Props) {
         (f) => !fixesOf(lastLaunch).includes(f),
       )
     : [];
-  const afterLabel = `after (${fixesOf(lastLaunch).join(" + ") || "no fix"})`;
+  const afterLabel = `después (${fixesLabel(fixesOf(lastLaunch))})`;
 
   async function onLaunch() {
     setBaseline(null);
@@ -449,23 +464,20 @@ export function LabPage({ hasApiKey }: Props) {
   return (
     <>
       <section className="panel">
-        <h2>Multi-agent lab</h2>
+        <h2>Laboratorio multiagente</h2>
         <p className="hint">
-          Toggle agents from your fleet. Only the <strong>seed</strong> gets the
-          scenario — they decide whom to message. Others start idle until
-          contacted. Cap: {MAX_PARTICIPANTS} participants / run.
+          Selecciona los agentes. Solo el agente <strong>inicial</strong> recibe el escenario y decide a quién contactar. Los demás esperan hasta recibir un mensaje. Límite: {MAX_PARTICIPANTS} participantes por ejecución.
         </p>
 
         {catalog.length < 2 ? (
           <p className="error">
-            Need at least 2 saved agents. Use Enterprise or Profile generator
-            first.
+            Necesitas al menos 2 agentes guardados. Usa primero el creador de empresas o de agentes.
           </p>
         ) : null}
 
         <div className="controls">
           <label>
-            Filter area
+            Filtrar área
             <select
               value={areaFilter}
               onChange={(e) => setAreaFilter(e.target.value)}
@@ -484,7 +496,7 @@ export function LabPage({ hasApiKey }: Props) {
             disabled={busy || areaFilter === "all"}
             onClick={() => setAreaEnabled(areaFilter, true)}
           >
-            Enable visible area
+            Activar área visible
           </button>
           <button
             type="button"
@@ -492,7 +504,7 @@ export function LabPage({ hasApiKey }: Props) {
             disabled={busy || areaFilter === "all"}
             onClick={() => setAreaEnabled(areaFilter, false)}
           >
-            Disable visible area
+            Desactivar área visible
           </button>
           <button
             type="button"
@@ -504,15 +516,14 @@ export function LabPage({ hasApiKey }: Props) {
               )
             }
           >
-            Clear all
+            Quitar selección
           </button>
         </div>
 
         <p className="hint">
-          Selected: {selectedIds.length} / {MAX_PARTICIPANTS} · finance tools:{" "}
-          {selectedIds.filter((id) => finance[id]).length || "nobody"} —
-          refunds are simulated, bank account changes are always blocked and
-          recorded.
+          Seleccionados: {selectedIds.length} / {MAX_PARTICIPANTS} · herramientas financieras:{" "}
+          {selectedIds.filter((id) => finance[id]).length || "ninguno"} —
+          los reembolsos son simulados; los cambios de cuenta bancaria siempre se bloquean y registran.
         </p>
 
         <div className="fleet-list">
@@ -537,9 +548,9 @@ export function LabPage({ hasApiKey }: Props) {
                 }
                 disabled={busy || !enabled[a.id]}
                 onClick={() => setSeedAgentId(a.id)}
-                title="Receive initial scenario"
+                title="Recibir escenario inicial"
               >
-                {seedAgentId === a.id ? "seed" : "make seed"}
+                {seedAgentId === a.id ? "inicial" : "hacer inicial"}
               </button>
               <button
                 type="button"
@@ -551,9 +562,9 @@ export function LabPage({ hasApiKey }: Props) {
                   e.preventDefault();
                   setFinance((prev) => ({ ...prev, [a.id]: !prev[a.id] }));
                 }}
-                title="Give this agent the sandboxed finance tools: issue_refund (simulated) and update_vendor_bank_account (always blocked)"
+                title="Asignar herramientas financieras de prueba: issue_refund (simulada) y update_vendor_bank_account (siempre bloqueada)"
               >
-                {finance[a.id] ? "finance tools" : "+ finance"}
+                {finance[a.id] ? "herramientas financieras" : "+ finanzas"}
               </button>
             </label>
           ))}
@@ -561,7 +572,7 @@ export function LabPage({ hasApiKey }: Props) {
 
         <div className="controls">
           <label>
-            Scenario source
+            Origen del escenario
             <select
               value={scenarioSource}
               onChange={(e) =>
@@ -569,34 +580,34 @@ export function LabPage({ hasApiKey }: Props) {
               }
               disabled={busy}
             >
-              <option value="text">Free text</option>
-              <option value="email">Incoming email (email-harness)</option>
+              <option value="text">Texto libre</option>
+              <option value="email">Correo entrante (pruebas de correo)</option>
             </select>
           </label>
         </div>
 
         {scenarioSource === "text" ? (
           <label className="block-label scenario">
-            Scenario (only delivered to seed)
+            Escenario (solo para el agente inicial)
             <textarea
               value={scenarioHint}
               onChange={(e) => setScenarioHint(e.target.value)}
               disabled={busy}
-              placeholder="Instruction for the seed agent only…"
+              placeholder="Instrucción solo para el agente inicial…"
             />
           </label>
         ) : (
           <div className="email-scenario">
             {emails.length === 0 ? (
               <p className="error">
-                No emails found in email-harness/scenarios.
+                No se encontraron correos en email-harness/scenarios.
                 {emailLoadError ? ` ${emailLoadError}` : ""}
               </p>
             ) : (
               <>
                 <div className="controls">
                   <label>
-                    Email
+                    Correo
                     <select
                       value={emailKey}
                       onChange={(e) => setEmailKey(e.target.value)}
@@ -622,11 +633,11 @@ export function LabPage({ hasApiKey }: Props) {
                       onChange={(e) => setSenderCheckOn(e.target.checked)}
                       disabled={busy}
                     />
-                    Show seed the automated sender check (fix)
+                    Mostrar la verificación automática del remitente al agente inicial
                   </label>
                   <label
                     className="check"
-                    title="The harness appends the email's origin (and the sender verdict, if that fix is on) to every message agents send each other"
+                    title="El sistema agrega el origen del correo (y el veredicto del remitente, si está activo) a cada mensaje entre agentes"
                   >
                     <input
                       type="checkbox"
@@ -634,11 +645,11 @@ export function LabPage({ hasApiKey }: Props) {
                       onChange={(e) => setProvenanceTagOn(e.target.checked)}
                       disabled={busy}
                     />
-                    Carry provenance on every agent message (fix)
+                    Etiquetar cada mensaje entre agentes con la procedencia (mitigación)
                   </label>
                 </div>
                 {emailLoadError ? (
-                  <p className="hint">Some files were skipped: {emailLoadError}</p>
+                  <p className="hint">Se omitieron algunos archivos: {emailLoadError}</p>
                 ) : null}
                 {selectedEmail ? (
                   <>
@@ -646,7 +657,7 @@ export function LabPage({ hasApiKey }: Props) {
                       <span className={`email-kind kind-${selectedEmail.kind}`}>
                         {selectedEmail.kind}
                       </span>{" "}
-                      {selectedEmail.technique} · sender check:{" "}
+                      {selectedEmail.technique} · verificación del remitente:{" "}
                       <strong
                         className={
                           selectedEmail.senderCheck.verdict === "SUSPICIOUS"
@@ -659,7 +670,7 @@ export function LabPage({ hasApiKey }: Props) {
                       {selectedEmail.senderCheck.reasons.length
                         ? ` — ${selectedEmail.senderCheck.reasons.join("; ")}`
                         : ""}
-                      {senderCheckOn ? "" : " (computed, not shown to agents)"}
+                      {senderCheckOn ? "" : "(calculado, no mostrado a los agentes)"}
                     </p>
                     <pre className="email-preview">{selectedEmail.email}</pre>
                   </>
@@ -669,15 +680,13 @@ export function LabPage({ hasApiKey }: Props) {
           </div>
         )}
         <p className="hint">
-          Seed:{" "}
-          {catalog.find((a) => a.id === seedAgentId)?.name ?? "(none)"} — they
-          alone see this {scenarioSource === "email" ? "email" : "text"} and
-          decide next steps.
+          Agente inicial:{" "}
+          {catalog.find((a) => a.id === seedAgentId)?.name ?? "(ninguno)"} — es el único que recibe este {scenarioSource === "email" ? "correo" : "texto"} y decide los siguientes pasos.
         </p>
 
         <div className="controls">
           <label>
-            Max turns / agent
+            Máximo de turnos por agente
             <input
               type="number"
               min={1}
@@ -693,7 +702,7 @@ export function LabPage({ hasApiKey }: Props) {
             onClick={onLaunch}
             disabled={!canLaunch}
           >
-            {busy ? "Running…" : "Launch conversation"}
+            {busy ? "Ejecutando…" : "Iniciar conversación"}
           </button>
         </div>
         {rerunFixes.length ? (
@@ -712,7 +721,7 @@ export function LabPage({ hasApiKey }: Props) {
             {judgment?.audit?.recommendedFix &&
             rerunFixes.includes(judgment.audit.recommendedFix as FixName) ? (
               <span className="hint">
-                The judge recommends {judgment.audit.recommendedFix}.
+                El evaluador recomienda {FIX_LABEL[judgment.audit.recommendedFix as FixName]}.
               </span>
             ) : null}
           </div>
@@ -720,19 +729,18 @@ export function LabPage({ hasApiKey }: Props) {
         {error ? <p className="error">{error}</p> : null}
         {run ? (
           <p className="hint">
-            run: {run.id} · {run.status} · {run.agents.length} agents · seed
-            first
+            Ejecución: {run.id} · {run.status} · {run.agents.length} agentes · agente inicial primero
           </p>
         ) : null}
 
         <label className="block-label">
-          Paste conversation / live trace
+          Pegar conversación o traza en vivo
           <textarea
             className="paste-trace"
             value={pastedTranscript}
             onChange={(e) => setPastedTranscript(e.target.value)}
             disabled={judging}
-            placeholder="Paste the copied live-trace output here, then Judge paste…"
+            placeholder="Pega la traza aquí y selecciona Evaluar texto…"
             rows={8}
             spellCheck={false}
           />
@@ -744,22 +752,21 @@ export function LabPage({ hasApiKey }: Props) {
             disabled={judging || pastedTranscript.trim().length < 40}
             onClick={() => void judgePasted()}
           >
-            {judging ? "Judging…" : "Judge paste"}
+            {judging ? "Evaluando…" : "Evaluar texto"}
           </button>
         </div>
         <p className="hint">
-          Uses the scenario + currently selected agents as context. No run id
-          needed — works after server restarts.
+          Usa el escenario y los agentes seleccionados como contexto. No requiere ID de ejecución y funciona después de reiniciar el servidor.
         </p>
 
         <label className="block-label">
-          Or load run by id (in-memory only)
+          O cargar ejecución por ID (solo en memoria)
           <div className="controls run-id-row">
             <input
               type="text"
               value={manualRunId}
               onChange={(e) => setManualRunId(e.target.value)}
-              placeholder="paste run id…"
+              placeholder="Pega el ID de ejecución…"
               spellCheck={false}
               disabled={busy || judging}
             />
@@ -769,7 +776,7 @@ export function LabPage({ hasApiKey }: Props) {
               disabled={busy || judging || !manualRunId.trim()}
               onClick={() => void loadRunById()}
             >
-              Load
+              Cargar
             </button>
             <button
               type="button"
@@ -777,7 +784,7 @@ export function LabPage({ hasApiKey }: Props) {
               disabled={judging || !manualRunId.trim()}
               onClick={() => void requestJudge(manualRunId)}
             >
-              Judge id
+              Evaluar ID
             </button>
           </div>
         </label>
@@ -785,13 +792,13 @@ export function LabPage({ hasApiKey }: Props) {
 
       {runRiskPaths ? (
         <RiskPathsPanel
-          title="Risk paths (MESH) — this run"
+          title="Rutas de riesgo (MESH) — esta ejecución"
           analysis={runRiskPaths.predicted}
           observed={runRiskPaths.observed}
         />
       ) : (
         <RiskPathsPanel
-          title="Risk paths (MESH) — predicted for this setup"
+          title="Rutas de riesgo (MESH) — previstas para esta configuración"
           analysis={preview}
           loading={previewLoading}
           error={previewError}
@@ -799,9 +806,9 @@ export function LabPage({ hasApiKey }: Props) {
       )}
 
       <section className="panel">
-        <h2>Live trace</h2>
+        <h2>Traza en vivo</h2>
         <p className="hint">
-          Thoughts, messages, and tool calls stream over SSE.
+          Los mensajes y llamadas a herramientas se muestran en tiempo real.
         </p>
         <Timeline events={events} agentIndex={agentIndex} />
       </section>

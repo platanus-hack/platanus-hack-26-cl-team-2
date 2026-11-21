@@ -27,9 +27,11 @@ export {
   productDesignArea,
   dataArea,
   itArea,
+  financeArea,
 } from "./areas/index.js";
 
 export { composeProfile, listAreas } from "./compose.js";
+export { EXTERNAL_PERSONAS, composeExternalProfile, type ExternalPersona } from "./external.js";
 export {
   profileToAgentSpecInput,
   profileToSystemPrompt,

@@ -73,6 +73,13 @@ const SEEDS: SeedSpec[] = [
     motivation: "compliance",
     proactivity: "high",
   },
+  {
+    id: "seed_finance",
+    areaId: "finance",
+    name: "Tomás Vidal",
+    motivation: "compliance",
+    proactivity: "medium",
+  },
 ];
 
 async function main() {

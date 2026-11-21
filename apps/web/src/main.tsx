@@ -1,7 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./App";
+import { MeshApp as App } from "./mesh/MeshApp";
 import "./styles.css";
+import "./mesh/mesh.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

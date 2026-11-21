@@ -30,21 +30,21 @@ function summarize(event: TraceEvent): string {
   const p = event.payload;
   switch (event.type) {
     case "run.started": {
-      const base = `model=${String(p.model)} · seed=${String(p.seedAgentId ?? "?")} · n=${String(p.participantCount ?? "?")} · maxTurns=${String(p.maxTurnsPerAgent)}`;
+      const base = `modelo=${String(p.model)} · inicial=${String(p.seedAgentId ?? "?")} · n=${String(p.participantCount ?? "?")} · máximo de turnos=${String(p.maxTurnsPerAgent)}`;
       const email = p.email as
         | { id?: string; kind?: string; from?: string | null; senderCheck?: { verdict?: string } | null }
         | null
         | undefined;
       if (!email) return base;
-      const check = email.senderCheck ? ` · sender check: ${email.senderCheck.verdict}` : "";
+      const check = email.senderCheck ? ` · verificación del remitente: ${email.senderCheck.verdict}` : "";
       return `${base} · email=${email.id} (${email.kind}) from ${email.from ?? "?"}${check}`;
     }
     case "run.completed":
-      return "All harnesses finished.";
+      return "Todos los agentes finalizaron.";
     case "run.failed":
-      return String(p.error ?? "unknown error");
+      return String(p.error ?? "error desconocido");
     case "agent.turn.started":
-      return `turn ${String(p.turn)}/${String(p.maxTurns)}${p.isSeed ? " · seed" : ""}`;
+      return `turno ${String(p.turn)}/${String(p.maxTurns)}${p.isSeed ? " · agente inicial" : ""}`;
     case "agent.thought":
       return String(p.text ?? "");
     case "agent.tool_call":
@@ -65,7 +65,7 @@ function summarize(event: TraceEvent): string {
     case "agent.error":
       return String(p.error ?? "");
     case "sandbox.tool_attempt":
-      return `${p.blocked ? "BLOCKED" : "simulated"} · ${String(p.tool)} ${JSON.stringify(p.args)}${p.dangerous ? " · dangerous tool attempted" : ""}`;
+      return `${p.blocked ? "BLOQUEADO" : "simulado"} · ${String(p.tool)} ${JSON.stringify(p.args)}${p.dangerous ? " · intento de herramienta peligrosa" : ""}`;
     default:
       return JSON.stringify(p);
   }
@@ -75,7 +75,7 @@ export function Timeline({ events, agentIndex }: Props) {
   if (events.length === 0) {
     return (
       <p className="empty">
-        No events yet. Select agents, set a seed + scenario, and launch.
+        Aún no hay eventos. Selecciona agentes, define el agente inicial y el escenario, e inicia la ejecución.
       </p>
     );
   }

@@ -18,6 +18,7 @@ import {
 } from "../api";
 import { KnobsForm } from "./KnobsForm";
 import { ProfileEditor } from "./ProfileEditor";
+import { EXTERNAL_PERSONAS, composeExternalProfile, type ExternalPersona } from "@sandbox/shared";
 
 const DEFAULT_KNOBS: AgentKnobs = {
   seniority: "mid",
@@ -45,6 +46,9 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [ctxName, setCtxName] = useState("policy.md");
   const [ctxContent, setCtxContent] = useState("");
+  const [actorType, setActorType] = useState("internal");
+  const [persona, setPersona] = useState<ExternalPersona>("cooperative");
+  const [objective, setObjective] = useState("");
 
   const refreshAgents = useCallback(async () => {
     if (!hasDatabase) {
@@ -78,6 +82,11 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
     setNotice(null);
     setStored(null);
     try {
+      if (actorType === "external") {
+        setProfile(composeExternalProfile({ persona, knobs, name: name.trim() || undefined, companyName: companyName.trim() || undefined, objective }));
+        setNotice("Actor externo generado sin consumo de IA. Revisa el perfil y guárdalo; luego selecciónalo en una simulación junto a los agentes internos.");
+        return;
+      }
       const result = await composeProfile({
         areaId,
         knobs,
@@ -90,12 +99,12 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
       setProfile(result.profile);
       if (result.refineError) {
         setNotice(
-          `Deterministic profile ready. Haiku refine skipped: ${result.refineError}`,
+          `Perfil determinista listo. Se omitió el refinamiento con Haiku: ${result.refineError}`,
         );
       } else if (result.profile.refinedByModel) {
-        setNotice("Profile composed + Haiku refined. Save to Postgres to persist.");
+        setNotice("Perfil generado y refinado con Haiku. Guárdalo para conservarlo.");
       } else {
-        setNotice("Deterministic profile ready. Save to Postgres to persist.");
+        setNotice("Perfil determinista listo. Guárdalo para conservarlo.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -112,7 +121,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
     try {
       const result = await refineProfile(profile);
       setProfile(result.profile);
-      setNotice("Haiku refine applied.");
+      setNotice("Refinamiento con Haiku aplicado.");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -134,7 +143,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
       setProfile(agent);
       setStored(agent);
       await refreshAgents();
-      setNotice("Agent saved. Stable across reloads and ready to invoke.");
+      setNotice("Agente guardado y disponible para ejecutar, incluso después de recargar.");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -152,7 +161,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
         setStored(null);
       }
       await refreshAgents();
-      setNotice("Agent deleted.");
+      setNotice("Agente eliminado.");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -177,7 +186,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
         setProfile(updated);
       }
       setCtxContent("");
-      setNotice("Context file attached to harness.");
+      setNotice("Archivo de contexto adjuntado al agente.");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -207,10 +216,9 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
 
   return (
     <section className="panel generator">
-      <h2>Harness profile generator</h2>
+      <h2>Generador de perfiles de agentes</h2>
       <p className="hint">
-        Area templates + knobs → editable harness profile → Postgres. Context
-        files attach to the agent for later invoke.
+        Plantillas de área y parámetros → perfil editable → base de datos. Los archivos de contexto se adjuntan al agente para futuras ejecuciones.
       </p>
 
       {!hasDatabase ? (
@@ -221,7 +229,16 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
         </p>
       ) : null}
 
-      <div className="area-grid">
+      <div className="controls" role="group" aria-label="Tipo de participante">
+        <button className={actorType === "internal" ? "btn" : "btn ghost"} aria-pressed={actorType === "internal"} disabled={busy} onClick={() => setActorType("internal")}>Agente interno</button>
+        <button className={actorType === "external" ? "btn" : "btn ghost"} aria-pressed={actorType === "external"} disabled={busy} onClick={() => setActorType("external")}>Cliente o atacante simulado</button>
+      </div>
+      {actorType === "external" ? <>
+        <p className="hint">Actores externos para probar respuestas, límites y escalamiento. No representan empleados ni reciben autoridad interna. Se guardan en el catálogo de soporte con su rol externo explícito.</p>
+        <div className="area-grid">{Object.entries(EXTERNAL_PERSONAS).map(([id, preset]) => <button key={id} type="button" className={`area-card ${persona === id ? "active" : ""}`} aria-pressed={persona === id} disabled={busy} onClick={() => setPersona(id as ExternalPersona)}><strong>{preset.label}</strong><span>{preset.description}</span></button>)}</div>
+        <label className="block-label">Objetivo de la prueba (opcional)<textarea value={objective} onChange={event => setObjective(event.target.value)} disabled={busy} maxLength={2000} placeholder={EXTERNAL_PERSONAS[persona].goal} /></label>
+        <div className="knobs-form"><label>Nombre del participante<input value={name} onChange={event => setName(event.target.value)} maxLength={64} disabled={busy} placeholder={EXTERNAL_PERSONAS[persona].label} /></label><label>Empresa con la que interactúa<input value={companyName} onChange={event => setCompanyName(event.target.value)} disabled={busy} maxLength={120} /></label><label>Iniciativa<select value={knobs.proactivity} onChange={event => setKnobs({ ...knobs, proactivity: event.target.value as AgentKnobs["proactivity"] })} disabled={busy}><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option></select></label></div>
+      </> : <><div className="area-grid">
         {areas.map((area) => (
           <button
             key={area.id}
@@ -238,9 +255,9 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
 
       {selectedArea ? (
         <p className="area-detail">
-          <strong>How:</strong> {selectedArea.how}
+          <strong>Cómo:</strong> {selectedArea.how}
           <br />
-          <strong>Why:</strong> {selectedArea.why}
+          <strong>Por qué:</strong> {selectedArea.why}
         </p>
       ) : null}
 
@@ -253,6 +270,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
         onCompanyChange={setCompanyName}
         disabled={busy}
       />
+      </>}
 
       <div className="controls">
         <label className="check">
@@ -260,25 +278,25 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
             type="checkbox"
             checked={useRefine}
             onChange={(e) => setUseRefine(e.target.checked)}
-            disabled={busy || !hasApiKey}
+            disabled={busy || !hasApiKey || actorType === "external"}
           />
-          Refine with Haiku {hasApiKey ? "" : "(needs API key)"}
+          Refinar con Haiku {hasApiKey ? "" : "(requiere clave API)"}
         </label>
         <button
           className="btn"
           type="button"
           onClick={onGenerate}
-          disabled={busy || areas.length === 0}
+          disabled={busy || (actorType === "internal" && areas.length === 0)}
         >
-          {busy ? "Working…" : "Generate profile"}
+          {busy ? "Procesando…" : "Generar perfil"}
         </button>
         <button
           className="btn ghost"
           type="button"
           onClick={onRefineAgain}
-          disabled={busy || !profile || !hasApiKey}
+          disabled={busy || !profile || !hasApiKey || actorType === "external" || profile.title.startsWith("Actor externo")}
         >
-          Refine again
+          Refinar nuevamente
         </button>
         <button
           className="btn ghost"
@@ -286,15 +304,15 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
           onClick={onSave}
           disabled={busy || !profile || !hasDatabase}
         >
-          Save agent
+          Guardar agente
         </button>
         <button
           className="btn ghost"
           type="button"
           disabled
-          title="Iteration 2 — solo sandbox"
+          title="Etapa 2 — entorno de pruebas individual"
         >
-          Use in solo sandbox (soon)
+          Prueba individual (próximamente)
         </button>
       </div>
 
@@ -304,14 +322,14 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
       {profile ? (
         <ProfileEditor profile={profile} onChange={setProfile} />
       ) : (
-        <p className="empty">No profile yet — generate one from an area + knobs.</p>
+        <p className="empty">Aún no hay perfil: selecciona un área y ajusta los parámetros para generarlo.</p>
       )}
 
       {stored ? (
         <div className="context-panel">
-          <h3>Context files</h3>
+          <h3>Archivos de contexto</h3>
           <p className="hint">
-            Policies / playbooks attached to this harness. Included on{" "}
+            Políticas y guías adjuntas a este agente. Se incluyen en{" "}
             <code>GET /api/agents/{stored.id}/invoke</code>.
           </p>
           <ul className="ctx-list">
@@ -326,14 +344,14 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
                   onClick={() => onRemoveContext(f.id)}
                   disabled={busy}
                 >
-                  remove
+                  quitar
                 </button>
               </li>
             ))}
           </ul>
           <div className="knobs-form">
             <label>
-              Filename
+              Nombre de archivo
               <input
                 value={ctxName}
                 onChange={(e) => setCtxName(e.target.value)}
@@ -342,13 +360,13 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
             </label>
           </div>
           <label className="block-label">
-            Content
+            Contenido
             <textarea
               className="tall"
               value={ctxContent}
               onChange={(e) => setCtxContent(e.target.value)}
               disabled={busy}
-              placeholder="Paste policy / playbook markdown…"
+              placeholder="Pega una política o guía en Markdown…"
             />
           </label>
           <button
@@ -357,14 +375,14 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
             onClick={onAddContext}
             disabled={busy || !ctxContent.trim()}
           >
-            Attach context file
+            Adjuntar archivo de contexto
           </button>
         </div>
       ) : null}
 
       {agents.length > 0 ? (
         <div className="saved-list">
-          <h3>Saved agents</h3>
+          <h3>Agentes guardados</h3>
           <ul>
             {agents.map((a) => (
               <li key={a.id} className="saved-row">
@@ -381,7 +399,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
                   }}
                 >
                   {a.name} · {a.areaId} · {a.knobs.seniority} ·{" "}
-                  {a.contextFiles.length} files
+                  {a.contextFiles.length} archivos
                 </button>
                 <button
                   type="button"
@@ -389,14 +407,14 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
                   onClick={() => onDelete(a.id)}
                   disabled={busy}
                 >
-                  delete
+                  eliminar
                 </button>
               </li>
             ))}
           </ul>
         </div>
       ) : hasDatabase ? (
-        <p className="empty">No agents saved yet.</p>
+        <p className="empty">Aún no hay agentes guardados.</p>
       ) : null}
     </section>
   );

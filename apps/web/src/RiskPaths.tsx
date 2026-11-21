@@ -2,12 +2,12 @@ import type { ObservedPath, RiskPath, RiskPathAnalysis } from "@sandbox/shared";
 
 const LEVEL_LABEL: Record<RiskPath["level"], string> = {
   local: "local",
-  interaction: "interaction",
-  systemic: "systemic",
+  interaction: "interacción",
+  systemic: "sistémica",
 };
 
 function nodeLabel(id: string, names: Record<string, string>): string {
-  return id === "email" ? "external email" : (names[id] ?? id);
+  return id === "email" ? "correo externo" : (names[id] ?? id);
 }
 
 /** email → Gina → Omar → Fede, with a mark on hops where the origin stops being visible. */
@@ -61,7 +61,7 @@ export function RiskPathsPanel({
   observed,
   loading,
   error,
-  title = "Risk paths (MESH)",
+  title = "Rutas de riesgo (MESH)",
 }: {
   analysis: RiskPathAnalysis | null;
   observed?: ObservedPath[] | null;
@@ -74,21 +74,21 @@ export function RiskPathsPanel({
     <section className="panel risk-paths">
       <h2>{title}</h2>
       <p className="hint">
-        Computed from who reads the email, who can message whom and who holds finance tools
-        — no AI. A dashed arrow (⇢) is a hop where the receiver can no longer tell the request
-        came from an external email.
+        Calculado a partir de quién lee el correo, quién puede escribirle a quién y quién tiene
+        herramientas de finanzas, sin IA. Una flecha punteada (⇢) es un salto donde quien recibe
+        ya no puede saber que el pedido vino de un correo externo.
       </p>
-      {loading && !analysis ? <p className="empty">Analyzing…</p> : null}
+      {loading && !analysis ? <p className="empty">Analizando…</p> : null}
       {error ? <p className="error">{error}</p> : null}
       {analysis ? (
         <>
           <div className="mesh-compare">
             <div>
-              <h3>Component by component</h3>
+              <h3>Componente por componente</h3>
               <p className={analysis.componentsAllOk ? "outcome-verdict tone-ok" : "outcome-verdict tone-warn"}>
                 {analysis.componentsAllOk
-                  ? "Every component passes"
-                  : `${analysis.components.filter((c) => !c.ok).length} component(s) fail`}
+                  ? "Todos los componentes pasan"
+                  : `${analysis.components.filter((c) => !c.ok).length} componente(s) fallan`}
               </p>
               <ul className="component-list">
                 {analysis.components.map((c) => (
@@ -101,7 +101,7 @@ export function RiskPathsPanel({
               </ul>
             </div>
             <div>
-              <h3>Paths to a finance tool</h3>
+              <h3>Rutas hacia una herramienta de finanzas</h3>
               <p
                 className={
                   analysis.summary.high > 0
@@ -112,16 +112,16 @@ export function RiskPathsPanel({
                 }
               >
                 {analysis.summary.total === 0
-                  ? "No path from untrusted input to a finance tool"
-                  : `${analysis.summary.total} path(s), ${analysis.summary.high} high`}
+                  ? "Ninguna ruta desde una entrada no confiable hacia finanzas"
+                  : `${analysis.summary.total} ruta(s), ${analysis.summary.high} de severidad alta`}
               </p>
               <p className="hint">
-                {analysis.summary.local} local · {analysis.summary.interaction} interaction ·{" "}
-                {analysis.summary.systemic} systemic
+                {analysis.summary.local} local · {analysis.summary.interaction} de interacción ·{" "}
+                {analysis.summary.systemic} sistémica(s)
                 {analysis.summary.verdictLost
-                  ? ` · sender-check verdict lost on ${analysis.summary.verdictLost}`
+                  ? ` · veredicto del remitente perdido en ${analysis.summary.verdictLost}`
                   : ""}
-                {analysis.fixes.length ? ` · fixes: ${analysis.fixes.join(", ")}` : ""}
+                {analysis.fixes.length ? ` · mitigaciones: ${analysis.fixes.join(", ")}` : ""}
               </p>
             </div>
           </div>
@@ -140,9 +140,9 @@ export function RiskPathsPanel({
                     hopTitle={(i) => {
                       const h = p.hops[i];
                       if (!h) return "";
-                      return `${h.channel}: origin ${h.provenanceVisible ? "visible" : "lost"}, sender verdict ${h.verdictVisible ? "visible" : "not visible"}`;
+                      return `${h.channel === "email" ? "correo" : "mensaje entre agentes"}: origen ${h.provenanceVisible ? "visible" : "perdido"}, veredicto del remitente ${h.verdictVisible ? "visible" : "no visible"}`;
                     }}
-                    tail="finance tools"
+                    tail="herramientas de finanzas"
                   />
                   <span className="muted">{p.finding}</span>
                 </li>
@@ -152,10 +152,10 @@ export function RiskPathsPanel({
 
           {observed ? (
             <>
-              <h3>Observed in this run</h3>
+              <h3>Observado en esta ejecución</h3>
               {observed.length === 0 ? (
                 <p className="empty">
-                  The email never reached an agent with finance tools in this run.
+                  En esta ejecución el correo nunca llegó a un agente con herramientas de finanzas.
                 </p>
               ) : (
                 <ul className="risk-list">
@@ -167,10 +167,10 @@ export function RiskPathsPanel({
                       <span>
                         {o.matchesPredicted ? (
                           <>
-                            confirms <strong>{o.matchesPredicted}</strong>
+                            confirma <strong>{o.matchesPredicted}</strong>
                           </>
                         ) : (
-                          "not among the predicted paths"
+                          "no estaba entre las rutas previstas"
                         )}{" "}
                         · {LEVEL_LABEL[o.level]}
                       </span>
@@ -180,13 +180,13 @@ export function RiskPathsPanel({
                         hopOk={(h) => o.hops[h]?.warningCarried ?? true}
                         hopTitle={(h) =>
                           o.hops[h]?.warningCarried
-                            ? "message carried a warning or the email's origin"
-                            : "no warning or origin in this message"
+                            ? "el mensaje llevaba una advertencia o el origen del correo"
+                            : "este mensaje no llevaba advertencia ni origen"
                         }
                         tail={
                           o.sink
-                            ? `${o.sink}${o.blocked ? " (blocked)" : ""}`
-                            : "reached, no finance call"
+                            ? `${o.sink}${o.blocked ? " (bloqueado)" : ""}`
+                            : "llegó, sin acción de finanzas"
                         }
                       />
                     </li>
@@ -194,8 +194,8 @@ export function RiskPathsPanel({
                 </ul>
               )}
               <p className="hint">
-                Observed hops: a dashed arrow means the message had no warning words or harness
-                provenance tag (keyword heuristic, not a classifier).
+                Saltos observados: una flecha punteada significa que el mensaje no tenía palabras de
+                advertencia ni la etiqueta de procedencia (heurística por palabras clave, no un clasificador).
               </p>
             </>
           ) : null}
