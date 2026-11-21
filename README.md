@@ -37,7 +37,7 @@ Needs Node 20+ and an Anthropic API key.
 ```bash
 cp .env.example .env              # then put your ANTHROPIC_API_KEY in .env
 npx -y pnpm@9.15.0 install
-npx -y pnpm@9.15.0 --filter @sandbox/api db:seed   # 7 senior agents (one per area)
+npx -y pnpm@9.15.0 --filter @sandbox/api db:seed   # 8 senior agents (one per area)
 npx -y pnpm@9.15.0 run dev        # web http://localhost:5173 · API http://localhost:8787
 npx -y pnpm@9.15.0 test           # 36 tests, no AI calls
 ```
@@ -49,7 +49,7 @@ npx -y pnpm@9.15.0 test           # 36 tests, no AI calls
    **Re-run with sender_check fix** to get the **Before vs after** table.
 
 `.env` and the local SQLite database are git-ignored — run `db:seed` so everyone starts with the
-same seven senior agents (GTM, CSM, CS, Engineering, Product+Design, Data, IT). Any email you
+same eight senior agents (GTM, CSM, CS, Engineering, Product+Design, Data, IT, Finance). Any email you
 run is sent to the Anthropic API as part of the agents' prompts, so use anonymised mail.
 
 The original Python harness still works on its own: see [email-harness/README.md](email-harness/README.md).

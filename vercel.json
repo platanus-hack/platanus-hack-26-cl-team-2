@@ -7,7 +7,7 @@
   "functions": {
     "api/index.ts": {
       "maxDuration": 300,
-      "includeFiles": "email-harness/scenarios/*.json"
+      "includeFiles": "{email-harness/scenarios/*.json,apps/api/mock-db/*.txt}"
     }
   },
   "rewrites": [

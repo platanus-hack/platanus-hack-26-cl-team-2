@@ -81,6 +81,21 @@ export async function listEmailScenarios(): Promise<{
   return data;
 }
 
+export type MockDbSummary = {
+  tool: string;
+  file: string;
+  label: string;
+  sensitivity: string;
+  kind: string;
+};
+
+export async function listMockDatabases(): Promise<{ databases: MockDbSummary[] }> {
+  const res = await fetch("/api/mock-db");
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Failed to load mock databases");
+  return data;
+}
+
 export type RunJudgment = {
   summary: string;
   decisions: string[];

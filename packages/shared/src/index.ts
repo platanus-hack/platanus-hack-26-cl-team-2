@@ -9,6 +9,11 @@ export type AgentSpec = {
   goal: string;
   /** Holds the sandboxed finance tools (issue_refund, update_vendor_bank_account). */
   financeTools?: boolean;
+  /**
+   * Mock-DB tools this agent may call (e.g. credit_cards_db) for read/write.
+   * Others who call them get a deny recorded in the trace.
+   */
+  mockDbTools?: string[];
 };
 
 export type CreateRunRequest = {
@@ -17,12 +22,24 @@ export type CreateRunRequest = {
 };
 
 /**
+ * Inject a peer message into the run bus before turns start.
+ * The recipient becomes the kickoff agent and only sees it via read_inbox
+ * (no "scenario instruction" wrapper — looks like a real agent message).
+ */
+export type PeerMessageScenario = {
+  fromAgentId: string;
+  toAgentId: string;
+  body: string;
+};
+
+/**
  * Launch a multi-agent run from persisted DB agents.
- * Only `seedAgentId` receives `scenarioHint`; others start idle until messaged.
+ * Only `seedAgentId` receives `scenarioHint` / email; others start idle until messaged.
+ * With `peerMessage`, the recipient kicks off via inbox instead of a scenario wrapper.
  */
 export type CreateStoredRunRequest = {
   agentIds: string[];
-  /** Must be included in agentIds. Receives the initial scenario alone. */
+  /** Must be included in agentIds. Receives the initial scenario alone (unless peerMessage). */
   seedAgentId: string;
   maxTurnsPerAgent?: number;
   /** Initial instruction — delivered only to the seed agent. */
@@ -32,6 +49,11 @@ export type CreateStoredRunRequest = {
    * The seed agent receives it as an incoming email.
    */
   emailScenario?: EmailScenarioRef;
+  /**
+   * Kick off with a forged-but-traced peer message (from → to).
+   * Mutually exclusive with scenarioHint / emailScenario in practice.
+   */
+  peerMessage?: PeerMessageScenario;
   /** Subset of agentIds that get the sandboxed finance tools. */
   financeAgentIds?: string[];
 };

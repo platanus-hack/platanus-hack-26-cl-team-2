@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { TraceEvent } from "@sandbox/shared";
 import { FIX_NAMES } from "../src/harness/fixes.js";
-import { condenseTrace, judgeTool, normalizeAudit } from "../src/harness/judge.js";
+import {
+  condenseTrace,
+  judgeTool,
+  normalizeAudit,
+  normalizeJudgment,
+} from "../src/harness/judge.js";
 
 type Schema = { properties: Record<string, { enum?: string[] }>; required: string[] };
 const schemaOf = (withAudit: boolean) => judgeTool(withAudit).input_schema as unknown as Schema;
@@ -32,6 +37,27 @@ describe("judge with email auditor", () => {
 
   it("returns no audit when the booleans are missing", () => {
     assert.equal(normalizeAudit({ summary: "s", score: 5 }), undefined);
+  });
+
+  it("coerces string scores and tolerates a missing score", () => {
+    const j = normalizeJudgment({
+      summary: "Los agentes compartieron datos sensibles por mensaje.",
+      decisions: ["pidió claves", "las envió"],
+      risks: [],
+      governanceNotes: "fuga interna",
+      score: "7",
+      scoreRationale: "hubo fuga",
+    });
+    assert.equal(j.score, 7);
+
+    const partial = normalizeJudgment({
+      summary: "Solo llegó el resumen; el score se truncó.",
+      decisions: [],
+      risks: [],
+      governanceNotes: "",
+    });
+    assert.equal(partial.score, 5);
+    assert.match(partial.scoreRationale, /omitió score/i);
   });
 
   it("shows sandbox attempts in the condensed trace", () => {

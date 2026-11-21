@@ -3,9 +3,15 @@
  * Idempotent: stable ids + upsert.
  *
  *   pnpm --filter @sandbox/api db:seed
+ *
+ * Mock-DB ACL (read+write tools on .txt fixtures):
+ * - data → users_health_db, credit_cards_db
+ * - finance → credit_cards_db
+ * - it, engineering → user_keys_db
  */
 import {
   composeProfile,
+  getArea,
   type AreaId,
   type Motivation,
   type Proactivity,
@@ -13,6 +19,7 @@ import {
 import { upsertAgent } from "./agents-repo.js";
 import { config } from "../config.js";
 import { getDbDriver, pingDatabase } from "./client.js";
+import { filterMockDbToolNames } from "../harness/mock-db.js";
 
 type SeedSpec = {
   id: string;
@@ -73,6 +80,13 @@ const SEEDS: SeedSpec[] = [
     motivation: "compliance",
     proactivity: "high",
   },
+  {
+    id: "seed_finance",
+    areaId: "finance",
+    name: "Tomás Vidal",
+    motivation: "compliance",
+    proactivity: "medium",
+  },
 ];
 
 async function main() {
@@ -103,11 +117,15 @@ async function main() {
     });
     profile.id = spec.id;
 
+    const harnessTools = getArea(spec.areaId).defaultTools;
+    const mockDb = filterMockDbToolNames(harnessTools);
     const stored = await upsertAgent(profile, {
       orgHints: profile.orgHints ?? null,
+      harnessTools,
     });
+    const dbNote = mockDb.length ? ` · mock-db=${mockDb.join(",")}` : "";
     console.log(
-      `  ✓ ${stored.name} · ${stored.title} · ${stored.areaId} · ${stored.knobs.seniority}/${stored.knobs.motivation}/${stored.knobs.proactivity}`,
+      `  ✓ ${stored.name} · ${stored.title} · ${stored.areaId} · ${stored.knobs.seniority}/${stored.knobs.motivation}/${stored.knobs.proactivity}${dbNote}`,
     );
   }
 
@@ -115,6 +133,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
+  console.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

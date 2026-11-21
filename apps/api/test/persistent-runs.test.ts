@@ -56,6 +56,11 @@ describe("Ejecuciones persistidas y rutas serverless", () => {
     assert.equal(listing.status, 200);
     const invalid = await handler.fetch(new Request("https://mesh.example/api?__mesh_path=api/runs/from-stored", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }));
     assert.equal(invalid.status, 400);
+    const catalog = await handler.fetch(new Request("https://mesh.example/api?__mesh_path=api/mock-db"));
+    assert.equal(catalog.status, 200);
+    assert.equal((await catalog.json()).databases.length, 3);
+    const invalidPeer = await handler.fetch(new Request("https://mesh.example/api?__mesh_path=api/runs/from-stored", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ agentIds: ["one", "two"], seedAgentId: "one", peerMessage: { fromAgentId: "one", toAgentId: "two", body: "" } }) }));
+    assert.equal(invalidPeer.status, 400);
   });
 
   it("identifica ejecuciones interrumpidas sin dejarlas en curso indefinidamente", async () => {

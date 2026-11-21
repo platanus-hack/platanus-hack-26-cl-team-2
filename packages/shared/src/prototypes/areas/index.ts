@@ -3,6 +3,7 @@ import { csArea } from "./cs.js";
 import { csmArea } from "./csm.js";
 import { dataArea } from "./data.js";
 import { engineeringArea } from "./engineering.js";
+import { financeArea } from "./finance.js";
 import { gtmArea } from "./gtm.js";
 import { itArea } from "./it.js";
 import { productDesignArea } from "./product_design.js";
@@ -15,6 +16,7 @@ export const AREA_PROTOTYPES: Record<AreaId, AreaPrototype> = {
   product_design: productDesignArea,
   data: dataArea,
   it: itArea,
+  finance: financeArea,
 };
 
 export const AREA_LIST: AreaPrototype[] = [
@@ -25,6 +27,7 @@ export const AREA_LIST: AreaPrototype[] = [
   productDesignArea,
   dataArea,
   itArea,
+  financeArea,
 ];
 
 export const AREA_IDS = AREA_LIST.map((a) => a.id);
@@ -43,4 +46,5 @@ export {
   productDesignArea,
   dataArea,
   itArea,
+  financeArea,
 };
