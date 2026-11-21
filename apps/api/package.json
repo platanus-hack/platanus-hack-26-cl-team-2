@@ -14,11 +14,14 @@
     "db:studio": "drizzle-kit studio",
     "db:push:sqlite": "drizzle-kit push --config drizzle.sqlite.config.ts",
     "db:seed": "tsx src/db/seed.ts",
-    "batch": "tsx src/batch.ts"
+    "batch": "tsx src/batch.ts",
+    "mcp:server": "tsx src/mcp/server.ts",
+    "mcp:quick": "tsx src/mcp/quick-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
     "@hono/node-server": "^1.14.1",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@sandbox/shared": "workspace:*",
     "better-sqlite3": "^13.2.0",
     "dotenv": "^18.0.10",
