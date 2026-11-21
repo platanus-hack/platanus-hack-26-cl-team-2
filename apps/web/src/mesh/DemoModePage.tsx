@@ -144,9 +144,20 @@ export function DemoModePage({
   const [org, setOrg] = useState<DemoOrg | null>(null);
   const [created, setCreated] = useState<StoredAgent[]>([]);
   const [importPreview, setImportPreview] = useState<DemoImport | null>(null);
+  const [importText, setImportText] = useState("");
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
   const [importNotice, setImportNotice] = useState("");
+
+  function validateImportText(text: string) {
+    setImportPreview(null);
+    setImportError("");
+    setImportNotice("");
+    try {
+      if (new Blob([text]).size > 5 * 1024 * 1024) throw new Error("El JSON no puede superar 5 MB.");
+      setImportPreview(parseDemoImport(text));
+    } catch (failure) { setImportError(failure instanceof Error ? failure.message : "No se pudo validar el JSON."); }
+  }
 
   async function readImport(file: File) {
     setImporting(true);
@@ -155,7 +166,9 @@ export function DemoModePage({
     setImportPreview(null);
     try {
       if (file.size > 5 * 1024 * 1024) throw new Error("El JSON no puede superar 5 MB.");
-      setImportPreview(parseDemoImport(await file.text()));
+      const text = await file.text();
+      setImportText(text);
+      validateImportText(text);
     } catch (failure) { setImportError(failure instanceof Error ? failure.message : "No se pudo leer el archivo."); }
     finally { setImporting(false); }
   }
@@ -380,6 +393,8 @@ export function DemoModePage({
               }}>Descargar plantilla JSON</button>
               <label className="block-label">Seleccionar JSON (máximo 5 MB)<input type="file" accept=".json,application/json" disabled={busy || loading || importing} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void readImport(file); }} /></label>
             </div>
+            <label className="block-label">O pega el JSON aquí<textarea className="tall" rows={12} value={importText} spellCheck={false} disabled={busy || loading || importing} placeholder={'{\n  "companyName": "NexusB1",\n  "context": "Contexto de la empresa",\n  "agents": [{ "name": "Soporte", "prompt": "Atiende consultas" }]\n}'} onChange={event => { setImportText(event.target.value); setImportPreview(null); setImportError(""); setImportNotice(""); }} /></label>
+            <div className="controls"><button className="btn" type="button" disabled={busy || loading || importing || !importText.trim()} onClick={() => validateImportText(importText)}>Validar JSON pegado</button><button className="btn ghost" type="button" disabled={busy || loading || importing} onClick={() => { setImportText(JSON.stringify(DEMO_IMPORT_TEMPLATE, null, 2)); setImportPreview(null); setImportError(""); setImportNotice(""); }}>Pegar plantilla de ejemplo</button></div>
             {importing && <p role="status">Validando archivo…</p>}
             {importError && <p className="error" role="alert">{importError}</p>}
             {importPreview && <div><h3>{importPreview.companyName}</h3><p>{importPreview.agents.length} agentes · {importPreview.files.length} archivos</p><ul>{importPreview.agents.map(agent => <li key={agent.name}>{agent.name}</li>)}</ul><p>Aplicar reemplazará los campos del formulario, incluidos los archivos y sus permisos. La empresa guardada solo cambia al pulsar Guardar.</p><button type="button" className="btn" disabled={busy || loading} onClick={applyImport}>Aplicar JSON al formulario</button><button type="button" className="btn ghost" onClick={() => setImportPreview(null)}>Cancelar</button></div>}

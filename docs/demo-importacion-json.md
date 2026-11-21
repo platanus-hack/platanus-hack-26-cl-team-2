@@ -2,6 +2,9 @@
 
 En DEMO mode, descarga la plantilla, edita sus datos y selecciona el archivo
 JSON. La aplicación valida el contenido antes de ofrecer una vista previa.
+También puedes pegarlo en **O pega el JSON aquí** y pulsar **Validar JSON pegado**.
+El botón **Pegar plantilla de ejemplo** carga un ejemplo editable. Si editas el
+texto después de validarlo, debes validarlo de nuevo antes de aplicarlo.
 Pulsa **Aplicar JSON al formulario** para reemplazar los campos editables.
 Revisa los datos y usa el botón de guardado de DEMO para persistirlos.
 Cancelar o cargar un archivo inválido no modifica el formulario.
