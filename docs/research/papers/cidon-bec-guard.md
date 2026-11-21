@@ -60,3 +60,9 @@ Observación propia:
 4. **Aprobación humana y falsos positivos.** BEC-Guard no tiene revisión humana (p. 3) y pone la precisión como condición de confianza del usuario (p. 6). Inferencia: el approval_gate de MESH pide revisión solo en reembolsos de más de USD 500 de origen externo, y el 0 de falsos positivos en 12 controles (n chico) es coherente con esa lógica, aunque no la prueba.
 5. **Límite de USD 500.** El paper no tiene umbral monetario; sus métricas son por correo. Inferencia: los fraudes bajo USD 500 que MESH deja pasar son el mismo tipo de hueco que el paper atribuye a clasificadores de contenido: el atacante adapta texto y monto. Los autores dicen que "attackers constantly adapt their tactics and approaches" (p. 15); conviene presentar el límite como decisión de diseño, no como cobertura general.
 6. **Métrica y pitch.** El paper reporta precisión, FP por correo y recall en ese orden y dice por qué (p. 3, p. 6). MESH puede reportar lo mismo: precisión y falsos positivos sobre controles legítimos, con recall solo sobre casos etiquetados. Frase para el pitch, con cita 2: "If the precision is not high, users of BEC-Guard will lose confidence in the validity of its predictions." (p. 6). Demostrado por Cidon et al. como criterio de diseño; el paralelo con MESH es inferencia.
+
+## Verificación
+- Verificado contra el texto completo del PDF por un segundo agente el 2026-11-21.
+- Afirmaciones comprobadas: 60 · corregidas: 0 · eliminadas: 0.
+- Lista breve de correcciones: Sin correcciones.
+- Pendiente: Nada. La tabla 9 (p. 14) se confirmó solo en el .txt; la página del PDF no se abrió.

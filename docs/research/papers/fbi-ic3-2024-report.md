@@ -3,7 +3,7 @@
 - **Cobertura de lectura:** páginas 1–47, completo (texto extraído del PDF, 1715 líneas, todas leídas). No se abrió el PDF porque las tablas salen legibles en el texto. Las páginas de accesibilidad (alt text) se leyeron como parte del texto.
 
 ## Resumen
-El informe anual del IC3 del FBI agrega las denuncias que el público presenta en ic3.gov sobre fraudes y amenazas cibernéticas. En 2024 recibió 859,532 denuncias y pérdidas reportadas por $16.6 billion, un récord según el propio informe (p. 3–4). El fraude habilitado por ciberdelitos concentra casi 83% de las pérdidas (p. 11). Business Email Compromise (BEC) aparece con 21,442 denuncias y $2,770,151,146 en pérdidas (p. 9–10), y es el tipo de caso que el Financial Fraud Kill Chain intenta congelar (p. 13). El paper no propone ningún método defensivo ni evalúa controles; es un registro de denuncias, no un estudio de seguridad de sistemas. Su valor para MESH es de contexto: muestra que el vector de correo externo que suplanta a un proveedor o cliente tiene volumen y pérdidas reales, y que la detección suele llegar después del pago.
+El informe anual del IC3 del FBI agrega las denuncias que el público presenta en ic3.gov sobre fraudes y amenazas cibernéticas. En 2024 recibió 859,532 denuncias y pérdidas reportadas por $16.6 billion, un récord según el propio informe (p. 3–4). El fraude habilitado por ciberdelitos concentra casi 83% de las pérdidas (p. 11). Business Email Compromise (BEC) aparece con 21,442 denuncias y $2,770,151,146 en pérdidas (p. 9–10), y es el tipo de caso que el Financial Fraud Kill Chain intenta congelar (p. 13). El paper no evalúa ningún control defensivo; solo incluye materiales educativos en el Apéndice E (p. 47), como «Check – Call – Wait» y «Avoid falling to a BEC scam». Es un registro de denuncias, no un estudio de seguridad de sistemas. Su valor para MESH es de contexto: muestra que el vector de correo externo que suplanta a un proveedor o cliente tiene volumen y pérdidas reales, y que la detección suele llegar después del pago.
 
 ## Método
 - **Tipo de estudio:** agregación estadística de denuncias presentadas por el público a través de IC3.gov, sin experimentos ni modelos de ataque propios (p. 41, 44).
@@ -39,7 +39,7 @@ El informe anual del IC3 del FBI agrega las denuncias que el público presenta e
 - Las denuncias son autorreportadas. Los datos descriptivos (tipo de delito, pérdida) pueden cambiar con investigaciones posteriores, y las cifras son "an assessment taken at a point in time, which may change" (p. 44).
 - Puede haber denuncias duplicadas: "Some complainants may have filed more than once, creating a possible duplicate complaint" (p. 44).
 - Ransomware sub-reportado: "In some cases, entities do not report any loss amount to FBI, thereby creating an artificially low overall ransomware loss rate" (p. 10).
-- Las estadísticas por estado solo cuentan denuncias que incluyen el estado (p. 20, 21); la edad es opcional (p. 8, 44).
+- Las estadísticas por estado solo incluyen denuncias con ubicación aportada por el denunciante cuando la conoce (p. 20, 21, 44); la edad es opcional (p. 8, 44).
 - Un conteo de denuncias no es un conteo de personas (p. 44).
 
 **Observación propia:**
@@ -56,3 +56,11 @@ El informe anual del IC3 del FBI agrega las denuncias que el público presenta e
 4. **Umbral de USD 500.** La pérdida media por denuncia es $19,372 (p. 4). El umbral de MESH está muy por debajo de esa media. El paper no da distribución por monto, así que no se puede saber qué fracción de los fraudes quedaría bajo USD 500. Es una limitación que MESH ya reconoce y el paper no la resuelve.
 5. **Métrica a copiar, con cuidado.** El concepto de "success rate" del Financial Fraud Kill Chain (66%, p. 13) puede inspirar una métrica de MESH (intentos bloqueados frente a fraudes completados), pero el informe no la define. Hay que definirla propia y no citar el 66% como si fuera comparable.
 6. **Frase para el pitch (verificada).** "Last year saw a new record for losses reported to IC3, totaling a staggering $16.6 billion." (p. 3). Sirve para abrir con el tamaño del problema. Frase de apoyo: "Most Financial Fraud Kill Chain incidents initiated by the IC3 RAT are Business Email Compromise (BEC)." (p. 13), que conecta el caso de MESH con el fraude que el FBI sigue día a día.
+
+## Verificación
+- Verificado contra el texto completo del PDF por un segundo agente el 2026-11-21.
+- Afirmaciones comprobadas: 42 · corregidas: 2 · eliminadas: 0.
+- Correcciones:
+  - Resumen: decía que el paper «no propone ningún método defensivo»; el Apéndice E (p. 47) sí incluye materiales educativos («Check – Call – Wait», «Avoid falling to a BEC scam»). Se corrigió; el paper sigue sin evaluar controles.
+  - Limitaciones: la frase sobre estadísticas por estado no tenía respaldo en p. 20–21; la base está en p. 44 («generated from information entered when known/provided by the complainant»). Se corrigió la cita de página y la formulación.
+- Pendiente: la afirmación de cabecera sobre la cobertura de lectura («páginas 1–47, completo ... todas leídas») describe el proceso de lectura, no el paper; revisé las páginas citadas en la nota, no todas las 47 una por una.

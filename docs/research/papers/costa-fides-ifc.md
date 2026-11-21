@@ -23,7 +23,7 @@ El paper estudia cómo el control de flujo de información puede dar garantías 
 
 | Dato | Valor | Página |
 |---|---|---|
-| Ataques ejecutados en AgentDojo con Tool Knowledge (todos los planificadores y modelos) | 949 | 15 |
+| Ataques ejecutados en AgentDojo con Tool Knowledge (por planificador y modelo) | 949 | 15 |
 | Inyecciones exitosas, gpt-4o, Basic, sin política (Tabla 1; entre paréntesis sin 2 tareas de inyección) | 163 (156) | 15 |
 | Inyecciones exitosas, gpt-4o, FIDES, sin política | 24 (23) | 15 |
 | Inyecciones exitosas, gpt-4o, Basic★ (con política) | 9 (0) | 15 |
@@ -47,12 +47,12 @@ Reconocidas por los autores:
 
 - **Solo AgentDojo.** Descartaron InjecAgent (orientado a un turno) y ASB (no etiqueta valores de retorno) (p. 14).
 - **Un solo ataque.** Evalúan únicamente Tool Knowledge, la variante más potente de Important Instructions (p. 14).
-- **Etiquetas de integridad por regla, usando el propio benchmark.** Se marca como U todo campo que algún ataque de AgentDojo usa como vehículo, lo que es una línea base clara pero no un etiquetado real (p. 14, y p. 25).
+- **Etiquetas de integridad por regla, usando el propio benchmark.** Se marca como U todo campo que algún ataque de AgentDojo usa como vehículo, lo que es una línea base clara pero no un etiquetado real (p. 14, y p. 24).
 - **Los ataques de texto a texto no se bloquean.** Las políticas solo actúan sobre llamadas a herramientas (p. 15–16).
 - **Una inyección que solo crea un evento sin participantes pasa la política de confidencialidad** (Injection Task 2 en travel) (p. 16).
 - **Costo de utilidad.** Con política, Basic pierde hasta 40 % en gpt-4o; FIDES★ sigue lejos de la utilidad ideal por fallos de planificación y por "compensatory leakage", cuando el modelo, tras fallar con query llm, expande variables y viola la política (p. 16–18).
 - **Clasificación de tareas con oráculo humano** y no con un LLM (p. 17).
-- **Los valores de Variable Passing distintos de cero en DIQ y DD se atribuyen a adivinanza** y a tareas mal evaluadas en AgentDojo (p. 35, y p. 40 sobre criterios de éxito).
+- **Los valores de Variable Passing distintos de cero en DIQ y DD se atribuyen a adivinanza** y a evaluaciones de utilidad incompletas en AgentDojo, además de tareas de no hacer nada (p. 35); el paper también señala que la evaluación de completación de tareas de AgentDojo puede mejorarse (p. 40).
 - **Algunas políticas no revisan argumentos.** Las políticas P no verifican argumentos de herramientas (p. 18).
 - **Solo garantizan explicit secrecy**: los flujos implícitos por orden o presencia de llamadas no se previenen (p. 9–10).
 - **Salidas tipadas de query llm.** Un booleano puede llevar un ataque de un bit; el paper lo llama "unlikely", y advierte que endosar valores no confiables con políticas más permisivas se debe usar con cuidado (p. 13).
@@ -62,9 +62,9 @@ Reconocidas por los autores:
 Observación propia:
 
 - Los ceros con política (9 (0), 1 (0)) dependen de excluir 2 tareas de inyección que los autores no consideran ataques (p. 15). Conviene citar siempre los dos números juntos.
-- El texto de la p. 16 dice que Basic supera a FIDES "por 23.6 %" con gpt-4o, pero la Tabla 6 da 83.30 y 59.79, cuya diferencia es 23.51. No logro conciliar la cifra con la tabla; puede ser otra métrica o un error de redacción. No la usaría en el pitch sin revisar.
+- El texto de la p. 16 dice que, en modelos no razonadores, Basic rinde "much better, for example, 23.6 % using gpt-4o" frente a FIDES, pero la Tabla 6 da 83.30 y 59.79, cuya diferencia es 23.51. No logro conciliar la cifra con la tabla; puede ser otra métrica o un error de redacción. No la usaría en el pitch sin revisar.
 - Los resultados de seguridad cubren un solo tipo de ataque (Tool Knowledge). No hay un ataque adaptativo que intente sortear las políticas P-T o P-F.
-- AgentDojo no contiene fraude por correo ni suplantación de un remitente confiable. Un atacante que se haga pasar por un proveedor de confianza recibiría, según el esquema del paper, etiqueta T si la fuente se marca como confiable. El paper no evalúa ese caso.
+- AgentDojo no contiene fraude por correo ni suplantación de un remitente confiable (el paper no describe el contenido de cada tarea; es lectura propia). Un atacante que se haga pasar por un proveedor de confianza recibiría, según el esquema del paper, etiqueta T si la fuente se marca como confiable. El paper no evalúa ese caso.
 
 ## Qué le sirve a MESH
 
@@ -79,3 +79,14 @@ Observación propia:
 5. **Métricas para copiar.** Reportar ASR y TCR lado a lado, con y sin política (Tablas 1, 6 y 7). Nuestros 0 falsos positivos en 12 controles legítimos corresponden a un TCR de control; conviene añadir la tasa de completación en los controles con y sin defensa. El paper muestra que el costo de la defensa en utilidad es real (hasta 40 % para Basic), y decirlo en el pitch da credibilidad.
 
 6. **Frases para el pitch.** Las dos citas de arriba sirven: la de la p. 9 ("non-interference prevents untrusted data U from flowing into trusted sinks ... is sufficient to prevent PIAs") respalda que la defensa debe actuar sobre el destino consecuente, y la de la p. 16 ("our planners do not stop these text-to-text attacks") justifica por qué MESH se centra en la herramienta de alto riesgo y no en la salida de texto. Ambas son afirmaciones de los autores; la conexión con fraude BEC es nuestra.
+
+## Verificación
+- Verificado contra el texto completo del PDF por un segundo agente el 2026-11-21.
+- Afirmaciones comprobadas: 42 · corregidas: 5 · eliminadas: 0.
+- Correcciones:
+  - Números clave, fila 949: "todos los planificadores y modelos" pasa a "por planificador y modelo" (p. 15 dice que los 949 ataques se ejecutan sobre cada planificador).
+  - Limitaciones, etiquetas de integridad por regla: página 25 pasa a p. 24 (la regla está en la sección "Labels & Policies" de p. 24; p. 25 trata la tabla de políticas y el prompt).
+  - Observación propia, 23.6 %: la cita "por 23.6 %" no es literal; se sustituye por "much better, for example, 23.6 % using gpt-4o" (p. 16).
+  - Limitaciones, Variable Passing distinto de cero: "tareas mal evaluadas" se reemplaza por lo que dice el paper (evaluaciones de utilidad incompletas, adivinanza y tareas de no hacer nada, p. 35; mejoras en la evaluación, p. 40).
+  - Observación propia, AgentDojo sin fraude por correo: se marca como lectura propia, porque el paper no describe el contenido de cada tarea.
+- Pendiente: las cifras propias de MESH (17/21, 6/21, 8/21, 3/21, 12/12, 4/12, 7/12, 8/12, USD 500) no se verificaron contra el paper, como se pidió. La diferencia 83.30 − 59.79 = 23.51 no coincide con el 23.6 % del texto (sigue sin conciliarse, como indica la nota).

@@ -11,7 +11,7 @@ Los sistemas multiagente reparten una tarea entre agentes que se pasan mensajes,
 - **Datasets (p. 4):** HumanEval (164 problemas, Pass@1); CIAR (50 preguntas, exactitud); CommonMT (100 oraciones muestreadas de la categoría Lexical, evaluadas con BLEURT-20); FairEval (80 etiquetas humanas win/tie/lose, exactitud).
 - **Inyección de fallos (p. 3–4):** AutoTransform reescribe el perfil del agente (prompt en p. 24). AutoInject intercepta mensajes y reemplaza líneas u oraciones por versiones erróneas generadas por un LLM. Por defecto Pm = 1.0 y Pe = 0.2, con errores semánticos. Pm es la probabilidad de que un mensaje sea defectuoso y Pe la proporción de líneas o oraciones erróneas dentro de ese mensaje.
 - **Métrica:** puntajes de 0 a 100; el impacto se expresa como caída respecto de la versión sin agente defectuoso (vanilla), promediando las cuatro tareas (p. 4–5).
-- **Modelo de amenaza:** un agente interno, torpe o malicioso, que genera errores difíciles de detectar. No hay atacante externo, herramientas ni acciones con efecto (p. 1–2, p. 5). Comunicación solo por mensajes directos, sin resúmenes ni broadcast (p. 4).
+- **Modelo de amenaza:** un agente interno, torpe o malicioso, que genera errores difíciles de detectar. Las tareas son solo texto, sin herramientas ni acciones con efecto (p. 25). Que no haya atacante externo es inferencia mía; el paper no lo declara (el agente defectuoso es uno de los agentes del sistema, p. 2–3). Comunicación solo por mensajes directos, sin resúmenes ni broadcast (p. 5).
 - **Defensas (p. 8):** Challenger, una instrucción extra en el perfil para cuestionar mensajes; Inspector, un agente que intercepta todos los mensajes y los corrige (prompts en p. 25).
 - **Tamaño de muestra y estadística:** no encontré intervalos de confianza ni repeticiones para los puntajes principales en el texto.
 
@@ -26,7 +26,7 @@ Los sistemas multiagente reparten una tarea entre agentes que se pasan mensajes,
 | Problemas en HumanEval (Pass@1) | 164 | 4 |
 | Errores inyectados analizados en generación de código (Tabla 8) | 80 | 15 |
 | Camel, AutoInject: rendimiento sin mejora vs. con Challenger + Inspector (Tabla 3) | 29.3 vs. 48.6 | 8 |
-| Recuperación con Challenger + Inspector en Self-collab (pérdida de rendimiento) | 96.4% | 9 |
+| Recuperación con Challenger + Inspector en Self-collab (pérdida de rendimiento); en la Tabla 3 (p. 8) corresponde a AutoTransform; con AutoInject sale 93.2% (cálculo propio) | 96.4% | 9 |
 | GPT-3.5, promedio: agente único vs. multiagente vanilla (Tabla 5) | 48.02 vs. 52.78 | 14 |
 | GPT-3.5, generación de código con AutoInject: error semántico vs. sintáctico, promedio (Tabla 7) | 39.15 vs. 47.78 | 14 |
 
@@ -55,8 +55,21 @@ Observación propia:
 
 ## Qué le sirve a MESH
 1. **Respalda (demostrado en su setting):** la cadena lineal es la más frágil (23.7%, p. 1), y los errores en el nodo que reparte las tareas pesan más (p. 7). MESH es una cadena lineal (Camila → Mateo → Tomás). El paper lo respalda como estructura de riesgo, pero en tareas de texto, no en correo. Inferencia mía: la aprobación debe ir donde la acción tiene efecto (la herramienta), no depender de que un agente intermedio la revise.
-2. **Etiqueta de procedencia (no probada aquí):** el paper no prueba etiquetas de origen. Su defensa más eficaz es un revisor LLM sobre todos los mensajes (96.4%, p. 9), y el caso "the bug had been corrected" (p. 7–8) muestra que el modelo obedece el texto en lenguaje natural. Inferencia mía: una etiqueta puesta por el sistema, fuera del texto del mensaje, no depende de ese juicio. La evidencia para eso sigue siendo la de MESH, no la de este paper.
-3. **Rutas de riesgo y tasa de contaminación (demostrado en su setting):** los errores inyectados en mensajes (AutoInject) pesan más que cambiar el perfil en GPT-3.5 (p. 5), y la frecuencia de mensajes erróneos pesa más que los errores dentro de cada mensaje (p. 9). Métrica para copiar: Pm (fracción de mensajes contaminados) y Pe (fracción de líneas dentro del mensaje). Sirve para barrer la fracción de correos con inyección en MESH.
+2. **Etiqueta de procedencia (no probada aquí):** el paper no prueba etiquetas de origen. La combinación Challenger + Inspector es la que más recupera (96.4% en Self-collab con AutoTransform, p. 9 y Tabla 3, p. 8). El Inspector solo, un revisor LLM sobre todos los mensajes, no siempre supera al Challenger (Self-collab con AutoInject: 67.7 frente a 72.0, p. 8), y el caso "the bug had been corrected" (p. 7–8) muestra que el modelo obedece el texto en lenguaje natural. Inferencia mía: una etiqueta puesta por el sistema, fuera del texto del mensaje, no depende de ese juicio. La evidencia para eso sigue siendo la de MESH, no la de este paper.
+3. **Rutas de riesgo y tasa de contaminación (demostrado en su setting):** los errores inyectados en mensajes (AutoInject) pesan más que cambiar el perfil en GPT-3.5 (p. 5; −12.12 frente a −11.42, diferencia menor de un punto; en GPT-4o ocurre al revés), y la frecuencia de mensajes erróneos pesa más que los errores dentro de cada mensaje (p. 9). Métrica para copiar: Pm (fracción de mensajes contaminados) y Pe (fracción de líneas dentro del mensaje). Sirve para barrer la fracción de correos con inyección en MESH.
 4. **Límite de USD 500 y verificación del remitente:** el paper no evalúa ni menciona ninguno de los dos. No se debe usar como respaldo.
-5. **Semántico vs. sintáctico (demostrado en código):** los errores semánticos, que parecen correctos, dañan más que los sintácticos (39.15 vs. 47.78, p. 14). Inferencia mía: un correo de fraude BEC plausible y sin error visible cae en esa categoría, así que la detección por contenido no basta.
-6. **Frase para el pitch:** "exhibits superior resilience with the lowest performance drop of 5.5%" (p. 1). Aclarar que se midió en código, matemáticas, traducción y evaluación, no en correo. El 96.4% no debe presentarse como resultado general; es sobre Self-collab con un revisor LLM.
+5. **Semántico vs. sintáctico (demostrado en código):** los errores semánticos, que parecen correctos, dañan más que los sintácticos (39.15 vs. 47.78, p. 14). Uso el sentido de la p. 7; la definición de la p. 4 está invertida respecto de ese uso. Inferencia mía: un correo de fraude BEC plausible y sin error visible cae en esa categoría, así que la detección por contenido no basta.
+6. **Frase para el pitch:** "exhibits superior resilience with the lowest performance drop of 5.5%" (p. 1). Aclarar que se midió en código, matemáticas, traducción y evaluación, no en correo. El 96.4% no debe presentarse como resultado general; es sobre Self-collab con Challenger + Inspector (y AutoTransform).
+
+## Verificación
+- Verificado contra el texto completo del PDF por un segundo agente el 2026-11-21.
+- Afirmaciones comprobadas: 68 · corregidas: 7 · eliminadas: 0.
+- Correcciones:
+  - Método, comunicación: p. 4 → p. 5.
+  - Modelo de amenaza: páginas corregidas (texto solo en p. 25); "no hay atacante externo" queda marcado como inferencia.
+  - Números clave, fila 96.4%: en la Tabla 3 (p. 8) corresponde a AutoTransform; con AutoInject, 93.2% (cálculo propio).
+  - Qué le sirve 2: "defensa más eficaz" exagerado; el Inspector solo no siempre supera al Challenger (p. 8).
+  - Qué le sirve 3: magnitudes (−12.12 vs. −11.42, diferencia pequeña) y reversión en GPT-4o (p. 5).
+  - Qué le sirve 5: la definición de semántico/sintáctico de la p. 4 está invertida respecto del uso de la p. 7.
+  - Qué le sirve 6: "con un revisor LLM" → con Challenger + Inspector.
+- Pendiente: no revisé línea por línea las referencias (p. 11–13) ni los prompts de C.1, C.2 y C.4 (p. 17–23); la nota no cita datos de ellos. La inversión de definiciones en la p. 4 es un problema del paper, no resuelto.

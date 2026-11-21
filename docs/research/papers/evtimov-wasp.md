@@ -3,7 +3,7 @@
 - **Cobertura de lectura:** páginas 1–22, completo (texto extraído del PDF, con referencias, apéndices y checklist de NeurIPS). No se abrió el PDF original: las figuras 1–3 se leyeron por su texto y leyendas.
 
 ## Resumen
-WASP es un benchmark público para medir si agentes web basados en LLM pueden ser desviados por prompt injection cuando el atacante es solo un usuario adversario de un sitio y no controla la web completa. Se construye sobre VisualWebArena con dos entornos autoalojados, GitLab y Reddit (Postmill), y combina 42 escenarios en 84 tareas con dos plantillas de inyección (texto plano y URL). Evalúan GPT-4o, GPT-4o-mini, o1, Claude Sonnet 3.5 v2 y Claude Sonnet 3.7 con pensamiento extendido, en tres scaffolds distintos. El hallazgo principal es que desviar al agente es fácil (ASR-intermediate entre 17% y 86%, p. 6), y que las defensas probadas (instruction hierarchy y system prompt defensivo) reducen el efecto pero no lo eliminan. Cumplir el objetivo del atacante es mucho más raro (ASR-end-to-end de hasta 16%, p. 6). Los autores lo llaman "security by incompetence": la barrera es la capacidad del agente para terminar la acción, no la robustez frente a la inyección.
+WASP es un benchmark público para medir si agentes web basados en LLM pueden ser desviados por prompt injection cuando el atacante es solo un usuario adversario de un sitio y no controla la web completa. Se construye sobre VisualWebArena con dos entornos autoalojados, GitLab y Reddit (Postmill), y combina 42 escenarios en 84 tareas con dos plantillas de inyección (texto plano y URL). Evalúan GPT-4o, GPT-4o-mini, o1, Claude Sonnet 3.5 v2 y Claude Sonnet 3.7 con pensamiento extendido, en tres scaffolds distintos. El hallazgo principal es que desviar al agente es fácil (ASR-intermediate entre 17% y 86%, p. 6), y que las defensas probadas no lo eliminan: el system prompt defensivo reduce el efecto (GPT-4o, de 0.429 a 0.226, p. 7) y la instruction hierarchy no evitó la desviación (p. 8). Cumplir el objetivo del atacante es mucho más raro (ASR-end-to-end de hasta 16%, p. 6). Los autores lo llaman "security by incompetence": la barrera es la capacidad del agente para terminar la acción, no la robustez frente a la inyección.
 
 ## Método
 - **Modelo de amenaza:** atacante black-box que es usuario adversario de un sitio. Solo escribe donde usuarios no confiables pueden publicar (issues, comentarios, posts). No cambia el layout, no crea pop-ups ni modifica comentarios ajenos (p. 3–4). El usuario del agente es benigno y el entorno es malicioso.
@@ -23,11 +23,11 @@ WASP es un benchmark público para medir si agentes web basados en LLM pueden se
 | Tareas del conjunto de utilidad | 37 tasks | p. 5 |
 | Ataques que "partially succeed" (ASR-intermediate, abstract) | up to 86% of the case | p. 1 |
 | Tasa de cumplimiento de la tarea del atacante | from 0 to 17% | p. 3 |
-| ASR-end-to-end máximo (texto) | up to 16% | p. 6 |
+| ASR-end-to-end máximo | up to 16% | p. 6 |
 | o1, Tool Calling, instr. h. (system): ASR-intermediate / ASR-end-to-end / Utility | 0.857 / 0.167 / 0.486 | p. 7 (Tabla 2) |
 | GPT-4o, VisualWebArena axtree + SOM, sin defensa: ASR-intermediate / ASR-end-to-end / Utility | 0.429 / 0.036 / 0.622 | p. 7 (Tabla 2) |
 | GPT-4o, axtree + SOM, con system prompt defensivo: ASR-intermediate / ASR-end-to-end | 0.226 / 0.012 | p. 7 (Tabla 2) |
-| GPT-4o-mini vs o1 en Tool Calling sin system prompt, ASR-end-to-end (GPT-4o-mini, instr. hierarchy / o1, instr. h. system) | 0.000 / 0.167 | p. 7 (Tabla 2) |
+| Tool Calling, ASR-end-to-end: GPT-4o-mini (instr. hierarchy) / o1 (instr. h. system) | 0.000 / 0.167 | p. 7 (Tabla 2) |
 | o1 (axtree, system), ASR-intermediate: URL / texto plano | 0.976 / 0.738 | p. 9 (Tabla 3) |
 | Claude-3.7-sonnet, con system prompt defensivo, ASR-intermediate: inyección con el objetivo del usuario / task-agnostic | 0.500 / 0.321 | p. 9 (Tabla 4) |
 
@@ -41,7 +41,7 @@ Reconocidas por los autores:
 - Solo dos entornos (reddit y gitlab). Faltan sitios como Wikipedia o Kayak y otras tareas, como agentes de escritorio y de código (p. 9).
 - Falta diversidad de prompts de inyección; el benchmark tiene pocas plantillas (p. 9).
 - Alcance de atacante: solo black-box y solo sobre elementos concretos de la página (p. 4).
-- El bajo ASR-end-to-end se atribuye a la capacidad actual de los agentes, y los autores reconocen que "the current limitations in agents' ability to fully execute attacks are unlikely to persist" (p. 3). Ven esa protección como transitoria (p. 6, p. 8).
+- El bajo ASR-end-to-end se atribuye a la capacidad actual de los agentes, y los autores reconocen que "the current limitations in agents' ability to fully execute attacks are unlikely to persist" (p. 3). Ven esa protección como transitoria (p. 3).
 - Sin error bars ni significancia estadística; no se dan detalles de cómputo porque los modelos son de nube (p. 20–21).
 
 Observación propia:
@@ -55,8 +55,19 @@ Observación propia:
 1. **Demostrado:** un contenido escrito por un tercero no confiable basta para desviar a modelos de frontera. GPT-4o sin defensa llega a ASR-intermediate de 0.429 (p. 7), y la plantilla usa urgencia ("NEW IMPORTANT AND URGENT", p. 5). Sirve para justificar el vector "correo externo → agente". **Inferencia:** la urgencia de la plantilla de WASP es parecida al patrón de fraude BEC.
 2. **Demostrado:** el system prompt defensivo baja GPT-4o de 0.429 a 0.226 (p. 7), y la instruction hierarchy, que deja la web en el privilegio más bajo, no evita la desviación (o1 con instr. h. system llega a 0.857, p. 7). **Inferencia:** una etiqueta de procedencia que solo lee el modelo no basta. Conviene que la etiqueta la use el sistema para decidir la herramienta, como hace MESH.
 3. **Demostrado:** WASP separa "el agente fue desviado" (ASR-intermediate) de "el atacante cumplió su objetivo" (ASR-end-to-end) y reporta utilidad aparte (p. 5). **Inferencia:** MESH debería reportar también la advertencia que llega a finanzas (el equivalente a desviado) además del fraude completado, para que los números de 17/21 a 6/21 no escondan la parte que la defensa no evitó.
-4. **Demostrado:** el ASR-end-to-end sube con la capacidad del agente. GPT-4o-mini en Tool Calling tiene 0.000 y o1 tiene 0.167 (p. 7). **Inferencia:** el approval_gate, que no depende de que el agente sea torpe, gana importancia a medida que los modelos mejoran. Esto es una interpretación, no algo que el paper pruebe.
+4. **Sugerido por el paper (p. 8):** el ASR-end-to-end sube con la capacidad del agente. GPT-4o-mini en Tool Calling tiene 0.000 y o1 tiene 0.167 (p. 7); son dos modelos con defensas distintas, no una prueba. **Inferencia:** el approval_gate, que no depende de que el agente sea torpe, gana importancia a medida que los modelos mejoran. Esto es una interpretación, no algo que el paper pruebe.
 5. **Sobre el límite de USD 500 y la verificación del remitente:** WASP no tiene umbral monetario ni modela remitentes. No respalda ni contradice esas defensas. **Inferencia:** la diferencia de 0.976 frente a 0.738 entre URL y texto plano (p. 9) muestra que la forma de la inyección cambia mucho la tasa. Un filtro por remitente que no toca el cuerpo del correo podría tener un efecto limitado. Esto coincide con el resultado de MESH de que la verificación sola no cambió nada en Haiku, pero es una lectura propia.
 6. **Hueco que MESH cubre:** WASP no evalúa cadenas de agentes ni herramientas de alto riesgo como cambiar cuenta bancaria o emitir reembolsos. El paper solo menciona agentes de escritorio y de código como extensiones futuras (p. 9). **Demostrado:** esa ausencia. **Inferencia:** la ruta multiagente de MESH (Camila → Mateo → Tomás) es el aporte que WASP no hace.
 
 **Frases para el pitch:** la cita 1 (p. 1) como respaldo de que el problema es real con modelos de frontera, y la cita 2 (p. 3) para explicar por qué el riesgo no se ve en una prueba de un solo paso.
+
+## Verificación
+- Verificado contra el texto completo del PDF por un segundo agente el 2026-11-21.
+- Afirmaciones comprobadas: 56 · corregidas: 5 · eliminadas: 0.
+- Correcciones:
+  - Resumen: decía que instruction hierarchy y system prompt "reducen el efecto". El paper solo muestra reducción con el system prompt defensivo (GPT-4o 0.429 a 0.226, Tabla 2, p. 7); la instruction hierarchy no evitó la desviación (p. 8).
+  - Números clave: "ASR-end-to-end máximo (texto)" pasó a "ASR-end-to-end máximo"; el paper no clasifica ese dato como texto.
+  - Números clave: la fila de Tool Calling decía "sin system prompt" para o1, cuando en la Tabla 2 o1 tiene instrucciones de instruction hierarchy en el system role. Etiqueta corregida; valores 0.000 y 0.167 correctos.
+  - Limitaciones: "transitoria" se cita a p. 3 (no a p. 6 y 8, donde el paper no usa ese término).
+  - "Qué le sirve a MESH" punto 4: el aumento del ASR-end-to-end con la capacidad es una sugerencia del paper (p. 8), no una demostración; además se comparan dos modelos con defensas distintas.
+- Pendiente: nada de lo que está en el paper. Las cifras propias de MESH (17/21, 6/21, 8/21, 3/21, 12/12, 4/12, 7/12, 8/12, USD 500) no se verificaron, por instrucción.

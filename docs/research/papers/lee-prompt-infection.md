@@ -49,12 +49,12 @@ Observación propia:
 - Los resultados son de un solo arXiv v1 (octubre 2024), sin revisión por pares en la versión leída.
 - Las tasas de éxito son proporciones sobre el conjunto sintético de pruebas (360 pares, más el lote de robo de datos). El texto no reporta intervalos de confianza ni desviaciones, y el número de repeticiones por celda no está claro salvo en Table 1 (100 ejecuciones).
 - La cifra de 76% de Marking es lectura mía: el texto dice que la tasa inicial era 0% y que luego se añadió un contraataque (intercalar guiones bajos en el prompt), así que el 76% parece medirse después de ese contraataque. El paper no lo dice de forma explícita.
-- El contraste "GPT-3.5 resiste más" se basa en categorías de fallo y en porcentajes de figura; los números de las figuras 4 a 6 no están en el texto y no los verifiqué visualmente.
+- El contraste "GPT-3.5 resiste más" se basa en categorías de fallo (figura 5) y en los porcentajes que el texto da en la p. 7; los valores de las figuras 4 a 6 no están en el texto y no los verifiqué visualmente.
 - La sociedad de agentes usa inyección directa (sobreescritura del system prompt), no indirecta, por lo que no representa el vector de correo o documento (p. 5).
 - El paper no prueba ninguna defensa a nivel de herramienta, sandbox, permisos ni aprobación humana; todas las defensas evaluadas son de prompt (p. 9).
 
 ## Qué le sirve a MESH
-1. **Respalda la premisa "cada componente pasa su revisión, pero la ruta falla".** En el montaje de robo de datos, el agente DB Manager y el programador quedan infectados solo por mensajes recibidos de otros agentes, sin tocar contenido externo (demostrado, p. 4). Eso respalda que el riesgo está en la ruta y no en un agente aislado. Es una lectura mía que esto es exactamente lo que MESH llama "ruta de riesgo", pero el paper sí muestra el mecanismo de propagación.
+1. **Respalda la premisa "cada componente pasa su revisión, pero la ruta falla".** En el montaje de robo de datos, el agente DB Manager y el programador quedan infectados solo por mensajes recibidos de otros agentes, sin tocar contenido externo (ilustrado en la figura 2, p. 4; el paper no lo mide). Eso respalda que el riesgo está en la ruta y no en un agente aislado. Es una lectura mía que esto es exactamente lo que MESH llama "ruta de riesgo", pero el paper sí muestra el mecanismo de propagación.
 2. **Etiqueta de procedencia (LLM Tagging).** El paper propone prefijar "[AGENT NAME]:" a las respuestas de agentes (p. 8), casi el mismo mecanismo que la etiqueta de MESH. Pero el paper demuestra que solo baja la tasa de éxito 5% (p. 9). Esto es un argumento a favor de que la etiqueta no sea suficiente sola. Que MESH pase de 4/12 a 12/12 de advertencias entregadas a finanzas (dato propio) muestra un efecto de visibilidad, no de bloqueo; el paper no mide eso. Inferencia mía: la etiqueta informa a finanzas, pero no detiene la acción, así que la aprobación en el sandbox sigue haciendo falta.
 3. **Aprobación por procedencia.** El paper demuestra que las defensas de prompt son insuficientes cuando se usan solas (p. 9: "none of the tested defense strategies... prove particularly effective when used in isolation"). Eso apoya que la barrera esté fuera del modelo, como en approval_gate. El paper no evalúa ninguna compuerta a nivel de herramienta, así que este apoyo es indirecto. Inferencia mía.
 4. **Métrica de ruta y criterio de éxito.** El criterio del paper para robo de datos exige tres agentes comprometidos con roles distintos (p. 5), y el ataque que llega al programador y luego a una herramienta de ejecución es una ruta de tres o más saltos (pp. 4–5). Conviene copiar esa forma de medir: contar cuántos saltos debe atravesar la infección antes de llegar a la herramienta peligrosa, y reportar el éxito por longitud de ruta. Esto es una propuesta de métrica, no un resultado del paper.
@@ -62,4 +62,13 @@ Observación propia:
 6. **Frases para el pitch (cita textual del paper):**
    - "These findings challenge the assumption that MAS are inherently safer due to their distributed architecture." (p. 2)
    - "stronger models are not inherently safer, as their enhanced capabilities may amplify the damage they can cause when breached." (p. 7)
-   - Y la cita de la sección de limitaciones sobre la defensa combinada, usada solo si se quiere un argumento a favor de la estrategia en capas: "pairing LLM Tagging with other defense techniques, such as marking or instruction defense, is crucial for mitigating prompt infections." (p. 9)
+   - Y la cita de la sección 6 (Defensas) sobre la defensa combinada, usada solo si se quiere un argumento a favor de la estrategia en capas: "pairing LLM Tagging with other defense techniques, such as marking or instruction defense, is crucial for mitigating prompt infections." (p. 9)
+
+## Verificación
+- Verificado contra el texto completo del PDF por un segundo agente el 2026-11-21.
+- Afirmaciones comprobadas: 40 · corregidas: 3 · eliminadas: 0.
+- Correcciones:
+  - "Qué le sirve", punto 1: "demostrado" cambiado por "ilustrado en la figura 2"; es un ejemplo ilustrativo, no un resultado medido (p. 4).
+  - "Qué le sirve", punto 6: la cita "pairing LLM Tagging..." está en la sección 6 (Defensas), no en Limitaciones; la página 9 es correcta.
+  - Observación propia: los porcentajes 66%, 54%, 9% y 20% sí están en el texto (p. 7); se corrigió la atribución a "porcentajes de figura".
+- Pendiente: los valores de las figuras 4 a 7 (barras y gráficos) no están en el texto y no se confirmaron visualmente.

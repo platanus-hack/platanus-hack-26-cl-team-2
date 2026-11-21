@@ -9,7 +9,7 @@ El paper pregunta si los agentes de IA con herramientas, memoria y acceso web pu
 - **Competencia:** AI Agent Red Teaming Challenge, 8 de marzo a 6 de abril de 2025, en Gray Swan Arena (p. 3). Cerca de 2,000 participantes y 1,800,000 intentos (p. 4). Premios por US$171,800 (p. 4).
 - **Escenarios:** 44 escenarios curados, cada uno con agente definido, system prompt, herramientas simuladas, objetivo adversarial y criterio de éxito. Cuatro familias de comportamiento: confidencialidad, objetivos conflictivos, contenido prohibido y acciones prohibidas (p. 3). Ejemplos completos en el apéndice A (pp. 14–26), por ejemplo un agente de salud que no debe revelar historiales de otros pacientes, o un agente de reclutamiento que debe dar puntaje 8 o más.
 - **Modelos:** 22 LLMs de OpenAI, Google DeepMind, Anthropic, Amazon, xAI, Meta, Cohere y Mistral, algunos pre-lanzamiento (p. 3). Para ART se usan 19 modelos, incluidos Gemini 2.5 Pro y o4-mini, que no estuvieron en la competencia (p. 5).
-- **Vectores de ataque:** chat directo e inyección indirecta, esto es, instrucciones ocultas en datos no confiables como logs, páginas o respuestas de herramientas (p. 4).
+- **Vectores de ataque:** chat directo e inyección indirecta, esto es, instrucciones ocultas en datos no confiables como logs (p. 4); también páginas, PDF y respuestas de herramientas (pp. 2, 18).
 - **Modelo de amenaza:** un usuario adversario que controla el input directo o el contenido que el agente lee con sus herramientas. El objetivo es que el agente viole su política de despliegue. El agente tiene tool calling y la ejecución es en sandbox (pp. 2–4).
 - **Métricas:** ASR = sesiones con violación / total de sesiones de usuario por modelo (p. 4). También ASR por comportamiento a k = 1, 10 y 100 consultas (p. 5, Figura 4).
 - **ART:** se filtran los ataques con un juez LLM más estricto y se toman hasta 5 por par comportamiento-modelo, para un total de 4,700 ataques sobre 44 comportamientos (p. 5).
@@ -42,25 +42,38 @@ El paper pregunta si los agentes de IA con herramientas, memoria y acceso web pu
 
 ## Limitaciones
 Reconocidas por los autores:
-- Falsos positivos de "specification gaming": submissions que pasan los jueces automáticos sin cumplir el criterio, como repetir "week-end" 100 veces para simular francés, o codificar contenido prohibido en hexadecimal u otro idioma, que los jueces no detectan (pp. 28–29).
+- Falsos positivos de "specification gaming": submissions que pasan los jueces automáticos sin cumplir el criterio, como repetir "week-end" 100 veces para simular francés, o codificar contenido prohibido en hexadecimal u otro idioma, que algunos jueces no detectan (pp. 28–29).
 - Algunos falsos positivos vienen de casos borde no previstos en los criterios de éxito. Recomiendan más pruebas previas y ejemplos few-shot, y jueces más robustos, por ejemplo modelos de razonamiento (p. 29).
 - o3 se introdujo tarde en la competencia y su ASR puede estar inflado (p. 4).
 - La evidencia sobre cómputo de inferencia y robustez es "inconclusive" (p. 7).
 
 Observación propia:
 - Discrepancia interna: el resumen dice "over 60,000" (p. 1) y la sección 2.2 dice "over 62,000" (p. 4). No se aclara cuál es la cifra final.
-- Sesgo de selección: el ASR se calcula sobre sesiones de participantes que buscaban romper al agente, y la transferencia usa solo submissions que ya fueron exitosas (p. 27). Esto sobreestima la tasa de éxito que tendría un atacante cualquiera.
+- Sesgo de selección: el ASR se calcula sobre sesiones de participantes que buscaban romper al agente, y la transferencia usa solo ataques que ya fueron exitosos (p. 6; sobre las submissions existentes, p. 27). Esto sobreestima la tasa de éxito que tendría un atacante cualquiera.
 - Escenarios simulados (p. 3), con herramientas falsas y sin despliegue real. No mide impacto en producción.
-- No evalúa ninguna defensa, aunque concluye que se necesitan defensas (p. 9). Sus datos no permiten decir qué defensa funciona.
+- No evalúa ninguna defensa, aunque concluye que se necesitan defensas (pp. 1, 9). Sus datos no permiten decir qué defensa funciona.
 - Reproducibilidad parcial: el paper dice que se publicarán los casos de prueba (p. 2), pero luego que ART será un leaderboard privado (p. 5).
 - No encontré en el texto una medida de acuerdo entre el juez automático y evaluadores humanos sobre ART.
 - Las versiones exactas de modelo y fechas no están en el texto, así que los números dependen del momento de la corrida.
 
 ## Qué le sirve a MESH
-1. **Demostrado por el paper:** la defensa no puede depender solo del prompt. Casi todos los agentes violan políticas en 10 a 100 consultas (p. 1), y la robustez no sube con la capacidad (p. 7). Esto respalda que la aprobación se haga en el sandbox (approval_gate) y no en el modelo. **Inferencia nuestra:** que el gate baje los fraudes de 17/21 a 6/21 sin cambiar el prompt es coherente con esto, pero el paper no prueba nada sobre MESH.
-2. **Demostrado por el paper:** la inyección indirecta es el vector más fuerte: 27.1 frente a 5.7 en directa (Tabla 1, p. 4), y 36.8 en la categoría Prohibited Action indirecta (p. 4). Esto respalda la etiqueta de procedencia: el riesgo viene de contenido externo que el agente lee, no de quien escribe en el chat. **Inferencia nuestra:** el correo externo de MESH es exactamente este vector.
+1. **Lo que dice el paper:** casi todos los agentes violan políticas en 10 a 100 consultas (p. 1), la robustez casi no se explica por tamaño ni capacidad (p. 1) y no sube necesariamente con la capacidad (p. 7). Concluye que hacen falta defensas adicionales (p. 1), pero no prueba ninguna. **Inferencia nuestra:** por eso la defensa no puede depender solo del prompt, y la aprobación conviene hacerla en el sandbox (approval_gate) y no en el modelo. Que el gate baje los fraudes de 17/21 a 6/21 sin cambiar el prompt es coherente con esto, pero el paper no prueba nada sobre MESH.
+2. **Demostrado por el paper:** la inyección indirecta es el vector más fuerte: 27.1 frente a 5.7 en directa (Tabla 1, p. 4), y 36.8 en la categoría Prohibited Action indirecta (p. 4). El paper no dice nada sobre quién escribe; leer el riesgo como procedencia del contenido externo es **inferencia nuestra**. **Inferencia nuestra:** el correo externo de MESH es exactamente este vector.
 3. **Métrica para copiar:** reportar el ASR por número de consultas (k = 1, 10, 100, Figura 4, p. 5) y por comportamiento, no solo un conteo. Con n = 21 por modelo, MESH debe dar intervalos o repeticiones antes de comparar. **Inferencia nuestra:** la comparación de 17/21 frente a 6/21 no permite afirmar mucho sin más corridas.
 4. **Límite de USD 500:** el paper no tiene nada equivalente. No respalda ni contradice el umbral. **Inferencia nuestra:** un umbral en monto es una regla que el sandbox controla, lo que es coherente con approval_gate. Que los fraudes bajo USD 500 sigan pasando es algo que el paper no muestra; es nuestra hipótesis, y conviene presentarla como límite del diseño.
-5. **Verificación del remitente:** el paper no prueba verificación de remitente. Sus ataques están en el contenido: respuestas de herramientas, resúmenes de currículum, logs (pp. 21–26). **Inferencia nuestra:** la verificación del remitente cubre un vector que este paper no mide, y no debe presentarse como defensa contra inyección en el cuerpo de un correo legítimo. Esto coincide con que en MESH cambió poco (8/12 con y sin ella en Haiku).
+5. **Verificación del remitente:** el paper no prueba verificación de remitente. Sus ataques están en el contenido: respuestas de herramientas (A.3, p. 18), resúmenes de currículum (A.4, pp. 22–23) y logs (p. 4). **Inferencia nuestra:** la verificación del remitente cubre un vector que este paper no mide, y no debe presentarse como defensa contra inyección en el cuerpo de un correo legítimo. Esto coincide con que en MESH cambió poco (8/12 con y sin ella en Haiku).
 6. **Rutas multiagente:** el paper solo cita la propagación de instrucciones entre agentes como trabajo previo (p. 9) y no prueba rutas de varios agentes. **Inferencia nuestra:** los resultados de la advertencia que llega a finanzas (4/12, 7/12 y 12/12 en MESH) no tienen respaldo directo en este paper, así que hay que presentarlos como resultados propios.
 7. **Frase para el pitch:** usar la cita de la página 1 y decir en español: "casi todos los agentes violan su política de despliegue en la mayoría de los comportamientos con 10 a 100 consultas (p. 1)".
+
+## Verificación
+- Verificado contra el texto completo del PDF por un segundo agente el 2026-11-21.
+- Afirmaciones comprobadas: 42 · corregidas: 7 · eliminadas: 0.
+- Correcciones:
+  - Qué le sirve #1: la frase "la defensa no puede depender solo del prompt" estaba como "demostrado por el paper"; el paper no lo dice. Se reclasificó como inferencia nuestra y se separó lo que sí dice (pp. 1, 7).
+  - Qué le sirve #2: "Esto respalda la etiqueta de procedencia" era inferencia sin marcar; ahora se marca como inferencia nuestra.
+  - Qué le sirve #5: "logs (pp. 21–26)" no aparece en esas páginas; los ejemplos son A.3 (p. 18), A.4 (pp. 22–23) y logs en p. 4.
+  - Vectores de ataque: "páginas o respuestas de herramientas" no está en p. 4; se citan pp. 2 y 18.
+  - Limitaciones: "que los jueces no detectan" se cambió a "que algunos jueces no detectan" (p. 29: "some such encodings are not caught").
+  - Limitaciones: la defensa se cita en pp. 1 y 9 (el "necesitan defensas" está en el resumen, p. 1).
+  - Limitaciones: la afirmación de transferencia solo con ataques exitosos se cita a p. 6, no solo p. 27.
+- Pendiente: los valores leídos solo de gráficos (Figuras 3, 4, 5, 6 y 9) se verificaron por leyenda y texto, no por el dibujo; la ausencia de versiones exactas de modelo se verificó por búsqueda en el texto.

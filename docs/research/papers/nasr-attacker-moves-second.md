@@ -12,7 +12,7 @@ El paper sostiene que la forma habitual de evaluar defensas contra jailbreaks y 
 - **Atacante RL:** LLM sin alineación de seguridad; 5 rondas por sesión, 32 sesiones por muestra, actualización con GRPO (p. 16).
 - **Atacante de búsqueda:** controlador MAP-Elites (OpenEvolve), mutador Gemini-2.5 Pro con máximo presupuesto de pensamiento, 8 candidatos por mutación, puntaje de un crítico de 1 a 10 (p. 20–21). Tope de 800 consultas; la mayoría se estanca entre 100 y 200 (p. 24–26).
 - **Modelos objetivo de la búsqueda:** Gemini-2.5 Pro, GPT-5 Mini, Llama-3.3 70B y MetaSecAlign 70B, con cada defensa de AgentDojo (Tabla 7, p. 25).
-- **Competencia humana:** más de 500 participantes, 40 desafíos y premios por US$ 20.000 (p. 5, 16–17). Cada envío puntúa 5.000 menos los tokens usados (p. 16, 22). Los humanos y el atacante de búsqueda se comparan en 29 escenarios (p. 23).
+- **Competencia humana:** más de 500 participantes, 40 desafíos y premios por US$ 20.000 (p. 5, 16–17). Cada envío puntúa 5.000 menos los tokens usados (p. 17, 22). Los humanos y el atacante de búsqueda se comparan en 29 escenarios (p. 23).
 - **Métricas:** attack success rate (ASR). En AgentDojo cuenta solo la tarea de inyección, no la tarea del usuario (p. 21).
 
 ## Números clave
@@ -54,9 +54,18 @@ Observación propia:
 - El paper trabaja con cientos de intentos por defensa. MESH tiene 21 por condición, así que el caso de "evaluaciones pequeñas engañosas" (Lección 1, p. 9) le aplica de lleno.
 
 ## Qué le sirve a MESH
-1. **Respaldo para sacar la decisión del modelo (demostrado, parcial).** Los detectores basados en BERT (Protect AI, PromptGuard, Model Armor) superan 90% de ASR con búsqueda adaptativa, y PIGuard llega a 71% (p. 7). Esto respalda que la decisión de bloqueo no debe depender solo de clasificar el contenido. Inferencia: el approval_gate, que decide en el sandbox según monto y procedencia, no es un detector, y el paper no lo prueba.
+1. **Respaldo para sacar la decisión del modelo (demostrado, parcial).** Los detectores Protect AI, PromptGuard y Model Armor superan 90% de ASR con búsqueda adaptativa según el texto ("> 90%", con Gemini-2.5 Pro como modelo base), y PIGuard llega a 71% (p. 7). La Tabla 7 da exactamente 90% para Protect AI con Gemini-2.5 Pro (p. 25). Protect AI, PromptGuard y PIGuard son clasificadores basados en BERT; Model Armor es propietario y el paper no describe su entrenamiento (p. 7). Inferencia propia: esto sugiere que la decisión de bloqueo no debe depender solo de clasificar el contenido. Inferencia: el approval_gate, que decide en el sandbox según monto y procedencia, no es un detector, y el paper no lo prueba.
 2. **Etiqueta de procedencia (inferencia).** Los ataques del paper son texto inyectado dentro de datos que el agente procesa (p. 5–6, 27–29). Una etiqueta que pone el sistema, y no el modelo, no depende del contenido del correo. Un atacante adaptativo que controle el texto no controla la etiqueta. Esto no lo prueba el paper: MESH debería someter su etiqueta a un atacante adaptativo propio.
 3. **Verificación del remitente (no respaldada).** El paper no la evalúa. No conviene citarlo como evidencia para ella. El resultado de MESH (8/12 con y sin verificación en Haiku) es coherente con la idea de que una defensa de identidad no cambia el contenido, pero la muestra es de 12 casos.
 4. **Límite de USD 500 (inferencia).** El paper muestra que la búsqueda encuentra estrategias condicionales y específicas (p. 9, 19) y que el RL se ajusta a rechazos (p. 19–20). Un atacante con retroalimentación podría aprender montos justo bajo el umbral. Conviene probar montos cerca de 500 y reportar los fraudes bajo el límite como límite conocido, no como éxito de la defensa.
 5. **Cómo reportar MESH (demostrado).** El paper pide reportar ataques adaptativos y no solo estáticos: Gemini-2.5 Pro sin defensa va de 30% estático a 100% con búsqueda (Tabla 7, p. 25). También pide no declarar robustez por ausencia de fallas (p. 9). Para MESH, esto implica presentar 17/21 → 6/21 y 8/21 → 3/21 como resultados de n chico, con intervalos, y los 0 falsos positivos en 12 controles como evidencia débil. El red-teaming humano también aparece como complemento necesario (Lección 3, p. 9).
 6. **Frase para el pitch (demostrado, traducción propia).** "Defensas que reportan casi cero de ataques exitosos sobre benchmarks públicos suelen ser de las más fáciles de romper" (p. 9). Cita original: "defenses that merely report near-zero attack success rates on public benchmarks are often among the easiest to break once novel attacks are attempted." (p. 9)
+
+## Verificación
+- Verificado contra el texto completo del PDF por un segundo agente el 2026-11-21.
+- Afirmaciones comprobadas: 42 · corregidas: 3 · eliminadas: 0.
+- Correcciones:
+  - Puntaje de 5.000 menos tokens: la página era 17 (no 16); 22 estaba bien.
+  - Detectores >90%: el texto lo da con Gemini-2.5 Pro como modelo base; Model Armor es propietario, así que "basados en BERT" solo aplica a Protect AI, PromptGuard y PIGuard (p. 7; Tabla 7 en p. 25).
+  - La conclusión "la decisión de bloqueo no debe depender solo de clasificar el contenido" era inferencia de la nota, no del paper; ahora está marcada como tal.
+- Pendiente: Nada.

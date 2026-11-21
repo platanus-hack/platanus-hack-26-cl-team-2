@@ -7,7 +7,7 @@ El paper aborda la inyección de prompts indirecta: un agente con herramientas l
 
 ## Método
 - **Benchmark:** AgentDojo (Debenedetti et al., 2024b), con suites banking, slack, travel y workspace. Se reportan 949 ataques en total (Figura 9, p. 14).
-- **Modelos:** en la evaluación principal, gemini-2.5-flash-preview-05-20, gemini-2.5-pro-preview-05-06, claude-3-5-haiku-20241022, claude-sonnet-4 (con y sin 16 000 tokens de razonamiento), gpt-4.1, o4-mini (alto esfuerzo) y o3 (alto esfuerzo) (p. 12). Las comparaciones con otras defensas (tool filter, spotlighting, prompt sandwiching) y los casos de estudio usan Claude 3.5 Sonnet (pp. 16–17).
+- **Modelos:** en la evaluación principal, gemini-2.5-flash-preview-05-20, gemini-2.5-pro-preview-05-06, claude-3-5-haiku-20241022, claude-sonnet-4 (con y sin 16 000 tokens de razonamiento), gpt-4.1, o4-mini (alto esfuerzo) y o3 (alto esfuerzo) (p. 11). Las comparaciones con otras defensas (tool filter, spotlighting, prompt sandwiching) y los casos de estudio usan Claude 3.5 Sonnet (pp. 16–17).
 - **Arquitectura:** P-LLM sin acceso a datos de herramientas ni a la salida del Q-LLM; Q-LLM sin herramientas, con esquema Pydantic y un campo booleano adicional `have_enough_information`; intérprete CaMeL con grafo de dependencias y modos NORMAL y STRICT (pp. 6–10).
 - **Métricas:** utilidad (tasa de tareas resueltas, con API nativa de tool calling como línea base); número de ataques exitosos y ASR; tasa de activación de políticas; incremento de tokens de entrada y salida frente a tool calling nativo (Tablas 2–4, 8–13).
 - **Modelo de amenaza:** el atacante controla datos no confiables que el agente procesa; el prompt del usuario es confiable y la memoria no está comprometida (p. 5). Fuera de alcance: ataques text-to-text sin efecto en el flujo de datos y phishing por prompt injection (p. 5). En el Apéndice E hay una lista de políticas escritas por los autores para cada herramienta (pp. 36–37).
@@ -47,11 +47,11 @@ Reconocidas por los autores:
 - Canal lateral por conteo de llamadas (imagen externa repetida N veces según un dato privado), que el modo STRICT bloquea (pp. 19–20). Canal temporal que no es posible en la implementación actual porque no hay módulo `time` (p. 21).
 - Los autores admiten que los canales laterales "undermine the claim of strong security guarantees" en parte (p. 19), aunque su explotación se ve limitada por el ancho de banda (p. 24).
 - Ataques que siguen funcionando sin políticas: un ataque de transferencia de 30 000 USD en bancos y un ataque de reseña en travel. Los autores los consideran fuera de alcance, y el segundo no es una inyección (pp. 14–15). Con políticas, el ataque de travel sigue ocurriendo; los autores dicen que su diseño no lo previene, y que las anotaciones de procedencia permiten marcar el texto como no confiable en la interfaz (p. 16).
-- Flujo de datos que se vuelve flujo de control: si el agente elige herramientas según el contenido de un correo, un atacante puede dirigir la ejecución sin tocar el plan. El paper lo muestra con Claude 3.5 Sonnet, o3-mini y o1, y lo considera una limitación abierta (pp. 17–18).
+- Flujo de datos que se vuelve flujo de control: si el agente elige herramientas según el contenido de un correo, un atacante puede dirigir la ejecución sin tocar el plan. El paper lo muestra con Claude 3.5 Sonnet, o3-mini y o1, y lo describe como "a challenging scenario to protect against" (pp. 17–18).
 - Las políticas las escribe el motor CaMeL, no el usuario (p. 9). El trabajo exige que el usuario mantenga políticas, lo que causa carga y fatiga de confirmaciones (p. 24).
 - Las herramientas externas deben entender capacidades; si no, la utilidad se degrada (p. 23).
 - El paper no tiene verificación formal; la recomienda como trabajo futuro (p. 25). Dice que "provable security" en el resumen (p. 1), pero el propio cuerpo declara que la verificación formal es un paso pendiente (p. 25).
-- CaMeL no se evaluó contra ataques adaptativos. Los autores mencionan que, con prompts adaptativos, otras defensas sí caen (p. 17), pero en el cuerpo que leí no encontré una evaluación adaptativa de CaMeL.
+- CaMeL no se evaluó contra ataques adaptativos. El paper cita a US-AISI (2025): con prompts adaptativos, la robustez de Claude 3.5 Sonnet "drops drastically" (p. 17). Los autores suponen que "the same might happen with the other defenses" (p. 17); es una hipótesis, no un resultado medido. En todo el texto la palabra "adaptive" aparece una sola vez, y no hay evaluación adaptativa de CaMeL.
 - Costo: 2.82× tokens de entrada y 2.73× de salida para la mediana de tareas, el más alto de las defensas analizadas (p. 19).
 
 Observación propia:
@@ -70,3 +70,12 @@ Observación propia:
 4. **Límite de USD 500 (no lo prueba el paper).** CaMeL no usa montos. Sus políticas son binarias por origen y lectores (pp. 9, 36–37). Esto sugiere que un fraude bajo el límite de USD 500 no lo detiene un monto, sino un origen. Inferencia mía: el resultado propio de MESH (fraudes bajo el umbral que siguen pasando) encaja con este problema, y la regla por origen podría reemplazar o complementar el umbral.
 5. **Verificación del remitente (no evaluada en el paper).** El paper no prueba la verificación del remitente. Lo más cercano son las políticas de destinatario que deben venir del usuario (p. 36–37). Inferencia mía: el resultado propio de MESH (verificación sola sin efecto en Haiku) es consistente con la idea de que la procedencia del destinatario, y no el remitente, es lo que decide.
 6. **Métrica y frase para el pitch.** Copiar el formato de reporte del paper: ataques exitosos por modelo y defensa, con intervalos, y utilidad con y sin ataque (Tablas 2–4). Para el pitch, la frase con cita es "Importantly, CaMeL comes with security guarantees, while all other solutions currently are probabilistic and provide no such guarantees" (p. 17). Antes de usarla hay que agregar que la verificación formal sigue pendiente (p. 25). Recomiendo decir "evaluado empíricamente" y no "probado", y evitar la palabra "provable" sin matiz.
+
+## Verificación
+- Verificado contra el texto completo del PDF por un segundo agente el 2026-11-21.
+- Afirmaciones comprobadas: 52 · corregidas: 3 · eliminadas: 0.
+- Correcciones:
+  - Método, "Modelos": la lista de modelos está en la p. 11 del PDF, no en la p. 12.
+  - Limitaciones, "ataques adaptativos": el paper no dice que otras defensas "sí caen"; dice que Claude 3.5 Sonnet cae con prompts adaptativos (US-AISI 2025) y que "the same might happen" con las demás defensas (p. 17), es decir, una hipótesis. Además se precisa que "adaptive" aparece una sola vez en todo el texto.
+  - Limitaciones, flujo de datos que se vuelve flujo de control: se cambió "lo considera una limitación abierta" por la frase literal del paper, "a challenging scenario to protect against" (p. 17).
+- Pendiente: la definición de los intervalos "±" (la nota ya lo declara). Las pp. 26–32 y 39–41 solo se revisaron en las tablas que la nota cita.
