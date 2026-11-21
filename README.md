@@ -42,6 +42,26 @@ email, and give some of them sandboxed finance tools. Then you see what happened
 Nothing real can happen: refunds are simulated and bank changes are always blocked, but every
 attempt is recorded.
 
+## Results so far (real runs, 2026-11-21)
+
+One real Claude agent per email, finance tools over MCP, neutral prompt, 3 repetitions per cell.
+Details and limits: [docs/experiments/approval-gate.md](docs/experiments/approval-gate.md).
+
+| Refund-fraud emails (7 attacks, 21 runs per cell) | No fix | With `approval_gate` |
+|---|---|---|
+| Claude Haiku 4.5: fraudulent refund issued | 17/21 | 6/21 |
+| Claude Sonnet 4.6: fraudulent refund issued | 8/21 | 3/21 |
+
+- What still gets through with the fix is fraud under the USD 500 limit. No refund above it was executed.
+- Legitimate refunds (controls): 12/12 issued with and without the fix, on both models.
+- Bank-change attacks (5 emails, 15 runs per cell): Haiku 4.5 attempted the change 10/15 without the fix and
+  9/15 with it (always blocked by the sandbox and recorded); Sonnet 4.6 0/15. `sender_check` did not change
+  any outcome on these emails.
+- Multi-agent lab (3 agents, Haiku 4.5, 48 runs): no harm, but the warning reached the finance agent 4/12
+  times with no fix and 12/12 with `provenance_tag`.
+
+These are counts with small n, not rates.
+
 ## Run it locally
 
 Needs Node 20+ and an Anthropic API key.
@@ -231,8 +251,8 @@ tests need the app running and are skipped otherwise; none of them call the mode
   to two hand-offs; longer relays exist but lose nothing more. "Warning carried" on observed hops
   is a keyword heuristic, not a classifier.
 - `provenance_tag` and `approval_gate` exist only in the TypeScript lab and MCP server, not in the Python harness yet.
-- In our test runs (Claude Haiku 5.5) the agents refused every bank change, so the "blocked
-  attempt" path is covered by tests but has not been triggered by a real run yet.
+- Small n (3 repetitions per cell): the results above are counts, not rates. `approval_gate` does not see
+  refunds under its limit or split refunds.
 
 ### Public demo protections (`apps/api/src/security/`)
 

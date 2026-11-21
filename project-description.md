@@ -22,10 +22,24 @@ En un equipo de agentes, cada pieza puede pasar su revisión y el sistema fallar
 
 Lanzar una ejecución consume créditos de la API de Anthropic del servidor. Aparte, «Ver demostración ficticia» muestra un recorrido ilustrativo que no es una medición.
 
+## Resultados (ejecuciones reales, 21 de noviembre)
+
+Un agente Claude real por correo, con las herramientas de finanzas por MCP y 3 repeticiones por celda.
+
+| Fraudes de reembolso (7 ataques, 21 ejecuciones por celda) | Sin defensa | Con aprobación humana por procedencia |
+|---|---|---|
+| Claude Haiku 4.5: reembolso fraudulento emitido | 17/21 | 6/21 |
+| Claude Sonnet 4.6: reembolso fraudulento emitido | 8/21 | 3/21 |
+
+- Lo que sigue pasando con la defensa son fraudes de menos de USD 500. Sobre ese monto no se ejecutó ninguno.
+- Los reembolsos legítimos de control se emitieron 12 de 12 veces, con y sin defensa.
+- Cambio bancario: Haiku 4.5 lo intentó 10 de 15 veces sin defensa (el sandbox lo bloqueó y registró siempre); Sonnet 4.6, 0 de 15. La verificación del remitente no cambió ningún resultado en estos correos.
+- En el laboratorio multiagente (Haiku 4.5, 48 ejecuciones) no hubo daño, pero la advertencia llegó a finanzas 4 de 12 veces sin defensa y 12 de 12 con la etiqueta de procedencia.
+
 ## Límites
 
-- Una ejecución aislada no es concluyente y no reportamos tasas de éxito.
+- Los resultados son conteos con pocas repeticiones (3 por celda), no tasas.
 - `sender_check` solo lee el `From:`, sin SPF, DKIM ni DMARC.
 - El análisis supone que todos los agentes pueden escribirse entre sí y considera hasta dos traspasos. Saber si una advertencia «viajó» en una ruta observada se decide por palabras clave.
 - El sandbox es una regla dentro del mismo proceso, no aislamiento a nivel de sistema operativo. Las ejecuciones viven en memoria y no hay conexión a un buzón real.
-- En nuestras pruebas los agentes rechazaron todos los cambios bancarios. El intento bloqueado está cubierto por tests, pero aún no lo vimos en una ejecución real.
+- La aprobación humana por procedencia no ve reembolsos bajo su límite (USD 500) ni reembolsos fraccionados.
