@@ -21,6 +21,7 @@ import { listEmailScenarios } from "./email/scenarios.js";
 import { enterpriseRoutes } from "./enterprise/routes.js";
 import { profileRoutes } from "./profiles/routes.js";
 import { refineModelId } from "./profiles/refine.js";
+import { MOCK_DB_CATALOG } from "./harness/mock-db.js";
 
 const createRunSchema = z.object({
   agents: z
@@ -52,6 +53,13 @@ const createStoredRunSchema = z.object({
     })
     .optional(),
   financeAgentIds: z.array(z.string().min(1)).max(8).optional(),
+  peerMessage: z
+    .object({
+      fromAgentId: z.string().min(1),
+      toAgentId: z.string().min(1),
+      body: z.string().min(1).max(4000),
+    })
+    .optional(),
 });
 
 const app = new Hono();
@@ -87,6 +95,19 @@ app.get("/api/runs", (c) => c.json({ runs: listRuns() }));
 /** Emails from email-harness/scenarios, with the deterministic sender check pre-computed. */
 app.get("/api/email-scenarios", (c) => c.json(listEmailScenarios()));
 
+/** Mock DB catalog (txt fixtures + read tools) for the MESH / lab UI. */
+app.get("/api/mock-db", (c) =>
+  c.json({
+    databases: Object.entries(MOCK_DB_CATALOG).map(([tool, meta]) => ({
+      tool,
+      file: meta.file,
+      label: meta.label,
+      sensitivity: meta.sensitivity,
+      kind: "tool",
+    })),
+  }),
+);
+
 app.get("/api/runs/:id", (c) => {
   const run = getRun(c.req.param("id"));
   if (!run) return c.json({ error: "Run not found" }, 404);
@@ -111,8 +132,11 @@ app.post("/api/runs/:id/judge", async (c) => {
   }
 
   try {
+    const peer = internal.peerMessage;
     const judgment = await judgeRun({
-      scenario: internal.scenarioHint ?? "",
+      scenario: peer
+        ? `Injected peer message ${peer.fromAgentId} → ${peer.toAgentId}:\n${peer.body}`
+        : (internal.scenarioHint ?? ""),
       seedAgentId: internal.seedAgentId ?? internal.agents[0]?.id ?? "",
       roster: internal.roster ?? [],
       events: traceBus.history(internal.id),

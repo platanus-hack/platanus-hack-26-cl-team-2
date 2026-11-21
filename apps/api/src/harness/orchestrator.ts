@@ -5,6 +5,7 @@ import type {
   CreateRunRequest,
   CreateStoredRunRequest,
   EmailScenarioKind,
+  PeerMessageScenario,
   RunEvaluation,
   RunSummary,
   SenderCheck,
@@ -18,6 +19,7 @@ import { traceBus } from "../events.js";
 import { createSession, runOneTurn } from "./agent-runner.js";
 import { evaluateRun } from "./evaluator.js";
 import type { RunJudgment } from "./judge.js";
+import { filterMockDbToolNames } from "./mock-db.js";
 
 export type RunRosterEntry = {
   id: string;
@@ -27,6 +29,7 @@ export type RunRosterEntry = {
   seniority: string;
   motivation: string;
   financeTools?: boolean;
+  mockDbTools?: string[];
 };
 
 /** Which email (if any) started the run; senderCheck is set only when the banner was shown. */
@@ -48,6 +51,7 @@ type InternalRun = RunSummary & {
   seedAgentId?: string;
   scenarioHint?: string;
   email?: RunEmailInfo;
+  peerMessage?: PeerMessageScenario;
   roster?: RunRosterEntry[];
   judgment?: RunJudgment;
 };
@@ -97,6 +101,7 @@ function publicRun(run: InternalRun): RunSummary {
     seedAgentId: _s,
     scenarioHint: _h,
     email: _e,
+    peerMessage: _p,
     roster: _r,
     judgment: _j,
     ...rest
@@ -111,6 +116,7 @@ function startRun(
     seedAgentId?: string;
     scenarioHint?: string;
     email?: RunEmailInfo;
+    peerMessage?: PeerMessageScenario;
     roster?: RunRosterEntry[];
   },
 ): RunSummary {
@@ -143,6 +149,7 @@ function startRun(
     seedAgentId,
     scenarioHint: opts?.scenarioHint,
     email: opts?.email,
+    peerMessage: opts?.peerMessage,
     roster:
       opts?.roster ??
       agents.map((a) => ({
@@ -159,10 +166,20 @@ function startRun(
     runId,
     agents.map((a) => a.id),
   );
+
+  if (opts?.peerMessage) {
+    const { fromAgentId, toAgentId, body } = opts.peerMessage;
+    const msg = messageBus.send(runId, fromAgentId, toAgentId, body);
+    // Same trace shape as a real send_message tool call, so the UI/judge see a peer edge.
+    traceBus.emit(runId, "agent.message_sent", { message: msg, injected: true }, fromAgentId);
+    traceBus.emit(runId, "agent.message_received", { message: msg, injected: true }, toAgentId);
+  }
+
   void executeRun(run, maxTurns, {
     seedAgentId,
     scenarioHint: opts?.scenarioHint,
     email: opts?.email,
+    peerMessage: opts?.peerMessage,
   });
   return getRun(runId)!;
 }
@@ -199,16 +216,42 @@ export async function createAndStartStoredRun(
     );
   }
 
-  const seedAgentId = (body.seedAgentId ?? agentIds[0]).trim();
+  let peerMessage = body.peerMessage
+    ? {
+        fromAgentId: body.peerMessage.fromAgentId.trim(),
+        toAgentId: body.peerMessage.toAgentId.trim(),
+        body: body.peerMessage.body.trim(),
+      }
+    : undefined;
+
+  if (peerMessage) {
+    if (!peerMessage.body) {
+      throw new Error("peerMessage.body is required.");
+    }
+    if (peerMessage.fromAgentId === peerMessage.toAgentId) {
+      throw new Error("peerMessage from and to must be different agents.");
+    }
+    if (!agentIds.includes(peerMessage.fromAgentId)) {
+      throw new Error("peerMessage.fromAgentId must be a selected agent.");
+    }
+    if (!agentIds.includes(peerMessage.toAgentId)) {
+      throw new Error("peerMessage.toAgentId must be a selected agent.");
+    }
+  }
+
+  // Recipient of an injected peer message is the kickoff agent.
+  const seedAgentId = peerMessage
+    ? peerMessage.toAgentId
+    : (body.seedAgentId ?? agentIds[0]).trim();
   if (!agentIds.includes(seedAgentId)) {
     throw new Error("seedAgentId must be one of the selected agents.");
   }
 
   // An email scenario replaces the free-text hint (resolved before loading agents
-  // so a bad file/id fails fast).
-  let scenarioHint = body.scenarioHint?.trim();
+  // so a bad file/id fails fast). Ignored when peerMessage is set.
+  let scenarioHint = peerMessage ? undefined : body.scenarioHint?.trim();
   let email: RunEmailInfo | undefined;
-  if (body.emailScenario) {
+  if (!peerMessage && body.emailScenario) {
     const scen = getEmailScenario(body.emailScenario);
     const banner = body.emailScenario.senderCheck ? scen.senderCheck : undefined;
     scenarioHint = emailScenarioHint(scen.email, banner);
@@ -242,12 +285,14 @@ export async function createAndStartStoredRun(
       throw new Error(`Agent not found: ${id}`);
     }
     const inv = buildInvokePayload(stored);
+    const mockDbTools = filterMockDbToolNames(stored.harnessTools);
     agents.push({
       id: stored.id,
       name: stored.name,
       role: inv.projection.systemPrompt.slice(0, 14000),
       goal: stored.goalTemplate,
       financeTools: financeIds.has(stored.id),
+      mockDbTools,
     });
     roster.push({
       id: stored.id,
@@ -257,6 +302,7 @@ export async function createAndStartStoredRun(
       seniority: stored.knobs.seniority,
       motivation: stored.knobs.motivation,
       financeTools: financeIds.has(stored.id),
+      mockDbTools,
     });
   }
 
@@ -275,6 +321,7 @@ export async function createAndStartStoredRun(
     seedAgentId,
     scenarioHint,
     email,
+    peerMessage,
     roster,
   });
 }
@@ -282,7 +329,12 @@ export async function createAndStartStoredRun(
 async function executeRun(
   run: InternalRun,
   maxTurns: number,
-  opts: { seedAgentId: string; scenarioHint?: string; email?: RunEmailInfo },
+  opts: {
+    seedAgentId: string;
+    scenarioHint?: string;
+    email?: RunEmailInfo;
+    peerMessage?: PeerMessageScenario;
+  },
 ): Promise<void> {
   run.status = "running";
   traceBus.emit(run.id, "run.started", {
@@ -295,17 +347,27 @@ async function executeRun(
     email: opts.email
       ? (({ email: _raw, ...meta }) => meta)(opts.email)
       : null,
+    peerMessage: opts.peerMessage
+      ? {
+          fromAgentId: opts.peerMessage.fromAgentId,
+          toAgentId: opts.peerMessage.toAgentId,
+          bodyPreview: opts.peerMessage.body.slice(0, 240),
+        }
+      : null,
     financeAgentIds: run.agents.filter((a) => a.financeTools).map((a) => a.id),
     participantCount: run.agents.length,
   });
 
   const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const peerKickoffId = opts.peerMessage?.toAgentId;
   const sessions = run.agents.map((agent) => {
     const peers = run.agents.filter((a) => a.id !== agent.id);
+    const isKickoff = agent.id === opts.seedAgentId;
     return createSession(agent, peers, {
-      isSeed: agent.id === opts.seedAgentId,
+      isSeed: isKickoff && !peerKickoffId,
       scenarioHint:
-        agent.id === opts.seedAgentId ? opts.scenarioHint : undefined,
+        isKickoff && !peerKickoffId ? opts.scenarioHint : undefined,
+      peerInboxKickoff: Boolean(peerKickoffId && agent.id === peerKickoffId),
     });
   });
 
