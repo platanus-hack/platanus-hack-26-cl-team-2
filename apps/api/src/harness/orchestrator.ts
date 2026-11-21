@@ -9,6 +9,7 @@ import type {
   RunEvaluation,
   RunSummary,
   SenderCheck,
+  TraceEvent,
 } from "@sandbox/shared";
 import { assertApiKeyConfigured, config } from "../config.js";
 import { getAgent } from "../db/agents-repo.js";
@@ -19,6 +20,7 @@ import { traceBus } from "../events.js";
 import { createSession, runOneTurn } from "./agent-runner.js";
 import { evaluateRun } from "./evaluator.js";
 import type { RunJudgment } from "./judge.js";
+import { loadRun, loadRuns, saveJudgment, saveRun } from "../db/runs-repo.js";
 import { filterMockDbToolNames } from "./mock-db.js";
 
 export type RunRosterEntry = {
@@ -47,7 +49,8 @@ export type RunEmailInfo = {
   email: string;
 };
 
-type InternalRun = RunSummary & {
+export type InternalRun = RunSummary & {
+  expiresAt?: string;
   seedAgentId?: string;
   scenarioHint?: string;
   email?: RunEmailInfo;
@@ -55,8 +58,6 @@ type InternalRun = RunSummary & {
   roster?: RunRosterEntry[];
   judgment?: RunJudgment;
 };
-
-const runs = new Map<string, InternalRun>();
 
 /** Soft cap to avoid burning credits on huge fleets in one run. */
 export const MAX_PARTICIPANTS = 8;
@@ -69,34 +70,33 @@ function slug(name: string): string {
     .slice(0, 24);
 }
 
-export function listRuns(): RunSummary[] {
-  return [...runs.values()].map(publicRun);
+export async function listRuns(): Promise<RunSummary[]> {
+  return (await loadRuns()).map(publicRun);
 }
 
-export function getRun(runId: string): RunSummary | undefined {
-  const run = runs.get(runId);
+export async function getRun(runId: string): Promise<RunSummary | undefined> {
+  const run = (await loadRun(runId))?.run;
   return run ? publicRun(run) : undefined;
 }
 
-export function getInternalRun(runId: string): InternalRun | undefined {
-  return runs.get(runId);
+export async function getInternalRun(runId: string): Promise<InternalRun | undefined> {
+  return (await loadRun(runId))?.run;
 }
 
-export function evaluateInternalRun(run: InternalRun): RunEvaluation {
+export function evaluateInternalRun(run: InternalRun, events: TraceEvent[] = traceBus.history(run.id)): RunEvaluation {
   return evaluateRun({
-    events: traceBus.history(run.id),
+    events,
     email: run.email,
     financeAgentIds: run.agents.filter((a) => a.financeTools).map((a) => a.id),
     seedAgentId: run.seedAgentId,
   });
 }
 
-export function setRunJudgment(runId: string, judgment: RunJudgment): void {
-  const run = runs.get(runId);
-  if (run) run.judgment = judgment;
+export async function setRunJudgment(runId: string, judgment: RunJudgment): Promise<void> {
+  await saveJudgment(runId, judgment);
 }
 
-/** Poll in-memory run until completed/failed (for sequential vuln evals). */
+/** Poll persisted run until completed/failed (for sequential vuln evals). */
 export async function waitForRun(
   runId: string,
   timeoutMs = 180_000,
@@ -104,7 +104,7 @@ export async function waitForRun(
 ): Promise<RunSummary> {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    const run = getRun(runId);
+    const run = await getRun(runId);
     if (!run) throw new Error(`Run not found: ${runId}`);
     if (run.status === "completed" || run.status === "failed") return run;
     await new Promise((r) => setTimeout(r, pollMs));
@@ -120,12 +120,13 @@ function publicRun(run: InternalRun): RunSummary {
     peerMessage: _p,
     roster: _r,
     judgment: _j,
+    expiresAt: _expires,
     ...rest
   } = run;
   return rest;
 }
 
-function startRun(
+async function startRun(
   agents: AgentSpec[],
   maxTurns: number,
   opts?: {
@@ -135,7 +136,7 @@ function startRun(
     peerMessage?: PeerMessageScenario;
     roster?: RunRosterEntry[];
   },
-): RunSummary {
+): Promise<RunSummary> {
   if (agents.length < 1) {
     throw new Error("Select at least 1 agent.");
   }
@@ -162,6 +163,7 @@ function startRun(
     status: "pending",
     agents,
     createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + (process.env.VERCEL ? 270_000 : 630_000)).toISOString(),
     seedAgentId,
     scenarioHint: opts?.scenarioHint,
     email: opts?.email,
@@ -177,7 +179,7 @@ function startRun(
         motivation: "impact",
       })),
   };
-  runs.set(runId, run);
+  await saveRun(run, []);
   messageBus.ensureAgents(
     runId,
     agents.map((a) => a.id),
@@ -191,16 +193,18 @@ function startRun(
     traceBus.emit(runId, "agent.message_received", { message: msg, injected: true }, toAgentId);
   }
 
-  void executeRun(run, maxTurns, {
+  const execution = executeRun(run, maxTurns, {
     seedAgentId,
     scenarioHint: opts?.scenarioHint,
     email: opts?.email,
     peerMessage: opts?.peerMessage,
   });
-  return getRun(runId)!;
+  if (process.env.VERCEL) await execution;
+  else void execution.catch(error => console.error("No se pudo persistir la ejecución", error));
+  return publicRun(run);
 }
 
-export function createAndStartRun(body: CreateRunRequest): RunSummary {
+export function createAndStartRun(body: CreateRunRequest): Promise<RunSummary> {
   const agents: AgentSpec[] = body.agents.map((a, i) => ({
     id: `${slug(a.name) || `agent-${i + 1}`}-${nanoid(4)}`,
     name: a.name.trim(),
@@ -377,7 +381,8 @@ async function executeRun(
     participantCount: run.agents.length,
   });
 
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = new Anthropic({ apiKey: config.anthropicApiKey, maxRetries: 0 });
+  const signal = AbortSignal.timeout(process.env.VERCEL ? 240_000 : 600_000);
   const peerKickoffId = opts.peerMessage?.toAgentId;
   const sessions = run.agents.map((agent) => {
     const peers = run.agents.filter((a) => a.id !== agent.id);
@@ -391,6 +396,7 @@ async function executeRun(
   });
 
   try {
+    await saveRun(run, traceBus.history(run.id));
     let cursor = 0;
     const hardCap = maxTurns * sessions.length + sessions.length;
 
@@ -415,7 +421,9 @@ async function executeRun(
         continue;
       }
 
-      await runOneTurn(run.id, session, client, maxTurns);
+      signal.throwIfAborted();
+      await runOneTurn(run.id, session, client, maxTurns, signal);
+      await saveRun(run, traceBus.history(run.id));
     }
 
     run.status = "completed";
@@ -428,4 +436,5 @@ async function executeRun(
     run.finishedAt = new Date().toISOString();
     traceBus.emit(run.id, "run.failed", { error: message });
   }
+  await saveRun(run, traceBus.history(run.id));
 }

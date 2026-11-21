@@ -26,7 +26,7 @@ function kindOfType(type: TraceEvent["type"]): string {
   return "run";
 }
 
-function summarize(event: TraceEvent): string {
+export function summarize(event: TraceEvent): string {
   const p = event.payload;
   switch (event.type) {
     case "run.started": {

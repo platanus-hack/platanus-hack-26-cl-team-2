@@ -61,7 +61,7 @@ export function Dashboard({ onInspect }: { onInspect: () => void }) {
   return <div className="monitor-dashboard">
     <div className="monitor-toolbar"><label>Período <select value={period} onChange={event => setPeriod(event.target.value)}><option value="24">Últimas 24 horas</option><option value="168">Últimos 7 días</option><option value="all">Todo el historial disponible</option></select></label><label><input type="checkbox" checked={automatic} onChange={event => setAutomatic(event.target.checked)} /> Actualizar cada 10 s</label><button className="btn ghost" disabled={loading} onClick={() => setRefreshKey(value => value + 1)}>{loading ? "Actualizando…" : "↻ Actualizar"}</button><span aria-live="polite">{updated ? `Actualizado: ${updated.toLocaleTimeString("es-CL")}` : "Sin datos actualizados"}</span></div>
     {error && <p role="alert" className="error">{error}</p>}
-    <div className="mesh-callout">Monitoreo de simulaciones registradas, no de tráfico de producción. El historial está en memoria y se pierde al reiniciar la API. Las ejecuciones activas aportan datos parciales; una ejecución sin evaluación no equivale a una ejecución segura.</div>
+    <div className="mesh-callout">Monitoreo de simulaciones registradas, no de tráfico de producción. El historial se conserva en la base de datos. Las ejecuciones activas aportan datos parciales; una ejecución sin evaluación no equivale a una ejecución segura.</div>
     <div className="monitor-kpis">{[
       ["Interacciones registradas", number(metrics.interactions), `${metrics.messages} mensajes · ${metrics.tools} llamadas`, "cyan"],
       ["Promedio por ejecución", number(metrics.average), `${snapshots.length} ejecuciones en el período`, "blue"],

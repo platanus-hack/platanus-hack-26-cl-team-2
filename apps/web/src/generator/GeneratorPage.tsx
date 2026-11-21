@@ -18,6 +18,7 @@ import {
 } from "../api";
 import { KnobsForm } from "./KnobsForm";
 import { ProfileEditor } from "./ProfileEditor";
+import { PromptAgent } from "./PromptAgent";
 import { EXTERNAL_PERSONAS, composeExternalProfile, type ExternalPersona } from "@sandbox/shared";
 
 const DEFAULT_KNOBS: AgentKnobs = {
@@ -218,6 +219,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase, onOpenEvals }: Props) {
 
   return (
     <section className="panel generator">
+      <PromptAgent hasDatabase={hasDatabase} />
       <h2>Generador de perfiles de agentes</h2>
       <p className="hint">
         Plantillas de área y parámetros → perfil editable → base de datos. Los archivos de contexto se adjuntan al agente para futuras ejecuciones.

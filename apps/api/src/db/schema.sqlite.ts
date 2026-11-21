@@ -4,6 +4,17 @@ import {
   sqliteTable,
   text,
 } from "drizzle-orm/sqlite-core";
+import type { InternalRun } from "../harness/orchestrator.js";
+import type { TraceEvent } from "@sandbox/shared";
+import type { RunJudgment } from "../harness/judge.js";
+
+export const simulationRunsSqlite = sqliteTable("simulation_runs", {
+  id: text("id").primaryKey(),
+  data: text("data", { mode: "json" }).$type<InternalRun>().notNull(),
+  events: text("events", { mode: "json" }).$type<TraceEvent[]>().notNull(),
+  judgment: text("judgment", { mode: "json" }).$type<RunJudgment>(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});
 
 type RawCompose = {
   systemContext: string;

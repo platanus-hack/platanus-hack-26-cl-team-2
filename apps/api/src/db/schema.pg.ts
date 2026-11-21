@@ -6,6 +6,17 @@ import {
   timestamp,
   index,
 } from "drizzle-orm/pg-core";
+import type { InternalRun } from "../harness/orchestrator.js";
+import type { TraceEvent } from "@sandbox/shared";
+import type { RunJudgment } from "../harness/judge.js";
+
+export const simulationRuns = pgTable("simulation_runs", {
+  id: text("id").primaryKey(),
+  data: jsonb("data").$type<InternalRun>().notNull(),
+  events: jsonb("events").$type<TraceEvent[]>().notNull(),
+  judgment: jsonb("judgment").$type<RunJudgment>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+});
 
 export const agents = pgTable(
   "agents",

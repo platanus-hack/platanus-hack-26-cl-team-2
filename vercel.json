@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm --filter @sandbox/shared build && pnpm --filter @sandbox/web build",
+  "outputDirectory": "apps/web/dist",
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 300,
+      "includeFiles": "{email-harness/scenarios/*.json,apps/api/mock-db/*.txt,packages/shared/package.json,packages/shared/dist/**}"
+    }
+  },
+  "rewrites": [
+    { "source": "/health", "destination": "/api?__mesh_path=health" },
+    { "source": "/api/:path*", "destination": "/api?__mesh_path=api/:path*" }
+  ]
+}

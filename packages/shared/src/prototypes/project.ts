@@ -15,6 +15,9 @@ export type ProjectedAgentSpec = ProjectedAgentSpecInput & {
 export function profileToAgentSpecInput(
   profile: AgentProfile,
 ): ProjectedAgentSpecInput {
+  if (profile.orgHints?.notes === "mesh:prompt-only") {
+    return { name: profile.name, role: profile.systemContext, goal: profile.goalTemplate };
+  }
   let areaLabel: string = profile.areaId;
   try {
     areaLabel = getArea(profile.areaId).label;
@@ -42,6 +45,7 @@ export function profileToSystemPrompt(
   profile: AgentProfile,
   agentId?: string,
 ): string {
+  if (profile.orgHints?.notes === "mesh:prompt-only") return profile.systemContext;
   let areaLabel: string = profile.areaId;
   try {
     areaLabel = getArea(profile.areaId).label;
