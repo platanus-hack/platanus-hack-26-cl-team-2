@@ -10,7 +10,7 @@ import { judgeRun, judgeTranscript, type RunJudgment } from "./harness/judge.js"
 import {
   createAndStartRun,
   evaluateInternalRun,
-  getRun,
+  publicRun,
   listRuns,
   prepareStoredRun,
   previewRiskPaths,
@@ -20,6 +20,7 @@ import {
 } from "./harness/orchestrator.js";
 import { agentRoutes } from "./agents/routes.js";
 import { BATCH_RESULT_SETS, batchResultSetPath, isBatchResultSet, readBatchResults } from "./batch-results.js";
+import { loadPublishedRun } from "./published-traces.js";
 import { pingDatabase } from "./db/client.js";
 import { isRealMailFile, listEmailScenarios } from "./email/scenarios.js";
 import { enterpriseRoutes } from "./enterprise/routes.js";
@@ -213,9 +214,11 @@ app.get("/api/batch-results", (c) => {
 });
 
 app.get("/api/runs/:id", async (c) => {
-  const stored = await loadRun(c.req.param("id"));
+  const id = c.req.param("id");
+  // A published run (results/traces.json) still opens on a machine whose database never ran it.
+  const stored = (await loadRun(id)) ?? loadPublishedRun(id);
   if (!stored) return c.json({ error: "Ejecución no encontrada" }, 404);
-  const run = await getRun(stored.run.id);
+  const run = publicRun(stored.run);
   const internal = stored.run;
   return c.json({
     run,

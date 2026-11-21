@@ -19,6 +19,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { BatchResults, BatchRow, BatchSummary } from "@sandbox/shared";
 import { batchResultsPath, toPublished } from "./batch-results.js";
+import { exportPublishedTraces, tracesPath } from "./published-traces.js";
 import { config } from "./config.js";
 import { listEmailScenarios } from "./email/scenarios.js";
 import {
@@ -212,6 +213,8 @@ async function main() {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, `${JSON.stringify(toPublished(results), null, 2)}\n`);
     console.log(`[batch] published ${path}`);
+    const traces = await exportPublishedTraces();
+    console.log(`[batch] traces for ${traces.runs} published runs in ${tracesPath()}`);
   }
 }
 

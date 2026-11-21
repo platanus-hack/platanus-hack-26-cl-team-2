@@ -218,7 +218,7 @@ export async function waitForRun(
   throw new Error(`Run timed out after ${timeoutMs}ms: ${runId}`);
 }
 
-function publicRun(run: InternalRun): RunSummary {
+export function publicRun(run: InternalRun): RunSummary {
   const {
     seedAgentId: _s,
     scenarioHint: _h,
