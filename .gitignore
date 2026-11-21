@@ -12,3 +12,4 @@ coverage
 *.sqlite-*
 apps/api/data/
 *.tsbuildinfo
+.claude/worktrees/
