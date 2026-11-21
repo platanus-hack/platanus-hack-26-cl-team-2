@@ -171,7 +171,7 @@ export function condenseTrace(
   return lines.join("\n") || "(no conversational events)";
 }
 
-function normalizeAudit(raw: Record<string, unknown>): RunAudit | undefined {
+export function normalizeAudit(raw: Record<string, unknown>): RunAudit | undefined {
   if (typeof raw.outcomeOk !== "boolean" || typeof raw.reasoningOk !== "boolean") {
     return undefined;
   }
@@ -259,7 +259,7 @@ function judgmentFromResponse(response: Anthropic.Message): RunJudgment {
   return extractJsonFallback(text);
 }
 
-function judgeTool(withAudit: boolean): Anthropic.Tool {
+export function judgeTool(withAudit: boolean): Anthropic.Tool {
   if (!withAudit) return JUDGE_TOOL;
   const schema = JUDGE_TOOL.input_schema as unknown as {
     properties: Record<string, unknown>;
