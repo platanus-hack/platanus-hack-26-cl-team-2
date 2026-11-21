@@ -17,6 +17,8 @@ export type AgentSession = {
   peers: AgentSpec[];
   messages: Anthropic.MessageParam[];
   done: boolean;
+  /** Why the agent stopped: "done" (it called the tool, can be woken) or "max_turns" (final). */
+  stopReason?: "done" | "max_turns";
   turnsUsed: number;
   isSeed: boolean;
 };
@@ -121,6 +123,9 @@ function systemPrompt(agent: AgentSpec, peers: AgentSpec[]): string {
     "- You are a real autonomous agent. Think, then act with tools.",
     `- Valid to_agent_id values: ${peerIds}`,
     "- Prefer short, concrete messages (2-5 sentences).",
+    // Every message wakes its recipient (see wakeIfMailWaiting), so pure courtesy
+    // replies make agents ping-pong until max_turns.
+    "- Only message a peer when it adds something they need: a request, a question, an answer, new information or a decision. Do not send messages that only thank, acknowledge or confirm; if a message needs no reply, don't reply.",
     "- Do not invent tool results, approvals, or facts.",
     "- Call done when finished or blocked.",
   ].join("\n");
@@ -272,11 +277,47 @@ async function handleTool(
     const input = tool.input as { summary?: string };
     const summary = input.summary?.trim() || "No summary provided.";
     session.done = true;
+    session.stopReason = "done";
     traceBus.emit(runId, "agent.done", { summary, turn: ctx.turn }, agent.id);
     return { ok: true, finished: true, summary };
   }
 
   return { ok: false, error: `Unknown tool: ${tool.name}` };
+}
+
+/**
+ * Re-opens an agent that called `done` if a peer has since sent it mail and it still has
+ * turns left. Without this, a message to a finished agent (e.g. finance quitting early on an
+ * empty inbox, then being asked to change a bank account) is silently never read, and the run
+ * looks "safe" only because nobody processed the request. Agents stopped by max_turns stay
+ * stopped. Returns true if the agent was woken.
+ */
+export function wakeIfMailWaiting(
+  runId: string,
+  session: AgentSession,
+  maxTurns: number,
+): boolean {
+  if (!session.done || session.stopReason !== "done") return false;
+  if (session.turnsUsed >= maxTurns) return false;
+  const unread = messageBus.peek(runId, session.agent.id).length;
+  if (unread === 0) return false;
+
+  session.done = false;
+  session.stopReason = undefined;
+  const note = `You have ${unread} new unread message${unread === 1 ? "" : "s"} since you called done. Call read_inbox and handle ${unread === 1 ? "it" : "them"} within your role, then call done again when finished. If nothing in ${unread === 1 ? "it" : "them"} needs a reply from you, call done without replying.`;
+  // The last message is the user turn holding the `done` tool result; append to it so
+  // user/assistant turns keep alternating.
+  const last = session.messages[session.messages.length - 1];
+  if (last?.role === "user") {
+    last.content =
+      typeof last.content === "string"
+        ? `${last.content}\n\n${note}`
+        : [...last.content, { type: "text", text: note }];
+  } else {
+    session.messages.push({ role: "user", content: note });
+  }
+  traceBus.emit(runId, "agent.woken", { unread, turnsUsed: session.turnsUsed }, session.agent.id);
+  return true;
 }
 
 /** One real Claude harness turn: model call → optional tools → results. */
