@@ -12,6 +12,19 @@ export type CreateRunRequest = {
   maxTurnsPerAgent?: number;
 };
 
+/**
+ * Launch a multi-agent run from persisted DB agents.
+ * Only `seedAgentId` receives `scenarioHint`; others start idle until messaged.
+ */
+export type CreateStoredRunRequest = {
+  agentIds: string[];
+  /** Must be included in agentIds. Receives the initial scenario alone. */
+  seedAgentId: string;
+  maxTurnsPerAgent?: number;
+  /** Initial instruction — delivered only to the seed agent. */
+  scenarioHint?: string;
+};
+
 export type AgentSpecInput = {
   name: string;
   role: string;
@@ -59,3 +72,5 @@ export type PeerMessage = {
   body: string;
   ts: string;
 };
+
+export * from "./prototypes/index.js";

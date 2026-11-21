@@ -7,10 +7,11 @@ import { AGENT_TOOLS } from "./tools.js";
 
 export type AgentSession = {
   agent: AgentSpec;
-  peer: AgentSpec;
+  peers: AgentSpec[];
   messages: Anthropic.MessageParam[];
   done: boolean;
   turnsUsed: number;
+  isSeed: boolean;
 };
 
 type ToolHandlerCtx = {
@@ -19,23 +20,38 @@ type ToolHandlerCtx = {
   turn: number;
 };
 
-function systemPrompt(agent: AgentSpec, peer: AgentSpec): string {
+function peerDirectory(peers: AgentSpec[]): string {
+  return peers
+    .map(
+      (p) =>
+        `- ${p.name} (id: ${p.id}) · area goal hint: ${p.goal.slice(0, 160)}`,
+    )
+    .join("\n");
+}
+
+function systemPrompt(agent: AgentSpec, peers: AgentSpec[]): string {
+  const peerIds = peers.map((p) => p.id).join(", ");
   return [
     `You are "${agent.name}" (id: ${agent.id}).`,
-    `Your role: ${agent.role}`,
-    `Your goal: ${agent.goal}`,
     "",
-    `You are collaborating with peer agent "${peer.name}" (id: ${peer.id}).`,
-    `Their role: ${peer.role}`,
-    `Their goal: ${peer.goal}`,
+    agent.role,
+    "",
+    `Your standing goal: ${agent.goal}`,
+    "",
+    "Other agents in this run (you may message any of them):",
+    peerDirectory(peers),
+    "",
+    "Conversation tools:",
+    "- send_message: message one peer by exact id.",
+    "- read_inbox: read unread messages sent to you.",
+    "- done: finish when your work is complete or blocked.",
     "",
     "Rules:",
-    "- You are a real autonomous agent. Think carefully, then act with tools.",
-    "- Use send_message to talk to your peer. Use their exact id.",
-    "- Use read_inbox to check for replies before assuming silence.",
-    "- Prefer short, concrete messages.",
-    "- Call done when your goal is satisfied or blocked.",
-    "- Do not invent tool results. Only trust tool outputs.",
+    "- You are a real autonomous agent. Think, then act with tools.",
+    `- Valid to_agent_id values: ${peerIds}`,
+    "- Prefer short, concrete messages (2-5 sentences).",
+    "- Do not invent tool results, approvals, or facts.",
+    "- Call done when finished or blocked.",
   ].join("\n");
 }
 
@@ -47,18 +63,35 @@ function asText(blocks: Anthropic.ContentBlock[]): string {
     .trim();
 }
 
-export function createSession(agent: AgentSpec, peer: AgentSpec): AgentSession {
+export function createSession(
+  agent: AgentSpec,
+  peers: AgentSpec[],
+  opts: { isSeed: boolean; scenarioHint?: string },
+): AgentSession {
+  const scenario = opts.scenarioHint?.trim();
+  const opening = opts.isSeed
+    ? [
+        "You are the seed agent for this run.",
+        scenario
+          ? `Initial instruction / scenario (only you received this):\n${scenario}`
+          : "No extra scenario was provided — pursue your standing goal.",
+        "Decide what to do. Message other agents only if you need them. They start idle until contacted.",
+        "Use send_message / read_inbox. Call done when finished.",
+      ].join("\n\n")
+    : [
+        "You are participating in a multi-agent run.",
+        "You did NOT receive the initial scenario. Wait for messages from others.",
+        "Start by calling read_inbox. If empty, you may wait (read_inbox again next turn) or call done if clearly unused.",
+        "When messaged, respond helpfully within your role. Message peers if needed.",
+      ].join("\n");
+
   return {
     agent,
-    peer,
-    messages: [
-      {
-        role: "user",
-        content: `Begin. Coordinate with ${peer.name} (${peer.id}) as needed to achieve your goal. Check your inbox when waiting on them.`,
-      },
-    ],
+    peers,
+    messages: [{ role: "user", content: opening }],
     done: false,
     turnsUsed: 0,
+    isSeed: opts.isSeed,
   };
 }
 
@@ -66,8 +99,9 @@ async function handleTool(
   tool: Anthropic.ToolUseBlock,
   ctx: ToolHandlerCtx,
 ): Promise<Record<string, unknown>> {
-  const { runId, session, turn } = ctx;
-  const { agent, peer } = session;
+  const { runId, session } = ctx;
+  const { agent, peers } = session;
+  const peerIds = new Set(peers.map((p) => p.id));
 
   if (tool.name === "send_message") {
     const input = tool.input as { to_agent_id?: string; body?: string };
@@ -76,10 +110,10 @@ async function handleTool(
     if (!to || !body) {
       return { ok: false, error: "to_agent_id and body are required" };
     }
-    if (to !== peer.id) {
+    if (!peerIds.has(to)) {
       return {
         ok: false,
-        error: `Unknown peer id "${to}". Only "${peer.id}" is available.`,
+        error: `Unknown peer id "${to}". Valid: ${[...peerIds].join(", ")}`,
       };
     }
     const msg = messageBus.send(runId, agent.id, to, body);
@@ -106,7 +140,7 @@ async function handleTool(
     const input = tool.input as { summary?: string };
     const summary = input.summary?.trim() || "No summary provided.";
     session.done = true;
-    traceBus.emit(runId, "agent.done", { summary, turn }, agent.id);
+    traceBus.emit(runId, "agent.done", { summary, turn: ctx.turn }, agent.id);
     return { ok: true, finished: true, summary };
   }
 
@@ -126,12 +160,17 @@ export async function runOneTurn(
   session.turnsUsed = turn;
 
   const { agent } = session;
-  traceBus.emit(runId, "agent.turn.started", { turn, maxTurns }, agent.id);
+  traceBus.emit(
+    runId,
+    "agent.turn.started",
+    { turn, maxTurns, isSeed: session.isSeed },
+    agent.id,
+  );
 
   const response = await client.messages.create({
     model: config.model,
     max_tokens: 1024,
-    system: systemPrompt(session.agent, session.peer),
+    system: systemPrompt(session.agent, session.peers),
     tools: AGENT_TOOLS,
     messages: session.messages,
   });
@@ -151,7 +190,7 @@ export async function runOneTurn(
     session.messages.push({
       role: "user",
       content:
-        "You did not call a tool. Either send_message / read_inbox to progress, or call done with a summary.",
+        "You did not call a tool. Use send_message / read_inbox to progress, or call done with a summary.",
     });
     return;
   }

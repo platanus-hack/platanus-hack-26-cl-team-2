@@ -2,14 +2,19 @@ import type { TraceEvent } from "@sandbox/shared";
 
 type Props = {
   events: TraceEvent[];
-  agentIndex: Map<string, "a" | "b">;
+  agentIndex: Map<string, number>;
 };
 
 function kindOf(type: TraceEvent["type"]): string {
   if (type.includes("thought")) return "thought";
   if (type.includes("message")) return "message";
   if (type.includes("tool")) return "tool";
-  if (type.includes("done") || type.startsWith("run.")) return type.includes("failed") ? "error" : type.includes("done") || type.includes("completed") ? "done" : "run";
+  if (type.includes("done") || type.startsWith("run."))
+    return type.includes("failed")
+      ? "error"
+      : type.includes("done") || type.includes("completed")
+        ? "done"
+        : "run";
   if (type.includes("error") || type.includes("failed")) return "error";
   return "run";
 }
@@ -18,13 +23,13 @@ function summarize(event: TraceEvent): string {
   const p = event.payload;
   switch (event.type) {
     case "run.started":
-      return `model=${String(p.model)} · scheduler=${String(p.scheduler)} · maxTurns=${String(p.maxTurnsPerAgent)}`;
+      return `model=${String(p.model)} · seed=${String(p.seedAgentId ?? "?")} · n=${String(p.participantCount ?? "?")} · maxTurns=${String(p.maxTurnsPerAgent)}`;
     case "run.completed":
-      return "Both harnesses finished.";
+      return "All harnesses finished.";
     case "run.failed":
       return String(p.error ?? "unknown error");
     case "agent.turn.started":
-      return `turn ${String(p.turn)}/${String(p.maxTurns)}`;
+      return `turn ${String(p.turn)}/${String(p.maxTurns)}${p.isSeed ? " · seed" : ""}`;
     case "agent.thought":
       return String(p.text ?? "");
     case "agent.tool_call":
@@ -33,7 +38,11 @@ function summarize(event: TraceEvent): string {
       return `${String(p.name)} → ${JSON.stringify(p.result)}`;
     case "agent.message_sent":
     case "agent.message_received": {
-      const msg = p.message as { fromAgentId?: string; toAgentId?: string; body?: string };
+      const msg = p.message as {
+        fromAgentId?: string;
+        toAgentId?: string;
+        body?: string;
+      };
       return `${msg.fromAgentId} → ${msg.toAgentId}: ${msg.body}`;
     }
     case "agent.done":
@@ -49,7 +58,7 @@ export function Timeline({ events, agentIndex }: Props) {
   if (events.length === 0) {
     return (
       <p className="empty">
-        No events yet. Launch a run to watch the agents think and talk.
+        No events yet. Select agents, set a seed + scenario, and launch.
       </p>
     );
   }
@@ -57,7 +66,7 @@ export function Timeline({ events, agentIndex }: Props) {
   return (
     <div className="timeline">
       {events.map((event) => {
-        const lane = event.agentId ? agentIndex.get(event.agentId) : undefined;
+        const idx = event.agentId ? agentIndex.get(event.agentId) : undefined;
         return (
           <article
             key={event.id}
@@ -69,10 +78,8 @@ export function Timeline({ events, agentIndex }: Props) {
             </div>
             <div>
               <div className="type">
-                {lane ? (
-                  <span className={`agent-chip ${lane}`}>
-                    agent {lane.toUpperCase()}
-                  </span>
+                {idx != null ? (
+                  <span className={`agent-chip n${idx % 6}`}>#{idx + 1}</span>
                 ) : null}
                 {event.type}
               </div>

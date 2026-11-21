@@ -8,3 +8,6 @@ build
 .turbo
 coverage
 .vite
+*.sqlite
+*.sqlite-*
+apps/api/data/
