@@ -7,9 +7,9 @@ import "./debugger.css";
  * Step-by-step graph debugger for one run: agents (plus the incoming email and the
  * sandboxed tools) as nodes, and each trace event lit up on the edge it travels.
  *
- * By default it steps through the conversation only (email, messages, sandbox attempts,
- * agents finishing). The technical events behind each step (thoughts, turns, tool calls)
- * stay one click away under "Inspeccionar más", or can be stepped through one by one.
+ * By default ("Mensajes") it jumps only between sent messages. Everything else (the email,
+ * thoughts, turns, tool calls, sandbox attempts, agents finishing) is debugging detail:
+ * one click away under "Inspeccionar más", or stepped through one by one in "Depuración".
  */
 
 type NodeKind = "external" | "agent" | "tool";
@@ -31,10 +31,13 @@ export type Step = {
 const INTERNAL_TOOLS = new Set(["send_message", "read_inbox", "done"]);
 const FINANCE_TOOLS = new Set(["issue_refund", "update_vendor_bank_account"]);
 const DANGEROUS_TOOL = "update_vendor_bank_account";
-/** Event types shown in conversation mode. Everything else is a technical detail. */
-const CONVERSATION_TYPES = new Set<TraceEvent["type"]>([
-  "run.started", "agent.message_sent", "sandbox.tool_attempt", "agent.done", "agent.error", "run.completed", "run.failed",
-]);
+/** In "Mensajes" mode only sent messages are steps; everything else is debugging detail. */
+const isMessage = (s: Step) => s.event.type === "agent.message_sent";
+/** Events that count towards a node's badge (what a reviewer cares about). */
+const BADGE_TYPES = new Set<TraceEvent["type"]>(["run.started", "agent.message_sent", "sandbox.tool_attempt"]);
+const RISK_RANK = { crit: 2, warn: 1 } as const;
+const worst = (risks: Risk[]): Risk =>
+  risks.reduce<Risk>((a, r) => (r && (!a || RISK_RANK[r] > RISK_RANK[a]) ? r : a), null);
 const SOURCE = "__source";
 const SANDBOX = "__sandbox";
 const W = 940;
@@ -55,6 +58,11 @@ const TYPE_COLOR: Record<string, string> = {
   "agent.error": "#fb7185",
 };
 const TYPE_NAME: Record<string, string> = {
+  "run.started": "Inicio · correo",
+  "run.completed": "Fin de la ejecución",
+  "run.failed": "Ejecución fallida",
+  "agent.done": "Termina",
+  "agent.error": "Error",
   "agent.turn.started": "Turno",
   "agent.thought": "Pensamiento",
   "agent.message_received": "Recepción",
@@ -162,15 +170,17 @@ export function buildSteps(events: TraceEvent[], agents: AgentSpec[]): Step[] {
 }
 
 /**
- * Technical events behind a conversation step: what its agent did since the previous
- * conversation step (thoughts, turns, tool calls and results).
+ * Debugging events behind a message: everything that happened since the previous
+ * message (the email, thoughts, turns, tool calls, sandbox attempts…). For the last
+ * message it also includes what happened after it, up to the end of the run.
  */
 export function detailsFor(all: Step[], visible: Step[], k: number): Step[] {
   const cur = visible[k];
   if (!cur) return [];
   const from = k > 0 ? visible[k - 1]!.order + 1 : 0;
-  const agent = cur.event.agentId;
-  return all.slice(from, cur.order).filter((s) => !CONVERSATION_TYPES.has(s.event.type) && (!agent || s.event.agentId === agent));
+  const before = all.slice(from, cur.order);
+  const after = k === visible.length - 1 ? all.slice(cur.order + 1) : [];
+  return [...before, ...after].filter((s) => s.event.type !== "agent.message_received");
 }
 
 function layout(agents: AgentSpec[], steps: Step[], events: TraceEvent[]): GraphNode[] {
@@ -281,17 +291,23 @@ function threadText(e: TraceEvent): string {
   }
 }
 
-/** One technical event inside "Inspeccionar más". */
-function TechItem({ step }: { step: Step }) {
+/** One debug event inside "Inspeccionar más". */
+function TechItem({ step, name }: { step: Step; name: (id?: string) => string }) {
   const e = step.event, p = e.payload;
   let body: ReactElement;
   if (e.type === "agent.thought") body = <p className="dbg-tech-text">{String(p.text ?? "")}</p>;
   else if (e.type === "agent.tool_call") body = <><code>{String(p.name)}</code><pre className="dbg-json">{json(p.input)}</pre></>;
   else if (e.type === "agent.tool_result") body = <><code>{String(p.name)}</code><pre className="dbg-json">{json(p.result)}</pre></>;
+  else if (e.type === "sandbox.tool_attempt") body = <><code>{String(p.tool)} · {p.blocked ? "BLOQUEADO" : "simulado"}</code><pre className="dbg-json">{json(p.args)}</pre></>;
+  else if (e.type === "agent.done" || e.type === "run.started") body = <p className="dbg-tech-text">{threadText(e)}</p>;
   else body = <p className="dbg-tech-text">{summarize(e)}</p>;
   return (
-    <li className="dbg-tech">
-      <span className="dbg-type"><i style={{ background: colorOf(e) }} />{TYPE_NAME[e.type] ?? e.type}<small>{new Date(e.ts).toLocaleTimeString()}</small></span>
+    <li className={`dbg-tech ${step.risk ?? ""}`}>
+      <span className="dbg-type">
+        <i style={{ background: colorOf(e) }} />{TYPE_NAME[e.type] ?? e.type}
+        <span className="dbg-tech-who">{e.agentId ? name(e.agentId) : "Ejecución"}</span>
+        <small>{new Date(e.ts).toLocaleTimeString()}</small>
+      </span>
       {body}
     </li>
   );
@@ -301,8 +317,13 @@ type Props = { events: TraceEvent[]; agents: AgentSpec[]; running: boolean };
 
 export function ConversationDebugger({ events, agents, running }: Props) {
   const all = useMemo(() => buildSteps(events, agents), [events, agents]);
-  const [technical, setTechnical] = useState(false);
-  const steps = useMemo(() => (technical ? all : all.filter((s) => CONVERSATION_TYPES.has(s.event.type))), [all, technical]);
+  const [debug, setDebug] = useState(false);
+  const steps = useMemo(() => (debug ? all : all.filter(isMessage)), [all, debug]);
+  /** Risk per visible step; in "Mensajes" mode a message also carries the risk of the debugging events behind it. */
+  const stepRisk = useMemo(
+    () => steps.map((s, k) => (debug ? s.risk : worst([s.risk, ...detailsFor(all, steps, k).map((d) => d.risk)]))),
+    [all, steps, debug],
+  );
   const nodes = useMemo(() => layout(agents, all, events), [agents, all, events]);
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const name = (id?: string) => agents.find((a) => a.id === id)?.name ?? id ?? "Ejecución";
@@ -315,7 +336,7 @@ export function ConversationDebugger({ events, agents, running }: Props) {
   const reduced = useRef(typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const N = steps.length;
 
-  // Index of the pinned event in the visible list; if it is hidden (technical view off), the last visible step before it.
+  // Index of the pinned event in the visible list; if it is hidden (debug view off), the last visible step before it.
   let step = N - 1;
   if (pinned !== null) {
     const order = all.find((s) => s.event.id === pinned)?.order ?? Infinity;
@@ -340,10 +361,31 @@ export function ConversationDebugger({ events, agents, running }: Props) {
   useEffect(() => {
     const list = threadRef.current, item = list?.querySelector<HTMLElement>(".cur");
     if (list && item) list.scrollTop = item.offsetTop - list.offsetTop - list.clientHeight / 2 + item.clientHeight / 2;
-  }, [step, technical]);
+  }, [step, debug]);
 
-  if (N === 0) {
+  const switchMode = (toDebug: boolean) => {
+    if (toDebug === debug) return;
+    setPlaying(false);
+    if (pinned !== null && N > 0) setPinned(steps[step]!.event.id);
+    setDebug(toDebug);
+  };
+  const modeSwitch = (
+    <div className="dbg-mode" role="group" aria-label="Qué recorrer">
+      <button type="button" aria-pressed={!debug} onClick={() => switchMode(false)} title="Saltar solo entre mensajes enviados">Mensajes</button>
+      <button type="button" aria-pressed={debug} onClick={() => switchMode(true)} title="Recorrer todos los eventos: correo, pensamientos, herramientas, sandbox">Depuración</button>
+    </div>
+  );
+
+  if (all.length === 0) {
     return <p className="empty">Inicia o carga una ejecución para recorrer la conversación paso a paso.</p>;
+  }
+  if (N === 0) {
+    return (
+      <div className="dbg-empty">
+        <p>Aún no hay mensajes entre agentes en esta ejecución ({all.length} eventos de depuración).</p>
+        {modeSwitch}
+      </div>
+    );
   }
 
   const go = (k: number) => { setPlaying(false); setPinned(steps[Math.max(0, Math.min(N - 1, k))]!.event.id); };
@@ -360,9 +402,10 @@ export function ConversationDebugger({ events, agents, running }: Props) {
   };
 
   const cur = steps[step]!;
-  /** Everything that has happened up to the current step, technical events included. */
+  /** Everything that has happened up to the current step, debug events included. */
   const past = all.slice(0, cur.order + 1);
-  const details = technical ? [] : detailsFor(all, steps, step);
+  const details = debug ? [] : detailsFor(all, steps, step);
+  const detailRisks = details.filter((d) => d.risk).length;
   const curKey = cur.edge ? edgeKey(...cur.edge) : null;
   const visited = new Set(all.slice(0, cur.order).filter((s) => s.edge).map((s) => edgeKey(...s.edge!)));
   const allEdges = new Map<string, [string, string]>();
@@ -383,7 +426,7 @@ export function ConversationDebugger({ events, agents, running }: Props) {
     for (let k = 0; k <= step; k++) if (steps[k]!.nodes.includes(id)) return k;
     return step;
   };
-  const thread = steps.map((s, k) => ({ s, k })).filter(({ s }) => s.event.type !== "agent.message_received" || !technical);
+  const thread = steps.map((s, k) => ({ s, k })).filter(({ s }) => s.event.type !== "agent.message_received" || !debug);
 
   let active: ReactElement | null = null;
   if (cur.edge) {
@@ -423,16 +466,13 @@ export function ConversationDebugger({ events, agents, running }: Props) {
           <button type="button" onClick={() => go(N - 1)} disabled={step === N - 1} aria-label="Último paso" title="Último paso">⏭</button>
         </div>
         <div className="dbg-status" aria-live="polite">
-          <b>Paso {step + 1} de {N}</b> · {cur.title}
+          <b>{debug ? "Evento" : "Mensaje"} {step + 1} de {N}</b> · {cur.title}
           {running && (live
             ? <span className="dbg-live">● En vivo</span>
             : <button type="button" className="dbg-follow" onClick={() => { setPlaying(false); setPinned(null); }}>Seguir en vivo</button>)}
         </div>
         <div className="dbg-opts">
-          <label className="dbg-switch" title="Recorrer también pensamientos, turnos y llamadas a herramientas">
-            <input type="checkbox" checked={technical} onChange={(e) => { setTechnical(e.target.checked); setPlaying(false); if (live) setPinned(null); else setPinned(cur.event.id); }} />
-            Pasos técnicos
-          </label>
+          {modeSwitch}
           <label className="dbg-speed">Velocidad
             <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
               <option value={0.5}>0.5×</option><option value={1}>1×</option><option value={2}>2×</option><option value={4}>4×</option>
@@ -443,13 +483,15 @@ export function ConversationDebugger({ events, agents, running }: Props) {
           {steps.map((s, k) => (
             <button type="button" key={s.event.id} className={`dbg-tick ${k === step ? "cur" : k < step ? "past" : ""}`}
               style={{ color: colorOf(s.event) }} onClick={() => go(k)} title={`${k + 1}. ${s.title}`} aria-label={`Paso ${k + 1}: ${s.title}`}>
-              {s.risk && <span className={`r ${s.risk}`} />}
+              {stepRisk[k] && <span className={`r ${stepRisk[k]}`} />}
               <b style={{ background: colorOf(s.event) }} />
             </button>
           ))}
         </div>
         <div className="dbg-kbd">
-          {technical ? "Mostrando todos los eventos." : "Mostrando solo la conversación: correo, mensajes, intentos en el sandbox y cierres."}{" "}
+          {debug
+            ? "Depuración: todos los eventos (correo, pensamientos, herramientas, sandbox, cierres)."
+            : "Solo mensajes enviados. Lo demás está en «Inspeccionar más» o en Depuración."}{" "}
           <kbd>←</kbd> <kbd>→</kbd> avanzar · <kbd>espacio</kbd> reproducir · clic en un nodo salta a su siguiente evento
         </div>
       </div>
@@ -466,7 +508,7 @@ export function ConversationDebugger({ events, agents, running }: Props) {
                 {active}
                 {nodes.map((n) => {
                   const col = KIND_COLOR[n.kind];
-                  const count = past.filter((s) => s.nodes.includes(n.id) && CONVERSATION_TYPES.has(s.event.type)).length;
+                  const count = past.filter((s) => s.nodes.includes(n.id) && BADGE_TYPES.has(s.event.type)).length;
                   const seen = past.some((s) => s.nodes.includes(n.id));
                   const st = cur.nodes.includes(n.id) ? "on" : seen ? "seen" : "idle";
                   const crit = past.some((s) => s.risk === "crit" && s.nodes.includes(n.id));
@@ -498,7 +540,7 @@ export function ConversationDebugger({ events, agents, running }: Props) {
           </div>
 
           <div className="dbg-thread-card">
-            <div className="dbg-insp-h"><h3>Conversación</h3><small>Clic en un mensaje para ir a ese paso</small></div>
+            <div className="dbg-insp-h"><h3>{debug ? "Eventos" : "Mensajes"}</h3><small>Clic para ir a ese paso</small></div>
             <ol className="dbg-thread" ref={threadRef}>
               {thread.map(({ s, k }) => {
                 const text = threadText(s.event);
@@ -519,7 +561,7 @@ export function ConversationDebugger({ events, agents, running }: Props) {
         </div>
 
         <aside className="dbg-inspector">
-          <div className="dbg-insp-h"><h3>Inspector</h3><small>Paso {step + 1} de {N} · {new Date(cur.event.ts).toLocaleTimeString()}</small></div>
+          <div className="dbg-insp-h"><h3>Inspector</h3><small>{debug ? "Evento" : "Mensaje"} {step + 1} de {N} · {new Date(cur.event.ts).toLocaleTimeString()}</small></div>
           <div className="dbg-insp-b">
             <span className="dbg-type"><i style={{ background: c }} />{cur.event.type}</span>
             <strong className="dbg-title">{cur.title}</strong>
@@ -530,19 +572,25 @@ export function ConversationDebugger({ events, agents, running }: Props) {
                 {cur.risk === "crit" ? "Intento de cambiar datos bancarios de un proveedor." : "Revisa este paso: hubo un bloqueo, un error o un remitente sospechoso."}
               </div>
             )}
+            {!debug && detailRisks > 0 && !expanded && (
+              <button type="button" className={`dbg-flag ${worst(details.map((d) => d.risk))} dbg-flag-btn`} onClick={() => setExpanded(true)}>
+                <strong>{detailRisks === 1 ? "1 señal de riesgo" : `${detailRisks} señales de riesgo`} en la depuración</strong>
+                Ver en «Inspeccionar más» →
+              </button>
+            )}
 
             <details className="dbg-more" open={expanded} onToggle={(e) => setExpanded((e.target as HTMLDetailsElement).open)}>
               <summary>
                 Inspeccionar más
-                <small>{technical ? "payload del evento" : `${details.length} ${details.length === 1 ? "evento técnico" : "eventos técnicos"} · payload`}</small>
+                <small>{debug ? "payload del evento" : `${details.length} ${details.length === 1 ? "evento" : "eventos"} de depuración · payload`}</small>
               </summary>
-              {!technical && (
+              {!debug && (
                 details.length
                   ? <>
-                      <h4>Antes de este paso, {name(cur.event.agentId)}…</h4>
-                      <ol className="dbg-tech-list">{details.map((d) => <TechItem key={d.event.id} step={d} />)}</ol>
+                      <h4>{step === 0 ? "Antes de este mensaje" : "Entre el mensaje anterior y este"}{step === N - 1 && details.some((d) => d.order > cur.order) ? ", y después hasta el final" : ""}</h4>
+                      <ol className="dbg-tech-list">{details.map((d) => <TechItem key={d.event.id} step={d} name={name} />)}</ol>
                     </>
-                  : <p className="dbg-note">No hubo pensamientos ni llamadas a herramientas antes de este paso.</p>
+                  : <p className="dbg-note">No hubo otros eventos entre el mensaje anterior y este.</p>
               )}
               <h4>Payload del evento</h4>
               <pre className="dbg-json">{json(cur.event.payload)}</pre>
