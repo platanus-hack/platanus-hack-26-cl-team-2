@@ -133,4 +133,31 @@ describe("API security (in-process)", () => {
     const text = await (await app.request("/health")).text();
     assert.doesNotMatch(text, /127\.0\.0\.1:9|test-admin-token/);
   });
+
+  it("a bad agent selection is a 400, not a 500", async () => {
+    const { storedRunErrorStatus } = await import("../src/app.js");
+    assert.equal(storedRunErrorStatus("seedAgentId must be one of the selected agents."), 400);
+    assert.equal(storedRunErrorStatus("Select at least 2 agents."), 400);
+    // Unchanged mappings.
+    assert.equal(storedRunErrorStatus("Missing ANTHROPIC_API_KEY"), 503);
+    assert.equal(storedRunErrorStatus("Agent not found: x"), 404);
+    assert.equal(storedRunErrorStatus("financeAgentIds must be selected agents"), 400);
+    assert.equal(storedRunErrorStatus("something else broke"), 500);
+  });
+
+  it("an unhandled error becomes a redacted JSON 500", async () => {
+    const { handleUnexpectedError } = await import("../src/app.js");
+    const { Hono } = await import("hono");
+    const tiny = new Hono();
+    tiny.get("/boom", () => {
+      throw new Error("boom with key sk-ant-api03-abcDEF123 and token test-admin-token");
+    });
+    tiny.onError(handleUnexpectedError);
+    const res = await tiny.request("/boom");
+    assert.equal(res.status, 500);
+    assert.match(res.headers.get("content-type") ?? "", /application\/json/);
+    const data = (await res.json()) as { error: string };
+    assert.match(data.error, /^boom with key \[redacted\]/);
+    assert.doesNotMatch(data.error, /sk-ant-|test-admin-token/);
+  });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RunSummary, TraceEvent } from "@sandbox/shared";
 import { fetchRun, listAgents, listRuns, subscribeRunEvents, type StoredAgent } from "../api";
 import { LabPage } from "../LabPage";
@@ -37,7 +37,16 @@ function observedConnections(events: TraceEvent[]): Connection[] {
   return [...connections.values()];
 }
 
-export function RealWorkspace({ simulation, hasApiKey }: { simulation: boolean; hasApiKey: boolean }) {
+/**
+ * `active` is false while the workspace is kept mounted but hidden (another section is open):
+ * polling stops, and the lab below keeps its trace and "Antes y después".
+ */
+export function RealWorkspace({ simulation, hasApiKey, active = true }: { simulation: boolean; hasApiKey: boolean; active?: boolean }) {
+  /** Run shown by the lab below: its result and trace are not repeated above it. */
+  const [labRunId, setLabRunId] = useState("");
+  /** The lab mounts on the first visit to Simulaciones and then stays mounted (hidden). */
+  const labSeen = useRef(false);
+  if (simulation) labSeen.current = true;
   const [agents, setAgents] = useState<StoredAgent[]>([]);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const selectedRunId = useObservedRun();
@@ -64,10 +73,11 @@ export function RealWorkspace({ simulation, hasApiKey }: { simulation: boolean; 
         if (!cancelled) setError(failure instanceof Error ? failure.message : "No se pudieron actualizar los datos");
       } finally { polling = false; if (!cancelled) setLoading(false); }
     }
+    if (!active) return;
     void refresh();
     const interval = window.setInterval(() => void refresh(), 5000);
     return () => { cancelled = true; window.clearInterval(interval); };
-  }, [refreshKey]);
+  }, [refreshKey, active]);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,7 +130,7 @@ export function RealWorkspace({ simulation, hasApiKey }: { simulation: boolean; 
     {simulation && <div className="mesh-callout">Configura una ejecución real en el laboratorio de abajo. Luego selecciónala aquí para explorar las comunicaciones, llamadas a herramientas y resultados medidos. Ejecutar agentes consume créditos de la API.</div>}
     <div className="mesh-organization"><section className="mesh-graph-card"><div className="mesh-card-header"><div><h2>Mapa de interacciones reales</h2><span>{snapshot ? `${events.length} eventos · ${statusLabels[snapshot.run.status] ?? snapshot.run.status}` : "Selecciona una ejecución para ver sus conexiones"}</span></div><span className="mesh-pill">{snapshot ? "Observado" : "Configuración guardada"}</span></div><div className="mesh-filters"><input aria-label="Buscar agentes o herramientas" placeholder="Buscar agentes o herramientas…" value={query} onChange={event => setQuery(event.target.value)} /></div><div className="mesh-graph-scroll">{visible.length ? <svg className="mesh-graph" viewBox={`0 0 960 ${Math.max(480, 120 + Math.ceil(graphNodes.length / 4) * 180)}`} aria-label="Grafo de interacciones observadas"><defs><marker id="real-arrow" markerWidth="8" markerHeight="8" refX="29" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#5eead4" /></marker></defs>{connections.map(connection => { const start = visible.find(node => node.id === connection.from); const end = visible.find(node => node.id === connection.to); return start && end ? <line key={`${connection.from}:${connection.to}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} markerEnd="url(#real-arrow)"><title>{connection.label}: {connection.count} eventos</title></line> : null; })}{visible.map(node => <g key={node.id} role="button" tabIndex={0} aria-label={`Explorar ${node.name}`} aria-pressed={node.id === selectedId} className={`mesh-node ${node.kind} ${node.id === selectedId ? "selected" : ""}`} transform={`translate(${node.x},${node.y})`} onClick={() => setSelectedId(node.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(node.id); } }}><circle className="node-halo" r="49" /><circle className="node-disc" r="38" /><EntityGlyph kind={node.kind} /><text textAnchor="middle" y="65">{node.name.length > 24 ? `${node.name.slice(0, 22)}…` : node.name}</text><title>{node.name}</title></g>)}</svg> : <div className="mesh-empty">{loading ? "Cargando agentes…" : query ? "Sin coincidencias." : "Aún no hay agentes. Crea y guarda perfiles en el creador de agentes o empresas."}</div>}</div><footer className="mesh-legend">Las aristas representan mensajes enviados o intentos de llamada a herramientas. No implican acceso efectivo ni éxito de un ataque.</footer></section>
     <aside className="mesh-profile"><div className="mesh-profile-body">{selected ? <><span className="mesh-label">{selected.kind === "agent" ? "Agente real" : "Herramienta observada"}</span><h2>{selected.name}</h2><h3>Rol</h3><p>{saved?.title ?? participant?.role ?? "Herramienta invocada en la ejecución seleccionada."}</p><h3>Capacidades configuradas</h3><div className="mesh-tags">{saved?.harnessTools.map(tool => <code key={tool}>{tool}</code>) ?? <p>Consulta los eventos de la ejecución.</p>}</div><h3>Conexiones con evidencia</h3>{connections.filter(connection => connection.from === selected.id || connection.to === selected.id).map(connection => <div className="mesh-evidence" key={`${connection.from}:${connection.to}`}><span>{graphNodes.find(node => node.id === connection.from)?.name} → {graphNodes.find(node => node.id === connection.to)?.name}</span><small>{connection.label} · {connection.count} eventos · {new Date(connection.event.ts).toLocaleTimeString("es-CL")}</small><code>{connection.event.id}</code></div>)}<h3>Seguridad por atributo</h3><p>Sin evaluar. Los resultados de una ejecución no se convierten en puntajes de resistencia.</p></> : <div className="mesh-empty">Selecciona un nodo para ver su configuración y las conexiones respaldadas por eventos.</div>}</div></aside></div>
-    {snapshot && <><RunOutcomePanel evaluation={snapshot.evaluation} /><RunJudgmentPanel judgment={snapshot.judgment} loading={false} error={null} /><section className="panel"><h2>Evidencia de la ejecución</h2><Timeline events={events} agentIndex={agentIndex} /></section></>}
-    {simulation && <LabPage hasApiKey={hasApiKey} onRunCreated={created => { setRuns(previous => [created, ...previous.filter(run => run.id !== created.id)]); selectObservedRun(created.id); setSelectedId(""); }} />}
+    {snapshot && !(simulation && runId === labRunId) && <><RunOutcomePanel evaluation={snapshot.evaluation} /><RunJudgmentPanel judgment={snapshot.judgment} loading={false} error={null} /><section className="panel"><h2>Evidencia de la ejecución</h2><Timeline events={events} agentIndex={agentIndex} /></section></>}
+    {labSeen.current && <div style={{ display: simulation ? "contents" : "none" }}><LabPage active={active && simulation} hasApiKey={hasApiKey} onRunCreated={created => { setLabRunId(created.id); setRuns(previous => [created, ...previous.filter(run => run.id !== created.id)]); selectObservedRun(created.id); setSelectedId(""); }} /></div>}
   </>;
 }
