@@ -11,3 +11,4 @@ coverage
 *.sqlite
 *.sqlite-*
 apps/api/data/
+*.tsbuildinfo
