@@ -14,6 +14,10 @@ ni ejecuta llamadas a modelos automáticamente.
 El selector de ejecución permite revisar también las conversaciones anteriores
 que la API conserva en memoria. El botón Actualizar recarga los resultados y
 la evaluación guardada, incluido el dictamen generado después de la ejecución.
+La ejecución seleccionada se comparte con Evaluaciones y se conserva en la
+sesión del navegador al cambiar de vista o recargar. Si no hay selección válida,
+el mapa abre la ejecución más reciente. La opción Solo configuración permite
+ocultar las conexiones explícitamente.
 
 ## Qué representa el grafo
 
