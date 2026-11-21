@@ -25,6 +25,7 @@ export type VulnScenarioBrief = {
 };
 
 export type VulnDesignerBrief = {
+  classification?: { areaId: import("./prototypes/types.js").AreaId; function: string; rationale: string };
   scenarios: VulnScenarioBrief[];
 };
 

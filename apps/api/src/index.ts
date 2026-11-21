@@ -6,6 +6,7 @@ import { app } from "./app.js";
 import { config } from "./config.js";
 import { pingDatabase } from "./db/client.js";
 import { errorMessage } from "./security/redact.js";
+import { startEvaluationWorker } from "./evaluation-jobs/worker.js";
 
 /**
  * Production (Render): serve the built web app from the same server, so the page and the
@@ -27,6 +28,7 @@ if (existsSync(resolve(webDist, "index.html"))) {
 
 serve({ fetch: app.fetch, port: config.port }, async (info) => {
   const db = await pingDatabase();
+  if (db.ok && process.env.EVALUATION_WORKER_DISABLED !== "1") startEvaluationWorker();
   console.log(`[api] http://localhost:${info.port}`);
   console.log(
     `[api] ANTHROPIC_API_KEY ${config.anthropicApiKey ? "loaded" : "MISSING — set .env"} · ${

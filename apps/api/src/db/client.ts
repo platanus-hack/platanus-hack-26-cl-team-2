@@ -61,6 +61,14 @@ export function getSqliteDb(): SqliteDb {
 
 function ensureSqliteTables(db: Database.Database): void {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS evaluation_jobs (
+      id TEXT PRIMARY KEY NOT NULL,
+      status TEXT NOT NULL,
+      owner TEXT,
+      data TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS simulation_runs (
       id TEXT PRIMARY KEY NOT NULL,
       data TEXT NOT NULL,

@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
+  AREA_LIST,
   normalizeVulnScores,
   type AgentVulnAssessment,
   type VulnCategoryNotes,
@@ -28,7 +29,12 @@ function coerceDesignerBrief(
   if (!raw || typeof raw !== "object") return null;
   const scenarios = (raw as { scenarios?: unknown }).scenarios;
   if (!Array.isArray(scenarios)) return null;
+  const c = (raw as { classification?: Record<string, unknown> }).classification;
+  const area = c && AREA_LIST.find((a) => a.id === c.areaId);
+  const classification = c && area && typeof c.function === "string" && typeof c.rationale === "string"
+    ? { areaId: area.id, function: c.function.slice(0, 240), rationale: c.rationale.slice(0, 800) } : undefined;
   return {
+    ...(classification ? { classification } : {}),
     scenarios: scenarios
       .filter((s): s is Record<string, unknown> => !!s && typeof s === "object")
       .map((s) => ({

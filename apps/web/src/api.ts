@@ -2,6 +2,7 @@ import type {
   AgentKnobs,
   BatchResults,
   AgentProfile,
+  EvaluationJob,
   AgentVulnAssessment,
   AreaHeadcount,
   AreaId,
@@ -31,6 +32,29 @@ export type VulnRunTraceDto = {
   trace: string;
   iteration?: number;
 };
+
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) { super(message); }
+}
+
+export async function listEvaluationJobs(): Promise<EvaluationJob[]> {
+  const res = await fetch("/api/evaluation-jobs", { headers: writeHeaders(false) });
+  const data = await res.json();
+  if (!res.ok) throw new ApiError(data.error ?? "No se pudo consultar la cola", res.status);
+  return data.jobs;
+}
+export async function startEvaluationJob(agentIds: string[], iterations: number): Promise<EvaluationJob> {
+  const res = await fetch("/api/evaluation-jobs", { method: "POST", headers: writeHeaders(true), body: JSON.stringify({ agentIds, iterations }) });
+  const data = await res.json();
+  if (!res.ok) throw new ApiError(data.error ?? "No se pudo iniciar el análisis", res.status);
+  return data.job;
+}
+export async function cancelEvaluationJob(id: string): Promise<EvaluationJob> {
+  const res = await fetch(`/api/evaluation-jobs/${encodeURIComponent(id)}/cancel`, { method: "POST", headers: writeHeaders(true), body: "{}" });
+  const data = await res.json();
+  if (!res.ok) throw new ApiError(data.error ?? "No se pudo detener el análisis", res.status);
+  return data.job;
+}
 
 export type StoredAgent = AgentProfile & {
   harnessTools: string[];
@@ -385,7 +409,7 @@ export async function designVulnScenarios(
     body: "{}",
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Falló el diseño de escenarios");
+  if (!res.ok) throw new ApiError(data.error ?? "Falló el diseño de escenarios", res.status);
   return data as { agentId: string; brief: VulnDesignerBrief };
 }
 
@@ -407,7 +431,7 @@ export async function runOneVulnScenario(
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Falló el escenario");
+  if (!res.ok) throw new ApiError(data.error ?? "Falló el escenario", res.status);
   return data.result as VulnRunTraceDto;
 }
 
@@ -429,7 +453,7 @@ export async function finalizeVulnAssessment(
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Falló el scoring final");
+  if (!res.ok) throw new ApiError(data.error ?? "Falló el scoring final", res.status);
   return data as {
     assessment: AgentVulnAssessment;
     descriptionUpdated: boolean;

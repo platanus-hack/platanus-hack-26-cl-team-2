@@ -1,0 +1,12 @@
+.loading-progress { padding: 14px 16px; border: 1px solid #20c9b755; border-radius: 10px; background: #20c9b70a; margin: 12px 0; }
+.loading-progress-label { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.loading-progress-label small { opacity: .75; font-variant-numeric: tabular-nums; }
+.loading-progress progress { display: block; width: 100%; height: 9px; border: 0; border-radius: 8px; overflow: hidden; accent-color: #20c9b7; background: #20c9b722; }
+.loading-progress progress::-webkit-progress-bar { background: #20c9b722; border-radius: 8px; }
+.loading-progress progress::-webkit-progress-value { background: #20c9b7; border-radius: 8px; transition: width .25s; }
+.loading-progress progress::-moz-progress-bar { background: #20c9b7; }
+.loading-progress progress:indeterminate { background: linear-gradient(90deg, #20c9b722 25%, #20c9b7 50%, #20c9b722 75%); background-size: 200% 100%; animation: loading-progress-slide 1.4s linear infinite; }
+.loading-progress progress:indeterminate::-webkit-progress-bar { background: transparent; }
+.loading-progress-activity { display: block; font-size: 12px; margin-top: 8px; opacity: .75; }
+@keyframes loading-progress-slide { from { background-position: 200% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .loading-progress progress:indeterminate { animation: none; } }

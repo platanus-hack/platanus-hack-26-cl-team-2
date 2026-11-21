@@ -1,4 +1,5 @@
 export { summarizeMonitoring, type MonitoringRun } from "./monitoring.js";
+export { evaluationJobActive, type EvaluationJob, type EvaluationJobData, type EvaluationJobStatus } from "./evaluation-jobs.js";
 
 export type AgentId = string;
 

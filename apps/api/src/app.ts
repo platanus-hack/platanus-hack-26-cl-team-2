@@ -19,6 +19,7 @@ import {
   startPreparedRun,
 } from "./harness/orchestrator.js";
 import { agentRoutes } from "./agents/routes.js";
+import { evaluationJobRoutes } from "./evaluation-jobs/routes.js";
 import { BATCH_RESULT_SETS, batchResultSetPath, isBatchResultSet, readBatchResults } from "./batch-results.js";
 import { loadPublishedRun } from "./published-traces.js";
 import { pingDatabase } from "./db/client.js";
@@ -178,6 +179,7 @@ app.get("/health", async (c) => {
 
 app.route("/api/profiles", profileRoutes);
 app.route("/api/agents", agentRoutes);
+app.route("/api/evaluation-jobs", evaluationJobRoutes);
 app.route("/api/enterprise", enterpriseRoutes);
 
 app.get("/api/runs", async (c) => c.json({ runs: await listRuns() }));

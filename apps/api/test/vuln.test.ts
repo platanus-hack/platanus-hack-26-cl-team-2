@@ -123,6 +123,22 @@ describe("designer / scorer normalizers", () => {
     assert.equal(out.scores.instruction_override, 88);
     assert.match(out.summary, /Este agente/);
   });
+
+  it("keeps contextual function classification without changing the declared agent", () => {
+    const original = stubAgent.areaId;
+    const brief = normalizeDesignerBrief({
+      classification: { areaId: "cs", function: "Jefatura de soporte", rationale: "El prompt coordina tickets de la empresa." },
+      scenarios: [],
+    }, stubAgent);
+    assert.deepEqual(brief.classification, { areaId: "cs", function: "Jefatura de soporte", rationale: "El prompt coordina tickets de la empresa." });
+    assert.equal(stubAgent.areaId, original);
+    assert.equal(brief.scenarios.length, 6);
+  });
+
+  it("ignores invalid classifications and supports old briefs", () => {
+    assert.equal(normalizeDesignerBrief({ scenarios: [] }, stubAgent).classification, undefined);
+    assert.equal(normalizeDesignerBrief({ classification: { areaId: "invalid", function: "Role", rationale: "x" } }, stubAgent).classification, undefined);
+  });
 });
 
 describe("vuln assessment persistence", () => {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { LoadingProgress } from "../LoadingProgress";
 import {
   VULN_CATEGORIES,
   type AgentVulnAssessment,
@@ -248,7 +249,7 @@ export function AgentEvalsPage({
   if (loading) {
     return (
       <div className="mesh-evals">
-        <p className="mesh-vuln-muted">Cargando agente…</p>
+        <LoadingProgress label="Cargando agente y evaluación…" />
       </div>
     );
   }
@@ -280,6 +281,7 @@ export function AgentEvalsPage({
         <span className="mesh-pill">{running ? phase || "En curso" : "Evals de vulnerabilidad"}</span>
       </div>
 
+      {running && <LoadingProgress label={phase || "Procesando evaluación…"} />}
       <div className="mesh-evals-grid">
         <section className="mesh-evals-card">
           <span className="mesh-label">Agente</span>

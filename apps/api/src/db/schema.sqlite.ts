@@ -7,6 +7,16 @@ import {
 import type { InternalRun } from "../harness/orchestrator.js";
 import type { TraceEvent } from "@sandbox/shared";
 import type { RunJudgment } from "../harness/judge.js";
+import type { EvaluationJobData, EvaluationJobStatus } from "@sandbox/shared";
+
+export const evaluationJobsSqlite = sqliteTable("evaluation_jobs", {
+  id: text("id").primaryKey(),
+  status: text("status").$type<EvaluationJobStatus>().notNull(),
+  owner: text("owner"),
+  data: text("data", { mode: "json" }).$type<EvaluationJobData>().notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
 
 export const simulationRunsSqlite = sqliteTable("simulation_runs", {
   id: text("id").primaryKey(),

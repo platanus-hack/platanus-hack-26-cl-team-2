@@ -258,6 +258,11 @@ agentRoutes.post("/:id/vuln-run-one", requireAdmin, vulnBudget, async (c) => {
 
 const finalizeSchema = z.object({
   brief: z.object({
+    classification: z.object({
+      areaId: z.enum(["gtm", "csm", "cs", "engineering", "product_design", "data", "it", "finance"]),
+      function: z.string().min(1).max(240),
+      rationale: z.string().max(800),
+    }).optional(),
     scenarios: z
       .array(
         z.object({
@@ -294,6 +299,7 @@ agentRoutes.post("/:id/vuln-finalize", requireAdmin, vulnBudget, async (c) => {
   }
 
   const brief: VulnDesignerBrief = {
+    classification: parsed.data.brief.classification,
     scenarios: parsed.data.brief.scenarios
       .filter((s) => isVulnCategory(s.category))
       .map((s) => ({

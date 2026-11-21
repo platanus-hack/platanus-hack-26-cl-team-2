@@ -16,6 +16,8 @@
     "db:seed": "tsx src/db/seed.ts",
     "db:seed:org20": "tsx src/db/seed-org20.ts",
     "batch": "tsx src/batch.ts",
+    "eval:worker": "tsx src/evaluation-jobs/start.ts",
+    "db:eval-jobs": "tsx src/db/setup-evaluation-jobs.ts",
     "results:traces": "tsx src/published-traces.ts",
     "mcp:server": "tsx src/mcp/server.ts",
     "mcp:quick": "tsx src/mcp/quick-test.ts",

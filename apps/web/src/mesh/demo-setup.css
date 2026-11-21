@@ -38,7 +38,7 @@
 .demo-setup-spaces {
   flex: 1;
   display: grid;
-  grid-template-rows: 1fr 1fr;
+  grid-template-rows: minmax(180px, auto) minmax(280px, auto);
   gap: 16px;
   min-height: 420px;
 }
@@ -55,6 +55,20 @@
   font-size: clamp(32px, 4vw, 64px);
   color: var(--ink);
 }
+
+.demo-assessment { display: grid; gap: 16px; margin-top: 24px; }
+.demo-assessment-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.demo-assessment-controls label { display: grid; gap: 8px; }
+.demo-assessment-controls input { max-width: 100px; }
+.demo-function-group { display: grid; gap: 14px; }
+.demo-agent-card { padding: 20px; border: 1px solid var(--edge, var(--line)); min-width: 0; }
+.demo-agent-card header { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; align-items: start; }
+.demo-agent-card h4 { margin: 0; font-size: 20px; }
+.demo-agent-card pre, .demo-assessment-log { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }
+.demo-attributes { overflow-x: auto; }
+.demo-attributes table { width: 100%; border-collapse: collapse; text-align: left; }
+.demo-attributes th, .demo-attributes td { padding: 12px; border-bottom: 1px solid var(--edge, var(--line)); }
+.demo-attributes meter { width: 80px; accent-color: #20c9b7; }
 
 @media (max-width: 720px) {
   .demo-space {

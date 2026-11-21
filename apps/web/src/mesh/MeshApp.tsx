@@ -44,7 +44,7 @@ export function MeshApp() {
           <ScenarioPlotPanel set="business" title="Fraude de negocio" scenarios={BUSINESS_SCENARIOS} />
         )
       ) : page === "DEMO SETUP" ? (
-        <DemoSetupPage hasDatabase={Boolean(health?.database?.ok)} />
+        <DemoSetupPage hasDatabase={Boolean(health?.database?.ok)} hasApiKey={Boolean(health?.hasApiKey)} />
       ) : <GeneratorPage hasDatabase={Boolean(health?.database?.ok)} onOpenEvals={openAgentEvals} />}
     </div></main>
   </div>;

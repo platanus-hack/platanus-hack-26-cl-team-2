@@ -9,6 +9,16 @@ import {
 import type { InternalRun } from "../harness/orchestrator.js";
 import type { TraceEvent } from "@sandbox/shared";
 import type { RunJudgment } from "../harness/judge.js";
+import type { EvaluationJobData, EvaluationJobStatus } from "@sandbox/shared";
+
+export const evaluationJobs = pgTable("evaluation_jobs", {
+  id: text("id").primaryKey(),
+  status: text("status").$type<EvaluationJobStatus>().notNull(),
+  owner: text("owner"),
+  data: jsonb("data").$type<EvaluationJobData>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});
 
 export const simulationRuns = pgTable("simulation_runs", {
   id: text("id").primaryKey(),

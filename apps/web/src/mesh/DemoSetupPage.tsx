@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { listAgents, type StoredAgent } from "../api";
 import "./demo-setup.css";
+import { DemoAgentAssessment } from "./DemoAgentAssessment";
+import { LoadingProgress } from "../LoadingProgress";
 
-type Props = { hasDatabase: boolean };
+type Props = { hasDatabase: boolean; hasApiKey: boolean };
 
 function companyName(agent: StoredAgent): string {
   return agent.orgHints?.companyName?.trim() ?? "";
 }
 
-/** Pick a saved company. The two spaces stay empty until a later step fills them. */
-export function DemoSetupPage({ hasDatabase }: Props) {
+/** Select a company; B classifies and evaluates its agents. */
+export function DemoSetupPage({ hasDatabase, hasApiKey }: Props) {
   const [agents, setAgents] = useState<StoredAgent[]>([]);
   const [company, setCompany] = useState("");
   const [error, setError] = useState("");
@@ -18,6 +20,7 @@ export function DemoSetupPage({ hasDatabase }: Props) {
   useEffect(() => {
     if (!hasDatabase) {
       setAgents([]);
+      setLoading(false);
       return;
     }
     let cancelled = false;
@@ -47,6 +50,7 @@ export function DemoSetupPage({ hasDatabase }: Props) {
     }
     return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0], "es"));
   }, [agents]);
+  const companyAgents = useMemo(() => agents.filter((agent) => companyName(agent) === company), [agents, company]);
 
   return (
     <section className="demo-setup">
@@ -65,6 +69,7 @@ export function DemoSetupPage({ hasDatabase }: Props) {
           ))}
         </select>
       </label>
+      {loading && <LoadingProgress label="Cargando empresas y agentes…" />}
       {!hasDatabase ? <p className="error">Base de datos no disponible: no hay empresas cargadas.</p> : null}
       {error ? <p className="error">{error}</p> : null}
       {!loading && hasDatabase && !error && companies.length === 0 ? (
@@ -76,6 +81,7 @@ export function DemoSetupPage({ hasDatabase }: Props) {
         </div>
         <div className="demo-space">
           <h2>Espacio B</h2>
+          {company ? <DemoAgentAssessment key={company} agents={companyAgents} hasApiKey={hasApiKey} /> : <p>Selecciona una empresa para clasificar y evaluar sus agentes.</p>}
         </div>
       </div>
     </section>

@@ -3,6 +3,7 @@ import { AREA_LIST, type AgentProfile, type AreaId } from "@sandbox/shared";
 import { saveProfile } from "../api";
 import { areaLabel } from "./labels";
 import "./prompt-creator.css";
+import { LoadingProgress } from "../LoadingProgress";
 
 type Props = { hasDatabase: boolean; onSaved?: () => Promise<void> };
 const example = JSON.stringify({
@@ -125,6 +126,7 @@ export function PromptCreator({ hasDatabase, onSaved }: Props) {
     {drafts && <div className="notice"><strong>Vista previa: {drafts.length} agente(s)</strong><ul>
       {drafts.map((a) => <li key={a.id}><details><summary>{a.name} · {areaLabel(a.areaId)}{saved.includes(a.id) ? " · Guardado" : ""}</summary><pre style={{ whiteSpace: "pre-wrap" }}>{a.systemContext}</pre></details></li>)}
     </ul></div>}
+    {busy && <LoadingProgress label="Guardando agentes…" value={saved.length} total={drafts?.length} />}
     {error && <p className="error" role="alert">{error}</p>}
     {notice && <p className="notice" role="status">{notice}</p>}
   </div>;
