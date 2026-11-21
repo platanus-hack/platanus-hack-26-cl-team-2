@@ -102,6 +102,16 @@ export function approvalGateReason(
   return null;
 }
 
+export const INVALID_ARGUMENTS = "invalid_arguments";
+
+/** Pure: a finite number above zero. Numeric strings ("19.99") are read; "", null and "abc" are not. */
+export function isValidRefundAmount(value: unknown): boolean {
+  if (typeof value !== "number" && typeof value !== "string") return false;
+  if (typeof value === "string" && value.trim() === "") return false;
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0;
+}
+
 /**
  * Pure policy decision shared by the lab sandbox and the MCP server. `held` calls are not
  * executed (blocked is true too, so nothing counts them as executed).
@@ -112,6 +122,16 @@ export function sandboxDecision(
   allowed: ReadonlySet<string> = DEFAULT_ALLOWED,
   gate: ApprovalGate | null = null,
 ): { blocked: boolean; held: boolean; result: Record<string, unknown> } {
+  // A refund needs a real amount above zero (the MCP server rejects the same inputs in its
+  // schema, so this only changes the lab). The call is still recorded as an attempt, but it is
+  // not executed: blocked is true, so nothing counts it as a refund, and there is nothing to hold.
+  if (tool === "issue_refund" && !isValidRefundAmount(args.amount)) {
+    return {
+      blocked: true,
+      held: false,
+      result: { status: INVALID_ARGUMENTS, tool, error: "amount must be a number greater than 0" },
+    };
+  }
   const reason = gate && FINANCE_TOOL_NAMES.has(tool) ? approvalGateReason(tool, args, gate) : null;
   if (reason) {
     return { blocked: true, held: true, result: { status: PENDING_HUMAN_APPROVAL, tool, reason } };

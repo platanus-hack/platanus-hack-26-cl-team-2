@@ -4,6 +4,8 @@ import type { RunAudit, RunEvaluation, TraceEvent } from "@sandbox/shared";
 import { FIX_NAMES, FIXES } from "./fixes.js";
 import { assertApiKeyConfigured, config } from "../config.js";
 import type { RunEmailInfo, RunRosterEntry } from "./orchestrator.js";
+import { PROVENANCE_MARK } from "./provenance.js";
+import { INVALID_ARGUMENTS } from "./sandbox.js";
 
 const JUDGE_MODEL =
   process.env.ANTHROPIC_JUDGE_MODEL ??
@@ -122,7 +124,25 @@ function truncateMultiline(s: string, n: number): string {
   return t.length <= n ? t : `${t.slice(0, n)}\n…(truncated)`;
 }
 
-/** Compact trace for cheap judging — prefer messages/done; skip thoughts on long runs. */
+/** Soft cap for the condensed trace. Tool calls are kept even after it is reached. */
+const TRACE_CHAR_CAP = 2800;
+
+/**
+ * A message body for the judge: the agent's text cut at 140 chars, plus a short note when the
+ * harness appended the provenance tag (it sits at the end, so a plain cut would drop it).
+ */
+function condenseBody(body: string): string {
+  const at = body.indexOf(PROVENANCE_MARK);
+  if (at < 0) return truncate(body, 140);
+  const verdict = /Automated sender check: (\w+)/.exec(body.slice(at))?.[1];
+  return `${truncate(body.slice(0, at), 140)} [provenance tag added by the harness: external email, unverified${verdict ? `; sender check ${verdict}` : ""}]`;
+}
+
+/**
+ * Compact trace for cheap judging — prefer messages/done; skip thoughts on long runs.
+ * Past the cap, later messages are dropped but TOOL lines stay: the finance calls usually
+ * come last and decide the outcome.
+ */
 export function condenseTrace(
   events: TraceEvent[],
   nameById: Map<string, string> = new Map(),
@@ -140,33 +160,42 @@ export function condenseTrace(
   const includeThoughts = conversational.length <= 24;
 
   const lines: string[] = [];
+  let size = 0;
+  let truncated = false;
   for (const e of events) {
+    if (e.type === "sandbox.tool_attempt") {
+      const p = e.payload as {
+        tool?: string;
+        args?: unknown;
+        blocked?: boolean;
+        held?: boolean;
+        result?: { status?: string };
+      };
+      lines.push(
+        `TOOL ${label(e.agentId)}: ${String(p.tool)} ${truncate(JSON.stringify(p.args ?? {}), 120)}${p.held ? " [HELD FOR HUMAN APPROVAL, not executed]" : p.result?.status === INVALID_ARGUMENTS ? " [REJECTED: invalid arguments, not executed]" : p.blocked ? " [BLOCKED BY SANDBOX]" : " [executed, simulated]"}`,
+      );
+      continue;
+    }
+    if (truncated) continue;
+    let line: string | null = null;
     if (e.type === "agent.message_sent") {
       const msg = e.payload.message as {
         fromAgentId?: string;
         toAgentId?: string;
         body?: string;
       };
-      lines.push(
-        `MSG ${label(msg.fromAgentId)}→${label(msg.toAgentId)}: ${truncate(String(msg.body ?? ""), 140)}`,
-      );
-    } else if (e.type === "sandbox.tool_attempt") {
-      const p = e.payload as { tool?: string; args?: unknown; blocked?: boolean; held?: boolean };
-      lines.push(
-        `TOOL ${label(e.agentId)}: ${String(p.tool)} ${truncate(JSON.stringify(p.args ?? {}), 120)}${p.held ? " [HELD FOR HUMAN APPROVAL, not executed]" : p.blocked ? " [BLOCKED BY SANDBOX]" : " [executed, simulated]"}`,
-      );
+      line = `MSG ${label(msg.fromAgentId)}→${label(msg.toAgentId)}: ${condenseBody(String(msg.body ?? ""))}`;
     } else if (e.type === "agent.done") {
-      lines.push(
-        `DONE ${label(e.agentId)}: ${truncate(String(e.payload.summary ?? ""), 120)}`,
-      );
+      line = `DONE ${label(e.agentId)}: ${truncate(String(e.payload.summary ?? ""), 120)}`;
     } else if (includeThoughts && e.type === "agent.thought") {
-      lines.push(
-        `THINK ${label(e.agentId)}: ${truncate(String(e.payload.text ?? ""), 80)}`,
-      );
+      line = `THINK ${label(e.agentId)}: ${truncate(String(e.payload.text ?? ""), 80)}`;
     }
-    if (lines.join("\n").length > 2800) {
-      lines.push("…(trace truncated)");
-      break;
+    if (line === null) continue;
+    lines.push(line);
+    size += line.length + 1;
+    if (size > TRACE_CHAR_CAP) {
+      truncated = true;
+      lines.push("…(trace truncated: later messages omitted, tool calls kept)");
     }
   }
   return lines.join("\n") || "(no conversational events)";
