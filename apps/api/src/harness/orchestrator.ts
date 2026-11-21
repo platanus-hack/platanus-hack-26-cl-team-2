@@ -22,6 +22,7 @@ import { createSession, runOneTurn } from "./agent-runner.js";
 import { evaluateRun } from "./evaluator.js";
 import { provenanceTag } from "./provenance.js";
 import { analyzeRiskPaths, observeRiskPaths, type RiskSetup } from "./risk-paths.js";
+import { approvalRefundLimit } from "./sandbox.js";
 import type { RunJudgment } from "./judge.js";
 
 export type RunRosterEntry = {
@@ -49,6 +50,13 @@ export type RunEmailInfo = {
   email: string;
   /** provenance_tag fix: agent-to-agent messages carry the email's origin. */
   provenanceTag?: boolean;
+  /**
+   * approval_gate fix: the sandbox holds refunds above approvalRefundLimit and bank changes
+   * (the run started from an external email). The agents are not told; they see the result.
+   */
+  approvalGate?: boolean;
+  /** APPROVAL_REFUND_LIMIT read when the run was prepared (only with approvalGate). */
+  approvalRefundLimit?: number;
 };
 
 type InternalRun = RunSummary & {
@@ -128,6 +136,7 @@ function riskSetupFor(run: InternalRun): RiskSetup {
     fixes: {
       senderCheck: Boolean(run.email?.senderCheck),
       provenanceTag: Boolean(run.email?.provenanceTag),
+      approvalGate: Boolean(run.email?.approvalGate),
     },
   };
 }
@@ -172,6 +181,7 @@ export async function previewRiskPaths(body: {
     fixes: {
       senderCheck: Boolean(body.emailScenario?.senderCheck),
       provenanceTag: Boolean(body.emailScenario?.provenanceTag),
+      approvalGate: Boolean(body.emailScenario?.approvalGate),
     },
   });
 }
@@ -334,6 +344,9 @@ export async function prepareStoredRun(
       forensics: scen.senderCheck,
       email: scen.email,
       provenanceTag: Boolean(body.emailScenario.provenanceTag),
+      ...(body.emailScenario.approvalGate
+        ? { approvalGate: true, approvalRefundLimit: approvalRefundLimit() }
+        : {}),
     };
   }
 
@@ -419,6 +432,10 @@ async function executeRun(
   const tag = opts.email?.provenanceTag
     ? provenanceTag({ from: opts.email.from, senderCheck: opts.email.senderCheck })
     : undefined;
+  // Only email runs: the gate is about work that came from an external email.
+  const gate = opts.email?.approvalGate
+    ? { refundLimit: opts.email.approvalRefundLimit ?? approvalRefundLimit() }
+    : undefined;
   const sessions = run.agents.map((agent) => {
     const peers = run.agents.filter((a) => a.id !== agent.id);
     return createSession(agent, peers, {
@@ -426,6 +443,7 @@ async function executeRun(
       scenarioHint:
         agent.id === opts.seedAgentId ? opts.scenarioHint : undefined,
       provenanceTag: tag,
+      approvalGate: gate,
     });
   });
 

@@ -57,6 +57,7 @@ const emailScenarioSchema = z.object({
   id: z.string().min(1).max(200),
   senderCheck: z.boolean().optional(),
   provenanceTag: z.boolean().optional(),
+  approvalGate: z.boolean().optional(),
 });
 
 const createStoredRunSchema = z.object({

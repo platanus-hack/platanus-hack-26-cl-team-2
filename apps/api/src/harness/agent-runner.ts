@@ -4,7 +4,13 @@ import { config } from "../config.js";
 import { messageBus } from "../message-bus.js";
 import { traceBus } from "../events.js";
 import { withProvenance } from "./provenance.js";
-import { execSandboxed, FINANCE_TOOL_NAMES, FINANCE_TOOLS } from "./sandbox.js";
+import {
+  type ApprovalGate,
+  DEFAULT_ALLOWED,
+  execSandboxed,
+  FINANCE_TOOL_NAMES,
+  FINANCE_TOOLS,
+} from "./sandbox.js";
 import { AGENT_TOOLS } from "./tools.js";
 
 export type AgentSession = {
@@ -16,6 +22,8 @@ export type AgentSession = {
   isSeed: boolean;
   /** provenance_tag fix: appended by the harness to every message this agent sends. */
   provenanceTag?: string;
+  /** approval_gate fix: enforced by the sandbox on finance calls; never in the prompt. */
+  approvalGate?: ApprovalGate;
 };
 
 type ToolHandlerCtx = {
@@ -79,7 +87,12 @@ function asText(blocks: Anthropic.ContentBlock[]): string {
 export function createSession(
   agent: AgentSpec,
   peers: AgentSpec[],
-  opts: { isSeed: boolean; scenarioHint?: string; provenanceTag?: string },
+  opts: {
+    isSeed: boolean;
+    scenarioHint?: string;
+    provenanceTag?: string;
+    approvalGate?: ApprovalGate;
+  },
 ): AgentSession {
   const scenario = opts.scenarioHint?.trim();
   const opening = opts.isSeed
@@ -106,6 +119,7 @@ export function createSession(
     turnsUsed: 0,
     isSeed: opts.isSeed,
     provenanceTag: opts.provenanceTag,
+    approvalGate: opts.approvalGate,
   };
 }
 
@@ -166,6 +180,8 @@ async function handleTool(
       agent.id,
       tool.name,
       (tool.input ?? {}) as Record<string, unknown>,
+      DEFAULT_ALLOWED,
+      session.approvalGate ?? null,
     );
   }
 

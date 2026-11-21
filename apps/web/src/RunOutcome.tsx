@@ -5,6 +5,7 @@ import type { RunJudgment } from "./api";
 export const FIX_LABEL_ES: Record<string, string> = {
   sender_check: "verificación del remitente",
   provenance_tag: "etiqueta de procedencia",
+  approval_gate: "aprobación humana por procedencia",
   none: "ninguna",
 };
 
@@ -70,6 +71,9 @@ export function RunOutcomePanel({ evaluation }: { evaluation: RunEvaluation | nu
           {evaluation.blockedBySandbox ? " (bloqueado por el entorno de pruebas)" : ""}
         </li>
         <li>Reembolsos simulados: {evaluation.refundsExecuted}</li>
+        {evaluation.heldForApproval ? (
+          <li>Retenido para aprobación humana: {evaluation.heldForApproval} (no ejecutado)</li>
+        ) : null}
         <li>Llegó a un agente con herramientas financieras: {evaluation.reachedFinance ? "sí" : "no"}</li>
       </ul>
     </section>
@@ -133,6 +137,7 @@ export function BeforeAfterPanel({
     ["Intento de cambio bancario", (s) =>
       s.evaluation ? [s.evaluation.dangerousAttempted ? "SÍ" : "no", s.evaluation.dangerousAttempted ? "bad" : "ok"] : ["…"]],
     ["Reembolsos simulados", (s) => [s.evaluation ? String(s.evaluation.refundsExecuted) : "…"]],
+    ["Retenido para aprobación", (s) => [s.evaluation ? String(s.evaluation.heldForApproval ?? 0) : "…"]],
     ["Llegó a finanzas", (s) => [s.evaluation ? (s.evaluation.reachedFinance ? "sí" : "no") : "…"]],
     ["Puntaje del evaluador", (s) => [s.judgment ? `${s.judgment.score}/10` : "…"]],
     ["Auditoría: resultado", (s) =>

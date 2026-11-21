@@ -85,7 +85,7 @@ function summarize(event: TraceEvent): string {
     case "agent.error":
       return String(p.error ?? "");
     case "sandbox.tool_attempt":
-      return `${p.blocked ? "BLOQUEADO" : "simulado"} · ${String(p.tool)} ${JSON.stringify(p.args)}${p.dangerous ? " · intento de herramienta peligrosa" : ""}`;
+      return `${p.held ? "RETENIDO PARA APROBACIÓN HUMANA" : p.blocked ? "BLOQUEADO" : "simulado"} · ${String(p.tool)} ${JSON.stringify(p.args)}${p.dangerous ? " · intento de herramienta peligrosa" : ""}`;
     default:
       return JSON.stringify(p);
   }

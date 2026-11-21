@@ -25,7 +25,7 @@ import type {
   TraceEvent,
 } from "@sandbox/shared";
 import { PROVENANCE_MARK } from "./provenance.js";
-import { DANGEROUS_TOOL, DEFAULT_ALLOWED } from "./sandbox.js";
+import { approvalRefundLimit, DANGEROUS_TOOL, DEFAULT_ALLOWED } from "./sandbox.js";
 
 export type RiskAgent = { id: string; name: string; finance: boolean };
 
@@ -34,7 +34,12 @@ export type RiskSetup = {
   seedAgentId: string;
   /** null: free-text scenario typed by the operator, so there is no untrusted input. */
   email: { from: string | null; senderCheck: SenderCheck } | null;
-  fixes: { senderCheck: boolean; provenanceTag: boolean };
+  fixes: {
+    senderCheck: boolean;
+    provenanceTag: boolean;
+    /** approval_gate: the sandbox holds big refunds and bank changes for a human. */
+    approvalGate?: boolean;
+  };
 };
 
 const SINKS: RiskSink[] = [DANGEROUS_TOOL, "issue_refund"];
@@ -51,6 +56,7 @@ function activeFixes(fixes: RiskSetup["fixes"]): string[] {
   return [
     ...(fixes.senderCheck ? ["sender_check"] : []),
     ...(fixes.provenanceTag ? ["provenance_tag"] : []),
+    ...(fixes.approvalGate ? ["approval_gate"] : []),
   ];
 }
 
@@ -101,6 +107,17 @@ function componentChecks(setup: RiskSetup): ComponentCheck[] {
         ? `Veredicto mostrado al agente inicial: ${VERDICT_ES[setup.email.senderCheck.verdict]}.`
         : `Calculado (${VERDICT_ES[setup.email.senderCheck.verdict]}), pero no se muestra a ningún agente.`,
     });
+    // Listed only when on, so turning it off does not change the "every component passes" view.
+    if (setup.fixes.approvalGate) {
+      checks.push({
+        id: "approval_gate",
+        label: "Aprobación humana por procedencia",
+        ok: true,
+        detail:
+          `El entorno de finanzas retiene los reembolsos sobre ${approvalRefundLimit()} y los cambios bancarios ` +
+          "pedidos desde un correo externo; los agentes no lo saben de antemano.",
+      });
+    }
   }
   return checks;
 }
@@ -199,7 +216,10 @@ export function analyzeRiskPaths(setup: RiskSetup): RiskPathAnalysis {
         verdictLostAtHop: lost >= 0 ? lost : null,
         severity,
       };
-      paths.push({ ...partial, finding: describe(partial, setup, name) });
+      const gate = setup.fixes.approvalGate
+        ? ` La aprobación humana por procedencia retiene en ${name(partial.financeAgentId)} los reembolsos sobre ${approvalRefundLimit()} y los cambios bancarios.`
+        : "";
+      paths.push({ ...partial, finding: describe(partial, setup, name) + gate });
     }
 
     paths.sort(
@@ -260,7 +280,7 @@ export function observeRiskPaths(
   const finance = new Set(setup.agents.filter((a) => a.finance).map((a) => a.id));
   const parent = new Map<string, { from: string; warning: boolean; agentWarning: boolean }>();
   const touched = new Set([setup.seedAgentId]);
-  const attempts: Array<{ agentId: string; tool: RiskSink; blocked: boolean }> = [];
+  const attempts: Array<{ agentId: string; tool: RiskSink; blocked: boolean; held: boolean }> = [];
 
   for (const e of events) {
     if (e.type === "agent.message_sent") {
@@ -277,8 +297,18 @@ export function observeRiskPaths(
     } else if (e.type === "sandbox.tool_attempt" && e.agentId && touched.has(e.agentId)) {
       const tool = e.payload.tool;
       if (tool !== DANGEROUS_TOOL && tool !== "issue_refund") continue;
-      if (attempts.some((a) => a.agentId === e.agentId && a.tool === tool)) continue;
-      attempts.push({ agentId: e.agentId, tool, blocked: e.payload.blocked === true });
+      const prev = attempts.find((a) => a.agentId === e.agentId && a.tool === tool);
+      if (prev) {
+        // A later held call (e.g. the second big refund) still marks the route as held.
+        if (e.payload.held === true) prev.held = true;
+        continue;
+      }
+      attempts.push({
+        agentId: e.agentId,
+        tool,
+        blocked: e.payload.blocked === true,
+        held: e.payload.held === true,
+      });
     }
   }
 
@@ -297,7 +327,12 @@ export function observeRiskPaths(
     ];
   };
 
-  const build = (agentId: string, sink: RiskSink | null, blocked: boolean | null): ObservedPath => {
+  const build = (
+    agentId: string,
+    sink: RiskSink | null,
+    blocked: boolean | null,
+    held = false,
+  ): ObservedPath => {
     const hops = chainTo(agentId);
     const nodes = ["email", ...hops.map((h) => h.to)];
     const key = nodes.join(">");
@@ -307,12 +342,13 @@ export function observeRiskPaths(
       financeAgentId: agentId,
       sink,
       blocked,
+      ...(held ? { held: true } : {}),
       level: levelOf(nodes.length - 1),
       matchesPredicted: predicted.find((p) => p.nodes.join(">") === key)?.id ?? null,
     };
   };
 
-  const observed = attempts.map((a) => build(a.agentId, a.tool, a.blocked));
+  const observed = attempts.map((a) => build(a.agentId, a.tool, a.blocked, a.held));
   for (const id of finance) {
     if (touched.has(id) && !attempts.some((a) => a.agentId === id)) {
       observed.push(build(id, null, null));
