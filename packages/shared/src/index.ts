@@ -120,6 +120,8 @@ export type ObservedPath = {
     to: string;
     /** Heuristic: the message carried a warning or provenance (keywords or the harness tag). */
     warningCarried: boolean;
+    /** Heuristic: the text the agent itself wrote (harness tag removed) carried a warning. */
+    agentWarned?: boolean;
   }>;
   financeAgentId: string;
   /** null: the finance agent was reached but called no finance tool. */
@@ -255,6 +257,8 @@ export type BatchRow = {
   reachedFinance?: boolean;
   /** The message that reached the finance agent carried a warning or the provenance tag. */
   warningAtFinance?: boolean | null;
+  /** Same, counting only what the agents wrote (the harness provenance tag is removed first). */
+  agentWarnedAtFinance?: boolean | null;
   observedPath?: string | null;
 };
 
@@ -266,7 +270,10 @@ export type BatchSummary = {
   failed: number;
   reachedFinance: number;
   warningAtFinance: number;
+  agentWarnedAtFinance: number;
   dangerousAttempted: number;
+  /** Failed runs (kept out of the rates) in which a bank change was still attempted. */
+  failedDangerous: number;
   refunds: number;
 };
 
@@ -280,6 +287,10 @@ export type BatchResults = {
   financeId: string;
   maxTurns: number;
   reps: number;
+  /** Runs launched (after BATCH_LIMIT). */
+  jobs?: number;
+  /** BATCH_LIMIT when set: some combos may have fewer runs than reps. */
+  limit?: number;
   summary: BatchSummary[];
   rows: BatchRow[];
 };

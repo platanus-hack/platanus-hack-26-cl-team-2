@@ -344,7 +344,7 @@ export async function generateEnterprise(body: {
 /** Last published batch experiment, or null if none has been published yet. */
 export async function fetchBatchResults(): Promise<BatchResults | null> {
   const res = await fetch("/api/batch-results");
-  const data = await res.json();
+  const data = await res.json().catch(() => ({ error: `La API respondió ${res.status} sin datos del lote` }));
   if (!res.ok) throw new Error(data.error ?? "No se pudieron cargar los resultados del lote");
   return data.results ?? null;
 }

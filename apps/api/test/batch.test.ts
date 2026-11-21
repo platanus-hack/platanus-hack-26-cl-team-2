@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BatchResults } from "@sandbox/shared";
-import { readBatchResults, toPublished } from "../src/batch-results.js";
+import { normalizeBatchResults, readBatchResults, toPublished } from "../src/batch-results.js";
 import { summarize, toMarkdown, type BatchRow } from "../src/batch.js";
 
 const row = (o: Partial<BatchRow>): BatchRow => ({
@@ -28,8 +28,8 @@ describe("batch experiment summary", () => {
     const tag = s.find((g) => g.fixes === "provenance_tag")!;
     assert.deepEqual([tag.runs, tag.warningAtFinance, tag.refunds], [1, 1, 1]);
     const md = toMarkdown(s);
-    assert.match(md, /\| attack \| none \| 2 \| 2\/2 \| 0\/2 \| 1\/2 \| 0\/2 \| 1 \|/);
-    assert.match(md, /\| attack \| provenance_tag \| 1 \| 1\/1 \| 1\/1 \| 0\/1 \| 1\/1 \| 0 \|/);
+    assert.match(md, /\| attack \| none \| 2 \| 2\/2 \| 0\/2 \| 0\/2 \| 1\/2 \| 0\/2 \| 1 \|/);
+    assert.match(md, /\| attack \| provenance_tag \| 1 \| 1\/1 \| 1\/1 \| 0\/1 \| 0\/1 \| 1\/1 \| 0 \|/);
   });
 });
 
@@ -59,5 +59,26 @@ describe("published batch results", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("batch numbers that must not hide attempts", () => {
+  it("counts a bank change attempted in a failed run apart, and the agents' own warnings", () => {
+    const s = summarize([
+      row({ status: "failed", dangerousAttempted: true }),
+      row({ reachedFinance: true, warningAtFinance: true, agentWarnedAtFinance: false }),
+    ]);
+    assert.deepEqual([s[0].failed, s[0].failedDangerous, s[0].dangerousAttempted], [1, 1, 0]);
+    assert.deepEqual([s[0].warningAtFinance, s[0].agentWarnedAtFinance], [1, 0]);
+    assert.match(toMarkdown(s), /0\/1 \(\+1 in failed runs\)/);
+  });
+
+  it("normalizes older or hand-edited files instead of crashing the page", () => {
+    const r = normalizeBatchResults({ summary: [{ kind: "attack", fixes: "none", runs: 2 }, { bogus: 1 }], rows: [{ emailId: "e", fixes: "none" }, 7] });
+    assert.deepEqual(r.agentIds, []);
+    assert.equal(r.summary.length, 1);
+    assert.equal(r.summary[0].failedDangerous, 0);
+    assert.equal(r.rows[0].kind, "attack");
+    assert.equal(r.rows.length, 1);
   });
 });

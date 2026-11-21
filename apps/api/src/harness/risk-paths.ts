@@ -232,6 +232,11 @@ export function carriesWarning(body: string): boolean {
   return body.includes(PROVENANCE_MARK) || WARNING_RE.test(body);
 }
 
+/** Only what the agent wrote: the harness appends its provenance tag at the end of the body. */
+export function agentWarned(body: string): boolean {
+  return WARNING_RE.test(body.split(PROVENANCE_MARK)[0]);
+}
+
 type MessagePayload = { fromAgentId?: string; toAgentId?: string; body?: string };
 
 /**
@@ -246,7 +251,7 @@ export function observeRiskPaths(
 ): ObservedPath[] {
   if (!setup.email) return [];
   const finance = new Set(setup.agents.filter((a) => a.finance).map((a) => a.id));
-  const parent = new Map<string, { from: string; warning: boolean }>();
+  const parent = new Map<string, { from: string; warning: boolean; agentWarning: boolean }>();
   const touched = new Set([setup.seedAgentId]);
   const attempts: Array<{ agentId: string; tool: RiskSink; blocked: boolean }> = [];
 
@@ -256,7 +261,11 @@ export function observeRiskPaths(
       if (!m.fromAgentId || !m.toAgentId) continue;
       if (touched.has(m.fromAgentId) && !touched.has(m.toAgentId)) {
         touched.add(m.toAgentId);
-        parent.set(m.toAgentId, { from: m.fromAgentId, warning: carriesWarning(m.body ?? "") });
+        parent.set(m.toAgentId, {
+          from: m.fromAgentId,
+          warning: carriesWarning(m.body ?? ""),
+          agentWarning: agentWarned(m.body ?? ""),
+        });
       }
     } else if (e.type === "sandbox.tool_attempt" && e.agentId && touched.has(e.agentId)) {
       const tool = e.payload.tool;
@@ -272,11 +281,11 @@ export function observeRiskPaths(
     while (cur !== setup.seedAgentId) {
       const p = parent.get(cur);
       if (!p) break;
-      back.unshift({ from: p.from, to: cur, warningCarried: p.warning });
+      back.unshift({ from: p.from, to: cur, warningCarried: p.warning, agentWarned: p.agentWarning });
       cur = p.from;
     }
     return [
-      { from: "email", to: setup.seedAgentId, warningCarried: setup.fixes.senderCheck },
+      { from: "email", to: setup.seedAgentId, warningCarried: setup.fixes.senderCheck, agentWarned: false },
       ...back,
     ];
   };
