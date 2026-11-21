@@ -71,7 +71,7 @@ Existencia verificada el 2026-11-21: título, autores y año tomados de la API d
 | [hou-mcp-landscape](papers/hou-mcp-landscape.md) | Model Context Protocol (MCP): Landscape, Security Threats, and Future Research Directions | Xinyi Hou, Yanjie Zhao, Shenao Wang et al. | 2025 | https://arxiv.org/abs/2503.23278 | 37 |
 | [radosevich-mcp-safety-audit](papers/radosevich-mcp-safety-audit.md) | MCP Safety Audit: LLMs with the Model Context Protocol Allow Major Security Exploits | Brandon Radosevich, John Halloran | 2025 | https://arxiv.org/abs/2504.03767 | 27 |
 | [wang-mcptox](papers/wang-mcptox.md) | MCPTox: A Benchmark for Tool Poisoning Attack on Real-World MCP Servers | Zhiqiang Wang, Yichao Gao, Yanting Wang et al. | 2025 | https://arxiv.org/abs/2508.14925 | 9 |
-| [song-mcp-attack-vectors](papers/song-mcp-attack-vectors.md) | Beyond the Protocol: Unveiling Attack Vectors in the Model Context Protocol (MCP) Ecosystem | Hao Song, Yiming Shen, Wenxuan Luo et al. | 2025 | https://arxiv.org/abs/2506.02040 | 37 |
+| [song-mcp-attack-vectors](papers/song-mcp-attack-vectors.md) | Beyond the Protocol: Unveiling Attack Vectors in the Model Context Protocol (MCP) Ecosystem | Hao Song, Yiming Shen, Wenxuan Luo et al. | 2025 | https://arxiv.org/abs/2506.02040 | 25 |
 
 ## Fraude BEC y phishing
 
