@@ -4,7 +4,7 @@
  * error text stay in apps/api/data/ (git-ignored).
  */
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import type { BatchResults, BatchRow, BatchSummary } from "@sandbox/shared";
 
 /** Read lazily, so a BATCH_RESULTS_PATH loaded from .env (by config.ts) is honoured. */
@@ -55,6 +55,23 @@ export function normalizeBatchResults(data: unknown): BatchResults {
     summary,
     rows,
   };
+}
+
+/**
+ * Published result sets the web app can ask for (GET /api/batch-results?set=…). "latest" is the
+ * last `batch` run; the others are named files next to it, e.g. the business-fraud evals
+ * (email-harness/scenarios/redteam_business.json) in results/batch-business.json.
+ */
+export const BATCH_RESULT_SETS = ["latest", "business"] as const;
+export type BatchResultSet = (typeof BATCH_RESULT_SETS)[number];
+
+export function isBatchResultSet(value: string): value is BatchResultSet {
+  return (BATCH_RESULT_SETS as readonly string[]).includes(value);
+}
+
+export function batchResultSetPath(set: BatchResultSet): string {
+  const latest = batchResultsPath();
+  return set === "latest" ? latest : resolve(dirname(latest), `batch-${set}.json`);
 }
 
 /** The published result, or null when no batch has been published yet. Throws on a malformed file. */

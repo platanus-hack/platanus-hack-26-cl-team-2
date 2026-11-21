@@ -867,6 +867,32 @@ button {
   color: var(--ok);
 }
 
+.verdict-warn {
+  color: var(--agent-b);
+}
+
+.verdict-muted {
+  color: var(--muted);
+}
+
+/* Business evals: one row per email, one column per mitigation */
+.scenario-grid td.scenario-name {
+  min-width: 16rem;
+}
+
+.scenario-grid td.scenario-name small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  margin-top: 0.15rem;
+}
+
+.scenario-grid td.scenario-cell {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .finance-on {
   background: var(--agent-b);
   color: var(--accent-ink);

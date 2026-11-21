@@ -2,9 +2,15 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { BatchResults } from "@sandbox/shared";
-import { normalizeBatchResults, readBatchResults, toPublished } from "../src/batch-results.js";
+import {
+  batchResultSetPath,
+  isBatchResultSet,
+  normalizeBatchResults,
+  readBatchResults,
+  toPublished,
+} from "../src/batch-results.js";
 import { FIX_COMBOS, selectCombos, summarize, toMarkdown, type BatchRow } from "../src/batch.js";
 
 const row = (o: Partial<BatchRow>): BatchRow => ({
@@ -91,6 +97,14 @@ describe("published batch results", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("puts named result sets next to the latest file and accepts only known names", () => {
+    const latest = batchResultSetPath("latest");
+    assert.equal(batchResultSetPath("business"), join(dirname(latest), "batch-business.json"));
+    assert.ok(isBatchResultSet("business"));
+    assert.ok(!isBatchResultSet("../secrets"));
+    assert.ok(!isBatchResultSet("latest.json"));
   });
 });
 

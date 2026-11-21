@@ -7,6 +7,7 @@ import { fetchHealth, listAgents } from "../api";
 import { LabPage } from "../LabPage";
 import { ResultsPage } from "../ResultsPage";
 import { BatchResultsPanel } from "../BatchResults";
+import { BUSINESS_SCENARIOS } from "../businessScenarios";
 import { GeneratorPage } from "../generator/GeneratorPage";
 import { EnterprisePage } from "../generator/EnterprisePage";
 import { areaLabel } from "../generator/labels";
@@ -118,6 +119,19 @@ export function MeshApp() {
               Laboratorio multi-agente · Para evals de vulnerabilidad por atributo, abre un agente
               desde Organización → Ir a evals.
             </div>
+            <BatchResultsPanel
+              set="business"
+              title="Fraude de negocio: reembolsos y reembolsos de gastos"
+              scenarios={BUSINESS_SCENARIOS}
+              intro={
+                <p>
+                  12 correos de fraude que explotan reglas de negocio (reembolsos, nómina, proveedores) y 3
+                  legítimos de control, de <code>redteam_business.json</code>. El remitente parece normal en
+                  todos: lo que se mide es si los agentes aplican las reglas, no si detectan un remitente
+                  falso. Una ejecución por combinación: es una señal temprana, no una tasa.
+                </p>
+              }
+            />
             <BatchResultsPanel />
           </>
         )

@@ -484,9 +484,12 @@ export async function generateEnterprise(body: {
   return data;
 }
 
-/** Last published batch experiment, or null if none has been published yet. */
-export async function fetchBatchResults(): Promise<BatchResults | null> {
-  const res = await fetch("/api/batch-results");
+/** Published batch result sets the API serves (see BATCH_RESULT_SETS in apps/api). */
+export type BatchResultSet = "latest" | "business";
+
+/** A published batch experiment ("latest" by default), or null if none has been published yet. */
+export async function fetchBatchResults(set: BatchResultSet = "latest"): Promise<BatchResults | null> {
+  const res = await fetch(`/api/batch-results?set=${encodeURIComponent(set)}`);
   const data = await res.json().catch(() => ({ error: `La API respondió ${res.status} sin datos del lote` }));
   if (!res.ok) throw new Error(data.error ?? "No se pudieron cargar los resultados del lote");
   return data.results ?? null;

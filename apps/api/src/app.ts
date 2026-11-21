@@ -19,7 +19,7 @@ import {
   startPreparedRun,
 } from "./harness/orchestrator.js";
 import { agentRoutes } from "./agents/routes.js";
-import { readBatchResults } from "./batch-results.js";
+import { BATCH_RESULT_SETS, batchResultSetPath, isBatchResultSet, readBatchResults } from "./batch-results.js";
 import { pingDatabase } from "./db/client.js";
 import { isRealMailFile, listEmailScenarios } from "./email/scenarios.js";
 import { enterpriseRoutes } from "./enterprise/routes.js";
@@ -196,10 +196,17 @@ app.get("/api/mock-db", (c) => c.json({
   databases: Object.entries(MOCK_DB_CATALOG).map(([tool, meta]) => ({ tool, file: meta.file, label: meta.label, sensitivity: meta.sensitivity, kind: "tool" })),
 }));
 
-/** Last published batch experiment (apps/api/results/batch-latest.json), or null if none yet. */
+/**
+ * A published batch experiment, or null if none yet. ?set= picks the result set: "latest"
+ * (default, apps/api/results/batch-latest.json) or "business" (results/batch-business.json).
+ */
 app.get("/api/batch-results", (c) => {
+  const set = c.req.query("set") ?? "latest";
+  if (!isBatchResultSet(set)) {
+    return c.json({ error: `Conjunto de resultados desconocido. Usa: ${BATCH_RESULT_SETS.join(", ")}` }, 400);
+  }
   try {
-    return c.json({ results: readBatchResults() });
+    return c.json({ results: readBatchResults(batchResultSetPath(set)) });
   } catch (err) {
     return c.json({ error: errorMessage(err) }, 500);
   }
