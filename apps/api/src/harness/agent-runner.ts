@@ -175,6 +175,7 @@ export async function runOneTurn(
   session: AgentSession,
   client: Anthropic,
   maxTurns: number,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (session.done) return;
 
@@ -197,7 +198,7 @@ export async function runOneTurn(
       ? [...AGENT_TOOLS, ...FINANCE_TOOLS]
       : AGENT_TOOLS,
     messages: session.messages,
-  });
+  }, { signal });
 
   const thought = asText(response.content);
   if (thought) {

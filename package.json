@@ -1,6 +1,7 @@
 {
   "name": "agent-monitor-sandbox",
   "private": true,
+  "type": "module",
   "version": "0.1.0",
   "description": "MVP sandbox: two real Claude agents interacting under a monitorable harness",
   "scripts": {

@@ -29,7 +29,7 @@ ni ejecuta llamadas a modelos automáticamente.
 5. Selecciona un nodo para inspeccionar sus relaciones y la evidencia.
 
 El selector de ejecución permite revisar también las conversaciones anteriores
-que la API conserva en memoria. El botón Actualizar recarga los resultados y
+que la API conserva en la base de datos. El botón Actualizar recarga los resultados y
 la evaluación guardada, incluido el dictamen generado después de la ejecución.
 La ejecución seleccionada se comparte con Evaluaciones y se conserva en la
 sesión del navegador al cambiar de vista o recargar. Si no hay selección válida,
@@ -46,8 +46,8 @@ ocultar las conexiones explícitamente.
 - Los resultados de una ejecución no son puntajes de resistencia por atributo
   ni una tasa de éxito de ataques.
 
-Los agentes se guardan en la base de datos. Las ejecuciones y sus trazas se
-pierden al reiniciar la API; todavía no existe almacenamiento histórico duradero.
+Los agentes, ejecuciones, trazas y dictámenes se guardan en la base de datos.
+En Vercel cada simulación se ejecuta dentro de una petición con tiempo limitado.
 Las herramientas financieras ejecutan simulaciones y bloquean los cambios
 bancarios. El botón de demostración permite acceder al escenario ficticio,
 separado de las interacciones reales.

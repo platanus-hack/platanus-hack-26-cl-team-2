@@ -37,7 +37,7 @@ seguridad y una ejecución aislada no constituye una tasa de éxito de ataques.
 El prototipo utiliza React y Vite para la interfaz, una API Node con Hono,
 modelos Claude y almacenamiento de perfiles mediante Drizzle con SQLite o
 Postgres. Las herramientas financieras son simuladas y los cambios de cuenta
-bancaria se bloquean. Las ejecuciones y sus trazas se conservan en memoria y se
-pierden al reiniciar la API; no es un sistema de monitoreo de producción.
+bancaria se bloquean. Los perfiles, ejecuciones y trazas se conservan en la base
+de datos; no es un sistema de monitoreo de tráfico de producción.
 
 Proyecto desarrollado para Platanus Hackathon, track AI Security.

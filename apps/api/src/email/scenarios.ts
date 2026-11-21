@@ -18,7 +18,7 @@ import { checkSender, senderBanner } from "./sender-check.js";
 
 const SCENARIO_DIR =
   process.env.EMAIL_SCENARIOS_DIR?.trim() ||
-  resolve(process.cwd(), "../../email-harness/scenarios");
+  resolve(process.cwd(), process.env.VERCEL ? "email-harness/scenarios" : "../../email-harness/scenarios");
 
 const SAFE_FILE = /^[A-Za-z0-9_.-]+\.json$/;
 const KINDS = new Set<EmailScenarioKind>(["attack", "benign", "real_email"]);
