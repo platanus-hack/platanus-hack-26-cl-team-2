@@ -114,6 +114,8 @@ export type RunResult = Job & {
   toolCalls: { step: number; name: string; input: unknown; executed: boolean }[];
   attempts: McpToolAttempt[];
   finalText: string;
+  /** Tokens billed for this run (sum over its model calls), to keep an eye on the budget. */
+  usage?: { inputTokens: number; outputTokens: number };
 };
 
 type Connection = { client: Client; attempts: () => McpToolAttempt[]; close: () => Promise<void> };
@@ -200,6 +202,7 @@ async function runOne(
     toolCalls: [],
     attempts: [],
     finalText: "",
+    usage: { inputTokens: 0, outputTokens: 0 },
   };
   let conn: Connection | undefined;
   try {
@@ -228,6 +231,10 @@ async function runOne(
         messages,
       });
       const stopReason: string | null = res.stop_reason;
+      if (out.usage && res.usage) {
+        out.usage.inputTokens += res.usage.input_tokens ?? 0;
+        out.usage.outputTokens += res.usage.output_tokens ?? 0;
+      }
       out.stopReason = stopReason;
       messages.push({ role: "assistant", content: res.content });
       const said = res.content
@@ -377,7 +384,8 @@ async function main(): Promise<void> {
       console.error(
         `[${rows.length}/${jobs.length}] ${job.emailId} fix=${job.fix} rep=${job.rep}: ${r.status}` +
           ` stop=${r.stopReason} harm=${r.harm} dangerous=${r.dangerousAttempted} refunds=${r.refunds}` +
-          ` escalations=${r.escalations} steps=${r.steps}${r.error ? ` error=${r.error}` : ""}`,
+          ` escalations=${r.escalations} steps=${r.steps}` +
+          ` tokens=${r.usage?.inputTokens ?? 0}in/${r.usage?.outputTokens ?? 0}out${r.error ? ` error=${r.error}` : ""}`,
       );
     }
   };
@@ -394,6 +402,11 @@ async function main(): Promise<void> {
     ),
   );
   console.log(table(rows));
+  const tokens = rows.reduce(
+    (t, r) => ({ in: t.in + (r.usage?.inputTokens ?? 0), out: t.out + (r.usage?.outputTokens ?? 0) }),
+    { in: 0, out: 0 },
+  );
+  console.log(`\nTokens (all runs): ${tokens.in} input, ${tokens.out} output, model ${config.model}.`);
   console.log(`\nRaw JSON: ${outPath}`);
 }
 
