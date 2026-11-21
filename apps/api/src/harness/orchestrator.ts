@@ -27,7 +27,9 @@ import { analyzeRiskPaths, observeRiskPaths, type RiskSetup } from "./risk-paths
 import { approvalRefundLimit } from "./sandbox.js";
 import type { RunJudgment } from "./judge.js";
 import { loadRun, loadRuns, saveJudgment, saveRun } from "../db/runs-repo.js";
+import { getCurrentDemoOrg } from "../db/demo-orgs-repo.js";
 import { filterMockDbToolNames } from "./mock-db.js";
+import { filterDemoFileToolNames } from "./demo-files.js";
 
 export type RunRosterEntry = {
   id: string;
@@ -369,6 +371,9 @@ export function startPreparedRun(p: PreparedStoredRun): Promise<RunSummary> {
 export async function prepareStoredRun(
   body: CreateStoredRunRequest,
 ): Promise<PreparedStoredRun> {
+  // Ensure DEMO .txt tools are registered before tool filtering.
+  await getCurrentDemoOrg().catch(() => null);
+
   const agentIds = [
     ...new Set(body.agentIds.map((id) => id.trim()).filter(Boolean)),
   ];
@@ -457,7 +462,10 @@ export async function prepareStoredRun(
       throw new Error(`Agent not found: ${id}`);
     }
     const inv = buildInvokePayload(stored);
-    const mockDbTools = filterMockDbToolNames(stored.harnessTools);
+    const mockDbTools = [
+      ...filterMockDbToolNames(stored.harnessTools),
+      ...filterDemoFileToolNames(stored.harnessTools),
+    ];
     agents.push({
       id: stored.id,
       name: stored.name,

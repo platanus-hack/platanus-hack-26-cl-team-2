@@ -344,3 +344,4 @@ export type BatchResults = {
 export * from "./prototypes/index.js";
 export * from "./vuln.js";
 export * from "./agent-origin.js";
+export * from "./demo-pipeline.js";

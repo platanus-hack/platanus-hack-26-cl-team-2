@@ -174,3 +174,32 @@ export const vulnEvalBatchResultsSqlite = sqliteTable(
   },
   (t) => [uniqueIndex("vuln_eval_batch_results_batch_agent_idx").on(t.batchId, t.agentId)],
 );
+
+export type DemoOrgFileRow = {
+  id: string;
+  filename: string;
+  content: string;
+  label: string;
+  readAgentIds: string[];
+  writeAgentIds: string[];
+};
+
+export const demoOrgsSqlite = sqliteTable("demo_orgs", {
+  id: text("id").primaryKey(),
+  companyName: text("company_name").notNull(),
+  context: text("context").notNull(),
+  agentIds: text("agent_ids", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .$defaultFn(() => []),
+  files: text("files", { mode: "json" })
+    .$type<DemoOrgFileRow[]>()
+    .notNull()
+    .$defaultFn(() => []),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});

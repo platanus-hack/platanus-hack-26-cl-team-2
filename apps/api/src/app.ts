@@ -21,12 +21,16 @@ import {
 import { agentRoutes } from "./agents/routes.js";
 import { readBatchResults } from "./batch-results.js";
 import { pingDatabase } from "./db/client.js";
+import { demoOrgRoutes } from "./demo-orgs/routes.js";
+import { demoPipelineRoutes } from "./demo-pipeline/routes.js";
 import { isRealMailFile, listEmailScenarios } from "./email/scenarios.js";
 import { enterpriseRoutes } from "./enterprise/routes.js";
 import { profileRoutes } from "./profiles/routes.js";
 import { vulnBatchRoutes } from "./vuln-batches/routes.js";
 import { refineModelId } from "./profiles/refine.js";
 import { MOCK_DB_CATALOG } from "./harness/mock-db.js";
+import { listDemoFileCatalog } from "./harness/demo-files.js";
+import { getCurrentDemoOrg } from "./db/demo-orgs-repo.js";
 import { ADMIN_HEADER } from "./security/admin.js";
 import { demoGuard, denyIfOverBudget, requestIp } from "./security/budget.js";
 import { errorMessage } from "./security/redact.js";
@@ -180,6 +184,8 @@ app.route("/api/profiles", profileRoutes);
 app.route("/api/agents", agentRoutes);
 app.route("/api/enterprise", enterpriseRoutes);
 app.route("/api/vuln-batches", vulnBatchRoutes);
+app.route("/api/demo-orgs", demoOrgRoutes);
+app.route("/api/demo-pipeline", demoPipelineRoutes);
 
 app.get("/api/runs", async (c) => c.json({ runs: await listRuns() }));
 
@@ -194,9 +200,26 @@ app.get("/api/email-scenarios", (c) => {
     errors: errors.map((e) => e.split(dir).join("email-harness/scenarios")),
   });
 });
-app.get("/api/mock-db", (c) => c.json({
-  databases: Object.entries(MOCK_DB_CATALOG).map(([tool, meta]) => ({ tool, file: meta.file, label: meta.label, sensitivity: meta.sensitivity, kind: "tool" })),
-}));
+app.get("/api/mock-db", async (c) => {
+  await getCurrentDemoOrg().catch(() => null);
+  const staticDbs = Object.entries(MOCK_DB_CATALOG).map(([tool, meta]) => ({
+    tool,
+    file: meta.file,
+    label: meta.label,
+    sensitivity: meta.sensitivity,
+    kind: "tool" as const,
+  }));
+  const demoDbs = listDemoFileCatalog().map((meta) => ({
+    tool: meta.readTool,
+    file: meta.file,
+    label: meta.label,
+    sensitivity: meta.sensitivity,
+    kind: "tool" as const,
+    readTool: meta.readTool,
+    writeTool: meta.writeTool,
+  }));
+  return c.json({ databases: [...staticDbs, ...demoDbs] });
+});
 
 /** Last published batch experiment (apps/api/results/batch-latest.json), or null if none yet. */
 app.get("/api/batch-results", (c) => {

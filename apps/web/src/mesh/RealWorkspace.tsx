@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { RunSummary, TraceEvent } from "@sandbox/shared";
 import {
   fetchRun,
+  isDemoStoredAgent,
   listAgents,
   listMockDatabases,
   listRuns,
@@ -13,6 +14,7 @@ import { Timeline } from "../Timeline";
 import { RunOutcomePanel } from "../RunOutcome";
 import { RunJudgmentPanel } from "../RunJudgment";
 import { AgentVulnPanel } from "./AgentVulnPanel";
+import { DemoPipelinePanel } from "./DemoPipelinePanel";
 import { EntityGlyph } from "./EntityGlyph";
 import {
   FALLBACK_MOCK_DBS,
@@ -70,11 +72,14 @@ export function RealWorkspace({
   hasApiKey,
   active = true,
   onOpenEvals,
+  scope = "all",
 }: {
   simulation: boolean;
   hasApiKey: boolean;
   active?: boolean;
   onOpenEvals?: (agentId: string) => void;
+  /** `demo` = solo agentes/DBs de la empresa DEMO guardada. */
+  scope?: "all" | "demo";
 }) {
   /** Run shown by the lab below: its result and trace are not repeated above it. */
   const [labRunId, setLabRunId] = useState("");
@@ -82,7 +87,9 @@ export function RealWorkspace({
   const labSeen = useRef(false);
   if (simulation) labSeen.current = true;
   const [agents, setAgents] = useState<StoredAgent[]>([]);
-  const [mockDbs, setMockDbs] = useState<MockDbInfo[]>(FALLBACK_MOCK_DBS);
+  const [mockDbs, setMockDbs] = useState<MockDbInfo[]>(
+    scope === "demo" ? [] : FALLBACK_MOCK_DBS,
+  );
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const selectedRunId = useObservedRun();
   const runId = resolveObservedRun(selectedRunId, runs);
@@ -105,19 +112,35 @@ export function RealWorkspace({
         const [saved, history, dbs] = await Promise.all([
           listAgents(),
           listRuns(),
-          listMockDatabases().catch(() => ({ databases: FALLBACK_MOCK_DBS })),
+          listMockDatabases().catch(() => ({
+            databases: scope === "demo" ? [] : FALLBACK_MOCK_DBS,
+          })),
         ]);
         if (!cancelled) {
-          setAgents(saved);
-          setRuns(history);
-          setMockDbs(
-            dbs.databases.map((db) => ({
-              tool: db.tool,
-              file: db.file,
-              label: db.label,
-              sensitivity: db.sensitivity,
-            })),
-          );
+          const scopedAgents =
+            scope === "demo" ? saved.filter(isDemoStoredAgent) : saved;
+          const demoIds = new Set(scopedAgents.map((agent) => agent.id));
+          const mappedDbs: MockDbInfo[] = dbs.databases.map((db) => ({
+            tool: db.tool,
+            file: db.file,
+            label: db.label,
+            sensitivity: db.sensitivity,
+            readTool: db.readTool,
+            writeTool: db.writeTool,
+          }));
+          const scopedDbs =
+            scope === "demo"
+              ? mappedDbs.filter((db) => db.sensitivity === "demo")
+              : mappedDbs;
+          const scopedRuns =
+            scope === "demo"
+              ? history.filter((run) =>
+                  run.agents.some((participant) => demoIds.has(participant.id)),
+                )
+              : history;
+          setAgents(scopedAgents);
+          setRuns(scopedRuns);
+          setMockDbs(scopedDbs);
           setError("");
         }
       } catch (failure) {
@@ -128,7 +151,7 @@ export function RealWorkspace({
     void refresh();
     const interval = window.setInterval(() => void refresh(), 5000);
     return () => { cancelled = true; window.clearInterval(interval); };
-  }, [refreshKey, active]);
+  }, [refreshKey, active, scope]);
 
   useEffect(() => {
     let cancelled = false;
@@ -235,27 +258,61 @@ export function RealWorkspace({
   );
 
   return <>
-    <div className="mesh-callout">DATOS REALES · Flecha DB→agente = READ; agente→DB = WRITE (ambas = R/W). Teal = traza observada. Las ejecuciones y trazas se conservan en la base de datos.</div>
+    <div className="mesh-callout">
+      {scope === "demo"
+        ? "DEMO · Mismos mapas/ACL/evals que Simulaciones, filtrados a tu empresa DEMO. Flecha DB→agente = READ; agente→DB = WRITE."
+        : "DATOS REALES · Flecha DB→agente = READ; agente→DB = WRITE (ambas = R/W). Teal = traza observada. Las ejecuciones y trazas se conservan en la base de datos."}
+    </div>
     <div className="mesh-source"><label>Ejecución observada <select value={runId} onChange={event => { selectObservedRun(event.target.value); setSelectedId(""); }}><option value="">Agentes + permisos mock-DB (sin traza)</option>{runs.map(run => <option key={run.id} value={run.id}>{new Date(run.createdAt).toLocaleString("es-CL")} · {statusLabels[run.status] ?? run.status} · {run.id}</option>)}</select></label><button className="btn ghost" onClick={() => setRefreshKey(value => value + 1)}>↻ Actualizar</button></div>
     {snapshot && connections.length === 0 && <p className="mesh-callout" role="status">Esta ejecución tiene {events.length} eventos, pero aún no registra mensajes enviados ni llamadas a herramientas. Los participantes por sí solos no generan conexiones.</p>}
     {!runId && runs.length > 0 && <p className="mesh-callout">Estás viendo solo la configuración (ACL mock-DB). Selecciona una ejecución para ver trazas o <button className="btn ghost" onClick={() => selectObservedRun(null)}>Ver la más reciente</button></p>}
     {(error || runError) && <p className="error" role="alert">{error || runError}</p>}
-    <div className="mesh-stats">{[["Agentes", agents.length], ["Mock DBs", mockDbs.length], ["Permisos ACL", aclEdges.length], ["Relaciones observadas", connections.length]].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong><small>Mapa de organización</small></div>)}</div>
-    {simulation && <div className="mesh-callout">Configura una ejecución real en el laboratorio de abajo. Luego selecciónala aquí para explorar las comunicaciones, llamadas a herramientas y resultados medidos. Ejecutar agentes consume créditos de la API.</div>}
-    <div className="mesh-organization"><section className="mesh-graph-card"><div className="mesh-card-header"><div><h2>Mapa de organización y accesos</h2><span>{snapshot ? `${events.length} eventos · ${statusLabels[snapshot.run.status] ?? snapshot.run.status}` : `${aclEdges.length} flechas ACL · ${agents.length} agentes`}</span></div><span className="mesh-pill">{snapshot ? "Observado + ACL" : "ACL configurado"}</span></div><div className="mesh-filters"><input aria-label="Buscar agentes o bases de datos" placeholder="Buscar agentes, DBs o tools…" value={query} onChange={event => setQuery(event.target.value)} /></div><div className="mesh-graph-scroll">{visible.length ? <svg className="mesh-graph" viewBox={`0 0 1040 ${graphHeight}`} aria-label="Grafo de organización, permisos y trazas"><defs><marker id="real-arrow" markerWidth="8" markerHeight="8" refX="29" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#5eead4" /></marker><marker id="acl-read-arrow" markerWidth="8" markerHeight="8" refX="29" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#38bdf8" /></marker><marker id="acl-write-arrow" markerWidth="8" markerHeight="8" refX="29" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#c084fc" /></marker></defs>{aclEdges.map(edge => { const start = visible.find(node => node.id === edge.from); const end = visible.find(node => node.id === edge.to); if (!start || !end) return null; const pts = offsetEdgePoints(start.x, start.y, end.x, end.y, edge.access); return <line key={`acl:${edge.access}:${edge.from}:${edge.to}`} className={`acl-edge acl-edge-${edge.access}`} x1={pts.x1} y1={pts.y1} x2={pts.x2} y2={pts.y2} markerEnd={`url(#acl-${edge.access}-arrow)`}><title>{edge.label}</title></line>; })}{connections.map(connection => { const start = visible.find(node => node.id === connection.from); const end = visible.find(node => node.id === connection.to); return start && end ? <line key={`${connection.from}:${connection.to}:${connection.label}`} className="trace-edge" x1={start.x} y1={start.y} x2={end.x} y2={end.y} markerEnd="url(#real-arrow)"><title>{connection.label}: {connection.count} eventos</title></line> : null; })}{visible.map(node => <g key={node.id} role="button" tabIndex={0} aria-label={`Explorar ${node.name}`} aria-pressed={node.id === selectedId} className={`mesh-node ${node.kind} ${node.id === selectedId ? "selected" : ""}`} transform={`translate(${node.x},${node.y})`} onClick={() => setSelectedId(node.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(node.id); } }}><circle className="node-halo" r="49" /><circle className="node-disc" r="38" /><EntityGlyph kind={node.kind} /><text textAnchor="middle" y="65">{node.name.length > 22 ? `${node.name.slice(0, 20)}…` : node.name}</text><title>{node.role ?? node.name}</title></g>)}</svg> : <div className="mesh-empty">{loading ? "Cargando agentes…" : query ? "Sin coincidencias." : "Aún no hay agentes. Crea y guarda perfiles en el creador de agentes o empresas."}</div>}</div><footer className="mesh-legend"><span>● Agente</span><span>▣ Mock DB</span><span className="mesh-legend-read">→ READ (DB→agente)</span><span className="mesh-legend-write">→ WRITE (agente→DB)</span><span className="mesh-legend-trace">→ Traza</span></footer></section>
+    <div className="mesh-stats">{[["Agentes", agents.length], ["Mock DBs", mockDbs.length], ["Permisos ACL", aclEdges.length], ["Relaciones observadas", connections.length]].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong><small>{scope === "demo" ? "Empresa DEMO" : "Mapa de organización"}</small></div>)}</div>
+    {simulation && scope !== "demo" && <div className="mesh-callout">Configura una ejecución real en el laboratorio de abajo. Luego selecciónala aquí para explorar las comunicaciones, llamadas a herramientas y resultados medidos. Ejecutar agentes consume créditos de la API.</div>}
+    {simulation && scope === "demo" && <div className="mesh-callout">Pipeline DEMO · Paso 1 aprende tendencias de comunicación; Paso 2 itera ataques en cadena con pausa por iteración. Las runs aparecen en el selector de arriba.</div>}
+    <div className="mesh-organization"><section className="mesh-graph-card"><div className="mesh-card-header"><div><h2>Mapa de organización y accesos</h2><span>{snapshot ? `${events.length} eventos · ${statusLabels[snapshot.run.status] ?? snapshot.run.status}` : `${aclEdges.length} flechas ACL · ${agents.length} agentes`}</span></div><span className="mesh-pill">{snapshot ? "Observado + ACL" : scope === "demo" ? "DEMO" : "ACL configurado"}</span></div><div className="mesh-filters"><input aria-label="Buscar agentes o bases de datos" placeholder="Buscar agentes, DBs o tools…" value={query} onChange={event => setQuery(event.target.value)} /></div><div className="mesh-graph-scroll">{visible.length ? <svg className="mesh-graph" viewBox={`0 0 1040 ${graphHeight}`} aria-label="Grafo de organización, permisos y trazas"><defs><marker id="real-arrow" markerWidth="8" markerHeight="8" refX="29" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#5eead4" /></marker><marker id="acl-read-arrow" markerWidth="8" markerHeight="8" refX="29" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#38bdf8" /></marker><marker id="acl-write-arrow" markerWidth="8" markerHeight="8" refX="29" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#c084fc" /></marker></defs>{aclEdges.map(edge => { const start = visible.find(node => node.id === edge.from); const end = visible.find(node => node.id === edge.to); if (!start || !end) return null; const pts = offsetEdgePoints(start.x, start.y, end.x, end.y, edge.access); return <line key={`acl:${edge.access}:${edge.from}:${edge.to}`} className={`acl-edge acl-edge-${edge.access}`} x1={pts.x1} y1={pts.y1} x2={pts.x2} y2={pts.y2} markerEnd={`url(#acl-${edge.access}-arrow)`}><title>{edge.label}</title></line>; })}{connections.map(connection => { const start = visible.find(node => node.id === connection.from); const end = visible.find(node => node.id === connection.to); return start && end ? <line key={`${connection.from}:${connection.to}:${connection.label}`} className="trace-edge" x1={start.x} y1={start.y} x2={end.x} y2={end.y} markerEnd="url(#real-arrow)"><title>{connection.label}: {connection.count} eventos</title></line> : null; })}{visible.map(node => <g key={node.id} role="button" tabIndex={0} aria-label={`Explorar ${node.name}`} aria-pressed={node.id === selectedId} className={`mesh-node ${node.kind} ${node.id === selectedId ? "selected" : ""}`} transform={`translate(${node.x},${node.y})`} onClick={() => setSelectedId(node.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(node.id); } }}><circle className="node-halo" r="49" /><circle className="node-disc" r="38" /><EntityGlyph kind={node.kind} /><text textAnchor="middle" y="65">{node.name.length > 22 ? `${node.name.slice(0, 20)}…` : node.name}</text><title>{node.role ?? node.name}</title></g>)}</svg> : <div className="mesh-empty">{loading ? "Cargando agentes…" : query ? "Sin coincidencias." : scope === "demo" ? "No hay empresa DEMO. Guarda una en DEMO mode." : "Aún no hay agentes. Crea y guarda perfiles en el creador de agentes o empresas."}</div>}</div><footer className="mesh-legend"><span>● Agente</span><span>▣ Mock DB</span><span className="mesh-legend-read">→ READ (DB→agente)</span><span className="mesh-legend-write">→ WRITE (agente→DB)</span><span className="mesh-legend-trace">→ Traza</span></footer></section>
     <aside className="mesh-profile"><div className="mesh-profile-body">{selected ? <><span className="mesh-label">{selected.kind === "agent" ? "Agente real" : selected.kind === "database" ? "Mock database" : "Herramienta observada"}</span><h2>{selected.name}</h2><h3>{selected.kind === "database" ? "Descripción" : "Rol"}</h3><p>{selected.role ?? saved?.title ?? participant?.role ?? "Nodo del grafo."}</p>{selected.kind === "database" ? <><h3>Tool de acceso</h3><div className="mesh-tags">{(selected.tools ?? []).map(tool => <code key={tool}>{tool}</code>)}</div><h3>Permisos por agente</h3>{selectedAcl.length ? (() => { const byAgent = new Map<string, Set<string>>(); for (const edge of selectedAcl) { const agentId = edge.access === "read" ? edge.to : edge.from; const set = byAgent.get(agentId) ?? new Set(); set.add(edge.access); byAgent.set(agentId, set); } return [...byAgent.entries()].map(([agentId, access]) => { const agent = graphNodes.find(node => node.id === agentId); const tag = access.has("read") && access.has("write") ? "R/W" : access.has("read") ? "READ" : "WRITE"; return <button className="mesh-related" key={agentId} type="button" onClick={() => setSelectedId(agentId)}>{agent?.name ?? agentId}<span>{tag}</span></button>; }); })() : <p>Ningún agente tiene esta tool en harnessTools.</p>}</> : <><h3>Capacidades configuradas</h3><div className="mesh-tags">{saved?.harnessTools?.length ? saved.harnessTools.map(tool => <code key={tool}>{tool}</code>) : <p>Sin tools en perfil.</p>}</div><h3>Permisos mock-DB</h3>{selectedAcl.length ? (() => { const byDb = new Map<string, Set<string>>(); for (const edge of selectedAcl) { const dbId = edge.access === "read" ? edge.from : edge.to; const set = byDb.get(dbId) ?? new Set(); set.add(edge.access); byDb.set(dbId, set); } return [...byDb.entries()].map(([dbId, access]) => { const db = graphNodes.find(node => node.id === dbId); const tag = access.has("read") && access.has("write") ? "R/W" : access.has("read") ? "READ" : "WRITE"; return <button className="mesh-related" key={dbId} type="button" onClick={() => setSelectedId(dbId)}>{db?.name ?? dbId}<span>{tag}</span></button>; }); })() : <p>Sin acceso a mock DBs.</p>}<h3>Conexiones con evidencia</h3>{connections.filter(connection => connection.from === selected.id || connection.to === selected.id).map(connection => <div className="mesh-evidence" key={`${connection.from}:${connection.to}`}><span>{graphNodes.find(node => node.id === connection.from)?.name} → {graphNodes.find(node => node.id === connection.to)?.name}</span><small>{connection.label} · {connection.count} eventos · {new Date(connection.event.ts).toLocaleTimeString("es-CL")}</small><code>{connection.event.id}</code></div>)}</>}{selected.kind === "agent" && saved && onOpenEvals ? (
                   <AgentVulnPanel agentId={saved.id} onOpenEvals={onOpenEvals} />
                 ) : selected.kind === "agent" ? (
                   <>
                     <h3>Vulnerabilidad (evals)</h3>
                     <p className="mesh-vuln-muted">
-                      {saved
-                        ? "Usa Ir a evals cuando el mapa esté en datos reales."
-                        : "Este participante no está en el catálogo guardado; guarda el agente para correr evals."}
+                      Este participante no está en el catálogo guardado; guarda el agente para
+                      correr evals.
                     </p>
                   </>
                 ) : null}</> : <div className="mesh-empty">Selecciona un agente o una mock DB para ver permisos.</div>}</div></aside></div>
     {snapshot && !(simulation && runId === labRunId) && <><RunOutcomePanel evaluation={snapshot.evaluation} /><RunJudgmentPanel judgment={snapshot.judgment} loading={false} error={null} /><section className="panel"><h2>Evidencia de la ejecución</h2><Timeline events={events} agentIndex={agentIndex} /></section></>}
-    {labSeen.current && <div style={{ display: simulation ? "contents" : "none" }}><LabPage active={active && simulation} hasApiKey={hasApiKey} onRunCreated={created => { setLabRunId(created.id); setRuns(previous => [created, ...previous.filter(run => run.id !== created.id)]); selectObservedRun(created.id); setSelectedId(""); }} /></div>}
+    {simulation && scope === "demo" ? (
+      <DemoPipelinePanel
+        hasApiKey={hasApiKey}
+        onRunCreated={(created) => {
+          setLabRunId(created.id);
+          setRuns((previous) => [
+            created,
+            ...previous.filter((run) => run.id !== created.id),
+          ]);
+          selectObservedRun(created.id);
+          setSelectedId("");
+        }}
+      />
+    ) : labSeen.current ? (
+      <div style={{ display: simulation ? "contents" : "none" }}>
+        <LabPage
+          active={active && simulation}
+          hasApiKey={hasApiKey}
+          scope={scope}
+          onRunCreated={(created) => {
+            setLabRunId(created.id);
+            setRuns((previous) => [
+              created,
+              ...previous.filter((run) => run.id !== created.id),
+            ]);
+            selectObservedRun(created.id);
+            setSelectedId("");
+          }}
+        />
+      </div>
+    ) : null}
   </>;
 }

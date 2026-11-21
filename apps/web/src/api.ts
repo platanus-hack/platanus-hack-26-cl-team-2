@@ -135,7 +135,19 @@ export type MockDbSummary = {
   label: string;
   sensitivity: string;
   kind: string;
+  readTool?: string;
+  writeTool?: string;
 };
+
+export function isDemoStoredAgent(agent: {
+  id: string;
+  orgHints?: { notes?: string } | null;
+}): boolean {
+  return (
+    agent.id.startsWith("demo_agent_") ||
+    Boolean(agent.orgHints?.notes?.includes("mesh:demo-org:"))
+  );
+}
 
 export async function listMockDatabases(): Promise<{ databases: MockDbSummary[] }> {
   const res = await fetch("/api/mock-db");
@@ -498,6 +510,222 @@ export async function generateEnterprise(body: {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "Falló la generación de la empresa");
   return data;
+}
+
+export type DemoOrgFile = {
+  id: string;
+  filename: string;
+  content: string;
+  label: string;
+  readAgentIds: string[];
+  writeAgentIds: string[];
+};
+
+export type DemoOrg = {
+  id: string;
+  companyName: string;
+  context: string;
+  agentIds: string[];
+  files: DemoOrgFile[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function saveDemoOrg(body: {
+  companyName?: string;
+  context: string;
+  agents: Array<{ name: string; prompt: string }>;
+  files?: Array<{
+    filename: string;
+    content: string;
+    label?: string;
+    readAgentNames: string[];
+    writeAgentNames: string[];
+  }>;
+}): Promise<{ org: DemoOrg; agents: StoredAgent[] }> {
+  const res = await fetch("/api/demo-orgs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "No se pudo guardar la empresa DEMO");
+  return data as { org: DemoOrg; agents: StoredAgent[] };
+}
+
+/** @deprecated alias — saves overwrite the current DEMO org */
+export const createDemoOrg = saveDemoOrg;
+
+export async function getCurrentDemoOrg(): Promise<{
+  org: DemoOrg | null;
+  agents: StoredAgent[];
+}> {
+  const res = await fetch("/api/demo-orgs/current");
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "No se pudo cargar la empresa DEMO");
+  return data as { org: DemoOrg | null; agents: StoredAgent[] };
+}
+
+export async function listDemoOrgs(): Promise<DemoOrg[]> {
+  const res = await fetch("/api/demo-orgs");
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "No se pudieron listar las empresas DEMO");
+  return data.orgs as DemoOrg[];
+}
+
+export async function getDemoOrg(id: string): Promise<DemoOrg> {
+  const res = await fetch(`/api/demo-orgs/${id}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Empresa DEMO no encontrada");
+  return data.org as DemoOrg;
+}
+
+export async function patchDemoOrgContext(context: string): Promise<{
+  org: DemoOrg;
+  agents: StoredAgent[];
+}> {
+  const res = await fetch("/api/demo-orgs/current/context", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ context }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "No se pudo actualizar el contexto DEMO");
+  return data as { org: DemoOrg; agents: StoredAgent[] };
+}
+
+export type DemoBusinessScenarioDto = {
+  title: string;
+  businessProblem: string;
+  seedAgentId: string;
+  scenarioHint?: string;
+  peerMessage?: { fromAgentId: string; toAgentId: string; body: string };
+  rationale: string;
+};
+
+export type DemoCommPatternsDto = {
+  edges: Array<{
+    from: string;
+    to: string;
+    about: string;
+    frequencyHint: string;
+  }>;
+  notes: string;
+};
+
+export type DemoChainActionDto = {
+  kind: "scenarioHint" | "peerMessage";
+  label: string;
+  seedAgentId: string;
+  scenarioHint?: string;
+  peerMessage?: { fromAgentId: string; toAgentId: string; body: string };
+};
+
+export type DemoChainAttackDesignDto = {
+  attackSurface: string;
+  actions: DemoChainActionDto[];
+  successCriteria: string;
+  rationale: string;
+};
+
+export type DemoChainEvalDto = {
+  empty: boolean;
+  surface: string;
+  failuresAmplifications: string[];
+  actionableRemediations: string[];
+  scoreSummary: string;
+};
+
+export type DemoChainDiagnosisDto = {
+  whyEmpty: string;
+  llmInteractionReview: string;
+  improvedHackPrompt: string;
+};
+
+async function demoPipelinePost<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`/api/demo-pipeline${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? `Falló ${path}`);
+  return data as T;
+}
+
+export async function designDemoCommScenario(body?: {
+  avoidTitles?: string[];
+}): Promise<{
+  scenario: DemoBusinessScenarioDto;
+  agents: StoredAgent[];
+  companyName: string;
+  context: string;
+  model: string;
+}> {
+  return demoPipelinePost("/comm-learn/design", body);
+}
+
+export async function analyzeDemoCommPatterns(runId: string): Promise<{
+  patterns: DemoCommPatternsDto;
+  tracePreview: string;
+  model: string;
+}> {
+  return demoPipelinePost("/comm-learn/analyze", { runId });
+}
+
+export async function finalizeDemoCommLearn(
+  patternsBatches: DemoCommPatternsDto[],
+): Promise<{
+  org: DemoOrg;
+  agents: StoredAgent[];
+  trendsBlock: string;
+  trendsMarkdown: string;
+}> {
+  return demoPipelinePost("/comm-learn/finalize", { patternsBatches });
+}
+
+export async function designDemoChainAttack(body?: {
+  hackPrompt?: string;
+}): Promise<{
+  design: DemoChainAttackDesignDto;
+  model: string;
+  hackPrompt: string;
+}> {
+  return demoPipelinePost("/chain-attack/design", body);
+}
+
+export async function evaluateDemoChainAttack(body: {
+  design: DemoChainAttackDesignDto;
+  runIds: string[];
+}): Promise<{ evaluation: DemoChainEvalDto; model: string; traces: string }> {
+  return demoPipelinePost("/chain-attack/evaluate", body);
+}
+
+export async function diagnoseDemoChainAttack(body: {
+  design: DemoChainAttackDesignDto;
+  evaluation: DemoChainEvalDto;
+  llmLog: string;
+  hackPrompt?: string;
+}): Promise<{ diagnosis: DemoChainDiagnosisDto; model: string }> {
+  return demoPipelinePost("/chain-attack/diagnose", body);
+}
+
+/** Poll until run completes or fails. */
+export async function waitForStoredRun(
+  runId: string,
+  opts?: { timeoutMs?: number; intervalMs?: number },
+): Promise<Awaited<ReturnType<typeof fetchRun>>> {
+  const timeoutMs = opts?.timeoutMs ?? 180_000;
+  const intervalMs = opts?.intervalMs ?? 1500;
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const data = await fetchRun(runId);
+    if (data.run.status === "completed" || data.run.status === "failed") {
+      return data;
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(`Timeout esperando run ${runId}`);
 }
 
 /** Last published batch experiment, or null if none has been published yet. */

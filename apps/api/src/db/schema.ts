@@ -5,4 +5,5 @@ export {
   agentVulnAssessments,
   vulnEvalBatches,
   vulnEvalBatchResults,
+  demoOrgs,
 } from "./schema.pg.js";

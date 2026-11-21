@@ -5,6 +5,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { app } from "./app.js";
 import { config } from "./config.js";
 import { pingDatabase } from "./db/client.js";
+import { getCurrentDemoOrg } from "./db/demo-orgs-repo.js";
 import { errorMessage } from "./security/redact.js";
 
 /**
@@ -27,6 +28,9 @@ if (existsSync(resolve(webDist, "index.html"))) {
 
 serve({ fetch: app.fetch, port: config.port }, async (info) => {
   const db = await pingDatabase();
+  if (db.ok) {
+    await getCurrentDemoOrg().catch(() => null);
+  }
   console.log(`[api] http://localhost:${info.port}`);
   console.log(
     `[api] ANTHROPIC_API_KEY ${config.anthropicApiKey ? "loaded" : "MISSING — set .env"} · ${

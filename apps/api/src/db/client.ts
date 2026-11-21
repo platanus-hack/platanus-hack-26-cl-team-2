@@ -142,11 +142,27 @@ function ensureSqliteTables(db: Database.Database): void {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS vuln_eval_batch_results_batch_agent_idx
       ON vuln_eval_batch_results (batch_id, agent_id);
+    CREATE TABLE IF NOT EXISTS demo_orgs (
+      id TEXT PRIMARY KEY NOT NULL,
+      company_name TEXT NOT NULL,
+      context TEXT NOT NULL,
+      agent_ids TEXT NOT NULL DEFAULT '[]',
+      files TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `);
   // Databases made before agents.origin existed: add the column (CREATE TABLE IF NOT EXISTS skips it).
   const agentColumns = db.prepare("PRAGMA table_info(agents)").all() as Array<{ name: string }>;
   if (!agentColumns.some((c) => c.name === "origin")) {
     db.exec("ALTER TABLE agents ADD COLUMN origin TEXT");
+  }
+  try {
+    db.exec(
+      `ALTER TABLE demo_orgs ADD COLUMN files TEXT NOT NULL DEFAULT '[]'`,
+    );
+  } catch {
+    // column already exists
   }
 }
 

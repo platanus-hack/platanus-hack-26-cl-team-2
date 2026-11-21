@@ -167,3 +167,33 @@ export const vulnEvalBatchResults = pgTable(
   },
   (t) => [uniqueIndex("vuln_eval_batch_results_batch_agent_idx").on(t.batchId, t.agentId)],
 );
+
+export type DemoOrgFileRow = {
+  id: string;
+  filename: string;
+  content: string;
+  label: string;
+  readAgentIds: string[];
+  writeAgentIds: string[];
+};
+
+/** DEMO mode company snapshot + agent ids created from prompts. */
+export const demoOrgs = pgTable("demo_orgs", {
+  id: text("id").primaryKey(),
+  companyName: text("company_name").notNull(),
+  context: text("context").notNull(),
+  agentIds: jsonb("agent_ids")
+    .$type<string[]>()
+    .notNull()
+    .$defaultFn(() => []),
+  files: jsonb("files")
+    .$type<DemoOrgFileRow[]>()
+    .notNull()
+    .$defaultFn(() => []),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});

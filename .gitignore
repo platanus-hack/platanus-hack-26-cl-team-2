@@ -11,5 +11,7 @@ coverage
 *.sqlite
 *.sqlite-*
 apps/api/data/
+apps/api/mock-db/demo/
 *.tsbuildinfo
 .claude/worktrees/
+.pnpm-store/
