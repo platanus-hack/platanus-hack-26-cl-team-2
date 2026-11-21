@@ -1,0 +1,193 @@
+import Anthropic from "@anthropic-ai/sdk";
+import type { AgentSpec } from "@sandbox/shared";
+import { config } from "../config.js";
+import { messageBus } from "../message-bus.js";
+import { traceBus } from "../events.js";
+import { AGENT_TOOLS } from "./tools.js";
+
+export type AgentSession = {
+  agent: AgentSpec;
+  peer: AgentSpec;
+  messages: Anthropic.MessageParam[];
+  done: boolean;
+  turnsUsed: number;
+};
+
+type ToolHandlerCtx = {
+  runId: string;
+  session: AgentSession;
+  turn: number;
+};
+
+function systemPrompt(agent: AgentSpec, peer: AgentSpec): string {
+  return [
+    `You are "${agent.name}" (id: ${agent.id}).`,
+    `Your role: ${agent.role}`,
+    `Your goal: ${agent.goal}`,
+    "",
+    `You are collaborating with peer agent "${peer.name}" (id: ${peer.id}).`,
+    `Their role: ${peer.role}`,
+    `Their goal: ${peer.goal}`,
+    "",
+    "Rules:",
+    "- You are a real autonomous agent. Think carefully, then act with tools.",
+    "- Use send_message to talk to your peer. Use their exact id.",
+    "- Use read_inbox to check for replies before assuming silence.",
+    "- Prefer short, concrete messages.",
+    "- Call done when your goal is satisfied or blocked.",
+    "- Do not invent tool results. Only trust tool outputs.",
+  ].join("\n");
+}
+
+function asText(blocks: Anthropic.ContentBlock[]): string {
+  return blocks
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+}
+
+export function createSession(agent: AgentSpec, peer: AgentSpec): AgentSession {
+  return {
+    agent,
+    peer,
+    messages: [
+      {
+        role: "user",
+        content: `Begin. Coordinate with ${peer.name} (${peer.id}) as needed to achieve your goal. Check your inbox when waiting on them.`,
+      },
+    ],
+    done: false,
+    turnsUsed: 0,
+  };
+}
+
+async function handleTool(
+  tool: Anthropic.ToolUseBlock,
+  ctx: ToolHandlerCtx,
+): Promise<Record<string, unknown>> {
+  const { runId, session, turn } = ctx;
+  const { agent, peer } = session;
+
+  if (tool.name === "send_message") {
+    const input = tool.input as { to_agent_id?: string; body?: string };
+    const to = input.to_agent_id?.trim() ?? "";
+    const body = input.body?.trim() ?? "";
+    if (!to || !body) {
+      return { ok: false, error: "to_agent_id and body are required" };
+    }
+    if (to !== peer.id) {
+      return {
+        ok: false,
+        error: `Unknown peer id "${to}". Only "${peer.id}" is available.`,
+      };
+    }
+    const msg = messageBus.send(runId, agent.id, to, body);
+    traceBus.emit(runId, "agent.message_sent", { message: msg }, agent.id);
+    traceBus.emit(runId, "agent.message_received", { message: msg }, to);
+    return { ok: true, messageId: msg.id, deliveredTo: to };
+  }
+
+  if (tool.name === "read_inbox") {
+    const inbox = messageBus.readInbox(runId, agent.id);
+    return {
+      ok: true,
+      count: inbox.length,
+      messages: inbox.map((m) => ({
+        id: m.id,
+        from: m.fromAgentId,
+        body: m.body,
+        ts: m.ts,
+      })),
+    };
+  }
+
+  if (tool.name === "done") {
+    const input = tool.input as { summary?: string };
+    const summary = input.summary?.trim() || "No summary provided.";
+    session.done = true;
+    traceBus.emit(runId, "agent.done", { summary, turn }, agent.id);
+    return { ok: true, finished: true, summary };
+  }
+
+  return { ok: false, error: `Unknown tool: ${tool.name}` };
+}
+
+/** One real Claude harness turn: model call → optional tools → results. */
+export async function runOneTurn(
+  runId: string,
+  session: AgentSession,
+  client: Anthropic,
+  maxTurns: number,
+): Promise<void> {
+  if (session.done) return;
+
+  const turn = session.turnsUsed + 1;
+  session.turnsUsed = turn;
+
+  const { agent } = session;
+  traceBus.emit(runId, "agent.turn.started", { turn, maxTurns }, agent.id);
+
+  const response = await client.messages.create({
+    model: config.model,
+    max_tokens: 1024,
+    system: systemPrompt(session.agent, session.peer),
+    tools: AGENT_TOOLS,
+    messages: session.messages,
+  });
+
+  const thought = asText(response.content);
+  if (thought) {
+    traceBus.emit(runId, "agent.thought", { turn, text: thought }, agent.id);
+  }
+
+  session.messages.push({ role: "assistant", content: response.content });
+
+  const toolUses = response.content.filter(
+    (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+  );
+
+  if (toolUses.length === 0) {
+    session.messages.push({
+      role: "user",
+      content:
+        "You did not call a tool. Either send_message / read_inbox to progress, or call done with a summary.",
+    });
+    return;
+  }
+
+  const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+  for (const tool of toolUses) {
+    traceBus.emit(
+      runId,
+      "agent.tool_call",
+      { turn, name: tool.name, input: tool.input, toolUseId: tool.id },
+      agent.id,
+    );
+
+    let resultPayload: Record<string, unknown>;
+    try {
+      resultPayload = await handleTool(tool, { runId, session, turn });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      resultPayload = { ok: false, error: message };
+      traceBus.emit(runId, "agent.error", { turn, error: message }, agent.id);
+    }
+
+    traceBus.emit(
+      runId,
+      "agent.tool_result",
+      { turn, name: tool.name, toolUseId: tool.id, result: resultPayload },
+      agent.id,
+    );
+
+    toolResults.push({
+      type: "tool_result",
+      tool_use_id: tool.id,
+      content: JSON.stringify(resultPayload),
+    });
+  }
+
+  session.messages.push({ role: "user", content: toolResults });
+}
