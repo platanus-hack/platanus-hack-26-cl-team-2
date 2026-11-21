@@ -18,6 +18,7 @@ import {
 } from "../api";
 import { KnobsForm } from "./KnobsForm";
 import { ProfileEditor } from "./ProfileEditor";
+import { EXTERNAL_PERSONAS, composeExternalProfile, type ExternalPersona } from "@sandbox/shared";
 
 const DEFAULT_KNOBS: AgentKnobs = {
   seniority: "mid",
@@ -45,6 +46,9 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [ctxName, setCtxName] = useState("policy.md");
   const [ctxContent, setCtxContent] = useState("");
+  const [actorType, setActorType] = useState("internal");
+  const [persona, setPersona] = useState<ExternalPersona>("cooperative");
+  const [objective, setObjective] = useState("");
 
   const refreshAgents = useCallback(async () => {
     if (!hasDatabase) {
@@ -78,6 +82,11 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
     setNotice(null);
     setStored(null);
     try {
+      if (actorType === "external") {
+        setProfile(composeExternalProfile({ persona, knobs, name: name.trim() || undefined, companyName: companyName.trim() || undefined, objective }));
+        setNotice("Actor externo generado sin consumo de IA. Revisa el perfil y guárdalo; luego selecciónalo en una simulación junto a los agentes internos.");
+        return;
+      }
       const result = await composeProfile({
         areaId,
         knobs,
@@ -220,7 +229,16 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
         </p>
       ) : null}
 
-      <div className="area-grid">
+      <div className="controls" role="group" aria-label="Tipo de participante">
+        <button className={actorType === "internal" ? "btn" : "btn ghost"} aria-pressed={actorType === "internal"} disabled={busy} onClick={() => setActorType("internal")}>Agente interno</button>
+        <button className={actorType === "external" ? "btn" : "btn ghost"} aria-pressed={actorType === "external"} disabled={busy} onClick={() => setActorType("external")}>Cliente o atacante simulado</button>
+      </div>
+      {actorType === "external" ? <>
+        <p className="hint">Actores externos para probar respuestas, límites y escalamiento. No representan empleados ni reciben autoridad interna. Se guardan en el catálogo de soporte con su rol externo explícito.</p>
+        <div className="area-grid">{Object.entries(EXTERNAL_PERSONAS).map(([id, preset]) => <button key={id} type="button" className={`area-card ${persona === id ? "active" : ""}`} aria-pressed={persona === id} disabled={busy} onClick={() => setPersona(id as ExternalPersona)}><strong>{preset.label}</strong><span>{preset.description}</span></button>)}</div>
+        <label className="block-label">Objetivo de la prueba (opcional)<textarea value={objective} onChange={event => setObjective(event.target.value)} disabled={busy} maxLength={2000} placeholder={EXTERNAL_PERSONAS[persona].goal} /></label>
+        <div className="knobs-form"><label>Nombre del participante<input value={name} onChange={event => setName(event.target.value)} maxLength={64} disabled={busy} placeholder={EXTERNAL_PERSONAS[persona].label} /></label><label>Empresa con la que interactúa<input value={companyName} onChange={event => setCompanyName(event.target.value)} disabled={busy} maxLength={120} /></label><label>Iniciativa<select value={knobs.proactivity} onChange={event => setKnobs({ ...knobs, proactivity: event.target.value as AgentKnobs["proactivity"] })} disabled={busy}><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option></select></label></div>
+      </> : <><div className="area-grid">
         {areas.map((area) => (
           <button
             key={area.id}
@@ -252,6 +270,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
         onCompanyChange={setCompanyName}
         disabled={busy}
       />
+      </>}
 
       <div className="controls">
         <label className="check">
@@ -259,7 +278,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
             type="checkbox"
             checked={useRefine}
             onChange={(e) => setUseRefine(e.target.checked)}
-            disabled={busy || !hasApiKey}
+            disabled={busy || !hasApiKey || actorType === "external"}
           />
           Refinar con Haiku {hasApiKey ? "" : "(requiere clave API)"}
         </label>
@@ -267,7 +286,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
           className="btn"
           type="button"
           onClick={onGenerate}
-          disabled={busy || areas.length === 0}
+          disabled={busy || (actorType === "internal" && areas.length === 0)}
         >
           {busy ? "Procesando…" : "Generar perfil"}
         </button>
@@ -275,7 +294,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
           className="btn ghost"
           type="button"
           onClick={onRefineAgain}
-          disabled={busy || !profile || !hasApiKey}
+          disabled={busy || !profile || !hasApiKey || actorType === "external" || profile.title.startsWith("Actor externo")}
         >
           Refinar nuevamente
         </button>

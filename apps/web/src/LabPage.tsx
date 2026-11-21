@@ -24,6 +24,7 @@ import {
   type RunSnapshot,
 } from "./RunOutcome";
 import { Timeline } from "./Timeline";
+import { selectObservedRun } from "./mesh/runSelection";
 
 type Props = {
   hasApiKey: boolean;
@@ -167,6 +168,8 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
     try {
       const data = await fetchRun(id);
       setRun(data.run);
+      selectObservedRun(data.run.id);
+      onRunCreated?.(data.run);
       setEvents(data.events ?? []);
       setJudgment(data.judgment ?? null);
       setEvaluation(data.evaluation ?? null);
@@ -298,6 +301,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
       const { run: created } = await createRunFromStored(body);
       setLastLaunch(body);
       setRun(created);
+      selectObservedRun(created.id);
       onRunCreated?.(created);
     } catch (err) {
       setBusy(false);
