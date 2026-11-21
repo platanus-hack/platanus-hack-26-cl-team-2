@@ -65,6 +65,11 @@ Details and limits: [docs/experiments/approval-gate.md](docs/experiments/approva
   times with no fix (keyword heuristic) and 12/12 with `provenance_tag`, which is by construction: the
   harness adds the tag.
 
+- Follow-up ([docs/experiments/refund-2x2.md](docs/experiments/refund-2x2.md), 160 runs): the rule also holds every
+  legitimate refund above USD 500 (40/40 held, always escalated to a human), leaves legitimate ones under the
+  limit alone (20/20 issued), and does not stop split refunds (parts of USD 480: paid in full in 3/10 Haiku runs
+  and 1/10 Sonnet runs with the rule on).
+
 These are counts with small n, not rates.
 
 ## Run it locally

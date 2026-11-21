@@ -91,7 +91,7 @@ export const RESULTS: PublishedResults = {
     { setup: "Laboratorio de varios agentes con Sonnet 4.6", perCell: 1 },
   ],
   headline:
-    "En estos correos el remitente no delató el fraude y el modelo solo no bastó; una regla del sistema que retiene para aprobación humana los reembolsos de más de USD 500 detuvo todos los que superaban ese monto (11 de 17 con Haiku, 5 de 8 con Sonnet), pero no ve los montos chicos y falta medir cuánto frena a los pedidos legítimos grandes.",
+    "En estos correos el remitente no delató el fraude y el modelo solo no bastó; una regla del sistema que retiene para aprobación humana los reembolsos de más de USD 500 detuvo todos los que superaban ese monto (11 de 17 con Haiku, 5 de 8 con Sonnet), pero también retiene todos los reembolsos legítimos de ese tamaño (40 de 40) y no ve los montos chicos ni los pedidos fraccionados.",
   refunds: {
     emails: 7,
     indistinguishable: { n: 3, of: 7 },
