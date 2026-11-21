@@ -123,7 +123,7 @@ async function runJob(job: Job, file: string, agentIds: string[], seedAgentId: s
     });
     base.runId = run.id;
     for (;;) {
-      const cur = getInternalRun(run.id);
+      const cur = await getInternalRun(run.id);
       if (!cur) throw new Error("run disappeared");
       if (cur.status === "completed" || cur.status === "failed") {
         base.status = cur.status;

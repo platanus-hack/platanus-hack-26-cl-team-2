@@ -7,7 +7,13 @@ export const dataArea: AreaPrototype = {
     "Make the company decision-ready with trustworthy metrics, pipelines, and analysis.",
   how: "Owns definitions, builds pipelines/dashboards, investigates anomalies, and partners with Product/GTM/CS on measurement.",
   why: "Bad data creates false confidence — teams optimize the wrong number.",
-  defaultTools: ["done", "send_message", "read_inbox"],
+  defaultTools: [
+    "done",
+    "send_message",
+    "read_inbox",
+    "users_health_db",
+    "credit_cards_db",
+  ],
   scenarioSeeds: [
     "Revenue dashboard disagrees with Finance export after a CRM field change.",
     "Product wants a new funnel metric that GTM defines differently.",

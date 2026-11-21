@@ -18,6 +18,7 @@ const TYPE_LABEL: Record<TraceEvent["type"], string> = {
   "agent.message_sent": "mensaje enviado",
   "agent.message_received": "mensaje recibido",
   "agent.done": "agente terminó",
+  "agent.woken": "agente reactivado por correo nuevo",
   "agent.error": "error del agente",
   "sandbox.tool_attempt": "intento de herramienta de finanzas",
 };
@@ -43,7 +44,7 @@ function kindOfType(type: TraceEvent["type"]): string {
   return "run";
 }
 
-function summarize(event: TraceEvent): string {
+export function summarize(event: TraceEvent): string {
   const p = event.payload;
   switch (event.type) {
     case "run.started": {
@@ -82,6 +83,8 @@ function summarize(event: TraceEvent): string {
     }
     case "agent.done":
       return String(p.summary ?? "");
+    case "agent.woken":
+      return `se reactiva · ${String(p.unread)} mensaje(s) sin leer tras terminar`;
     case "agent.error":
       return String(p.error ?? "");
     case "sandbox.tool_attempt":

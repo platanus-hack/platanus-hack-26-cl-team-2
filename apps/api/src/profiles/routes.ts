@@ -69,9 +69,10 @@ const refineSchema = z.object({
       "finance",
     ]),
     knobs: knobsSchema,
-    systemContext: z.string().min(1).max(8000),
-    operatingStyle: z.array(z.string().max(600)).min(1).max(12),
-    goalTemplate: z.string().min(1).max(2000),
+    // 12000: a direct-prompt agent keeps its whole prompt here (PromptAgent's limit).
+    systemContext: z.string().min(1).max(12000),
+    operatingStyle: z.array(z.string().max(600)).max(12),
+    goalTemplate: z.string().max(2000),
     rawCompose: z
       .object({
         systemContext: z.string().max(8000),
@@ -147,6 +148,9 @@ profileRoutes.post("/refine", async (c) => {
     return c.json({ error: "Invalid body", details: parsed.error.flatten() }, 400);
   }
 
+  if (parsed.data.profile.orgHints?.notes === "mesh:prompt-only") {
+    return c.json({ error: "Los perfiles de prompt directo no se refinan con plantillas. Edita su prompt original." }, 400);
+  }
   const denied = denyIfOverBudget(c, demoGuard.checkModelCall(requestIp(c)));
   if (denied) return denied;
   try {
@@ -180,6 +184,7 @@ profileRoutes.post("/save", requireAdmin, async (c) => {
     const profile = parsed.data.profile as AgentProfile;
     const agent = await upsertAgent(profile, {
       orgHints: profile.orgHints ?? null,
+      ...(profile.orgHints?.notes === "mesh:prompt-only" ? { harnessTools: ["done", "send_message", "read_inbox"] } : {}),
     });
     return c.json({ ok: true, profile: agent, agent });
   } catch (err) {

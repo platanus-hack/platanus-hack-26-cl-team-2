@@ -34,9 +34,9 @@ export function meterClient(client: Anthropic, meter: SpendMeter): Anthropic {
  * MCP quick test) uses the same key, goes through ANTHROPIC_BASE_URL when it is set, and
  * is counted against the daily spend cap (enforced only where a limit is set: the server).
  */
-export function anthropicClient(): Anthropic {
+export function anthropicClient(options: { maxRetries?: number } = {}): Anthropic {
   return meterClient(
-    new Anthropic({ apiKey: config.anthropicApiKey, baseURL: config.anthropicBaseUrl }),
+    new Anthropic({ apiKey: config.anthropicApiKey, baseURL: config.anthropicBaseUrl, ...options }),
     spendMeter,
   );
 }

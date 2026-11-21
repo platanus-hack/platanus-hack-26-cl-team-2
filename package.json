@@ -1,9 +1,11 @@
 {
   "name": "agent-monitor-sandbox",
   "private": true,
+  "type": "module",
   "version": "0.1.0",
   "description": "MVP sandbox: two real Claude agents interacting under a monitorable harness",
   "scripts": {
+    "postinstall": "pnpm --filter @sandbox/shared build",
     "dev": "pnpm --parallel --filter @sandbox/api --filter @sandbox/web dev",
     "dev:api": "pnpm --filter @sandbox/api dev",
     "dev:web": "pnpm --filter @sandbox/web dev",

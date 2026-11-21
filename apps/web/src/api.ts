@@ -2,6 +2,7 @@ import type {
   AgentKnobs,
   BatchResults,
   AgentProfile,
+  AgentVulnAssessment,
   AreaHeadcount,
   AreaId,
   AreaPrototype,
@@ -17,7 +18,19 @@ import type {
   RunSummary,
   SeniorityMix,
   TraceEvent,
+  VulnCategory,
+  VulnDesignerBrief,
+  VulnScores,
 } from "@sandbox/shared";
+
+export type VulnRunTraceDto = {
+  category: VulnCategory;
+  runId: string;
+  status: string;
+  error?: string;
+  trace: string;
+  iteration?: number;
+};
 
 export type StoredAgent = AgentProfile & {
   harnessTools: string[];
@@ -97,6 +110,21 @@ export async function listEmailScenarios(): Promise<{
   const res = await fetch("/api/email-scenarios");
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "Failed to load email scenarios");
+  return data;
+}
+
+export type MockDbSummary = {
+  tool: string;
+  file: string;
+  label: string;
+  sensitivity: string;
+  kind: string;
+};
+
+export async function listMockDatabases(): Promise<{ databases: MockDbSummary[] }> {
+  const res = await fetch("/api/mock-db");
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Failed to load mock databases");
   return data;
 }
 
@@ -322,6 +350,98 @@ export async function invokeAgent(id: string): Promise<{
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "Falló la ejecución del agente");
   return data;
+}
+
+export async function getVulnAssessment(
+  agentId: string,
+): Promise<AgentVulnAssessment | null> {
+  const res = await fetch(`/api/agents/${agentId}/vuln-assessment`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "No se pudo cargar el assessment");
+  return (data.assessment ?? null) as AgentVulnAssessment | null;
+}
+
+/** Runs designer + solo exploit evals; can take several minutes. */
+export async function runVulnAssess(
+  agentId: string,
+  body?: { maxTurnsPerAgent?: number; maxScenarios?: number },
+): Promise<AgentVulnAssessment> {
+  const res = await fetch(`/api/agents/${agentId}/vuln-assess`, {
+    method: "POST",
+    headers: writeHeaders(true),
+    body: JSON.stringify(body ?? {}),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Falló el vulnerability assessment");
+  return data.assessment as AgentVulnAssessment;
+}
+
+export async function designVulnScenarios(
+  agentId: string,
+): Promise<{ agentId: string; brief: VulnDesignerBrief }> {
+  const res = await fetch(`/api/agents/${agentId}/vuln-design`, {
+    method: "POST",
+    headers: writeHeaders(true),
+    body: "{}",
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Falló el diseño de escenarios");
+  return data as { agentId: string; brief: VulnDesignerBrief };
+}
+
+export async function runOneVulnScenario(
+  agentId: string,
+  body: {
+    category: VulnCategory;
+    title?: string;
+    scenarioHint: string;
+    grantFinanceTools?: boolean;
+    rationale?: string;
+    maxTurnsPerAgent?: number;
+    iteration?: number;
+  },
+): Promise<VulnRunTraceDto> {
+  const res = await fetch(`/api/agents/${agentId}/vuln-run-one`, {
+    method: "POST",
+    headers: writeHeaders(true),
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Falló el escenario");
+  return data.result as VulnRunTraceDto;
+}
+
+export async function finalizeVulnAssessment(
+  agentId: string,
+  body: {
+    brief: VulnDesignerBrief;
+    runTraces: VulnRunTraceDto[];
+    updateAgentDescription?: boolean;
+  },
+): Promise<{
+  assessment: AgentVulnAssessment;
+  descriptionUpdated: boolean;
+  previousScores: VulnScores | null;
+}> {
+  const res = await fetch(`/api/agents/${agentId}/vuln-finalize`, {
+    method: "POST",
+    headers: writeHeaders(true),
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Falló el scoring final");
+  return data as {
+    assessment: AgentVulnAssessment;
+    descriptionUpdated: boolean;
+    previousScores: VulnScores | null;
+  };
+}
+
+export async function getAgent(id: string): Promise<StoredAgent> {
+  const res = await fetch(`/api/agents/${id}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Agente no encontrado");
+  return data.agent as StoredAgent;
 }
 
 export async function fetchEnterprisePresets(): Promise<{

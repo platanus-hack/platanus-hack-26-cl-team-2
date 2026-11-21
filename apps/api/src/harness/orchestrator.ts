@@ -6,10 +6,12 @@ import type {
   CreateStoredRunRequest,
   EmailScenarioKind,
   RiskPathAnalysis,
+  PeerMessageScenario,
   RunEvaluation,
   RunRiskPaths,
   RunSummary,
   SenderCheck,
+  TraceEvent,
 } from "@sandbox/shared";
 import { assertApiKeyConfigured, config } from "../config.js";
 import { redactSecrets } from "../security/redact.js";
@@ -18,12 +20,14 @@ import { buildInvokePayload } from "../db/invoke.js";
 import { emailScenarioHint, getEmailScenario } from "../email/scenarios.js";
 import { messageBus } from "../message-bus.js";
 import { traceBus } from "../events.js";
-import { createSession, runOneTurn } from "./agent-runner.js";
+import { createSession, runOneTurn, wakeIfMailWaiting } from "./agent-runner.js";
 import { evaluateRun } from "./evaluator.js";
 import { provenanceTag } from "./provenance.js";
 import { analyzeRiskPaths, observeRiskPaths, type RiskSetup } from "./risk-paths.js";
 import { approvalRefundLimit } from "./sandbox.js";
 import type { RunJudgment } from "./judge.js";
+import { loadRun, loadRuns, saveJudgment, saveRun } from "../db/runs-repo.js";
+import { filterMockDbToolNames } from "./mock-db.js";
 
 export type RunRosterEntry = {
   id: string;
@@ -33,6 +37,7 @@ export type RunRosterEntry = {
   seniority: string;
   motivation: string;
   financeTools?: boolean;
+  mockDbTools?: string[];
 };
 
 /** Which email (if any) started the run; senderCheck is set only when the banner was shown. */
@@ -59,15 +64,15 @@ export type RunEmailInfo = {
   approvalRefundLimit?: number;
 };
 
-type InternalRun = RunSummary & {
+export type InternalRun = RunSummary & {
+  expiresAt?: string;
   seedAgentId?: string;
   scenarioHint?: string;
   email?: RunEmailInfo;
+  peerMessage?: PeerMessageScenario;
   roster?: RunRosterEntry[];
   judgment?: RunJudgment;
 };
-
-const runs = new Map<string, InternalRun>();
 
 /** Soft cap to avoid burning credits on huge fleets in one run. */
 export const MAX_PARTICIPANTS = 8;
@@ -79,6 +84,13 @@ function slug(name: string): string {
     .replace(/^-|-$/g, "")
     .slice(0, 24);
 }
+
+/**
+ * Runs started by this process (the live objects executeRun mutates). The database is the
+ * source of truth for reads; this map only counts budget slots and bounds the in-memory
+ * trace and inbox buses.
+ */
+const runs = new Map<string, InternalRun>();
 
 /** Runs that still hold a model budget slot (for MAX_CONCURRENT_RUNS). */
 export function activeRunCount(): number {
@@ -106,22 +118,22 @@ function evictOldRuns(): void {
   }
 }
 
-export function listRuns(): RunSummary[] {
-  return [...runs.values()].map(publicRun);
+export async function listRuns(): Promise<RunSummary[]> {
+  return (await loadRuns()).map(publicRun);
 }
 
-export function getRun(runId: string): RunSummary | undefined {
-  const run = runs.get(runId);
+export async function getRun(runId: string): Promise<RunSummary | undefined> {
+  const run = (await loadRun(runId))?.run;
   return run ? publicRun(run) : undefined;
 }
 
-export function getInternalRun(runId: string): InternalRun | undefined {
-  return runs.get(runId);
+export async function getInternalRun(runId: string): Promise<InternalRun | undefined> {
+  return (await loadRun(runId))?.run;
 }
 
-export function evaluateInternalRun(run: InternalRun): RunEvaluation {
+export function evaluateInternalRun(run: InternalRun, events: TraceEvent[] = traceBus.history(run.id)): RunEvaluation {
   return evaluateRun({
-    events: traceBus.history(run.id),
+    events,
     email: run.email,
     financeAgentIds: run.agents.filter((a) => a.financeTools).map((a) => a.id),
     seedAgentId: run.seedAgentId,
@@ -142,12 +154,12 @@ function riskSetupFor(run: InternalRun): RiskSetup {
 }
 
 /** Predicted paths from the run setup, and the ones the trace shows were actually taken. */
-export function riskPathsForRun(run: InternalRun): RunRiskPaths {
+export function riskPathsForRun(run: InternalRun, events: TraceEvent[] = traceBus.history(run.id)): RunRiskPaths {
   const setup = riskSetupFor(run);
   const predicted = analyzeRiskPaths(setup);
   return {
     predicted,
-    observed: observeRiskPaths(traceBus.history(run.id), setup, predicted.paths),
+    observed: observeRiskPaths(events, setup, predicted.paths),
   };
 }
 
@@ -186,9 +198,24 @@ export async function previewRiskPaths(body: {
   });
 }
 
-export function setRunJudgment(runId: string, judgment: RunJudgment): void {
-  const run = runs.get(runId);
-  if (run) run.judgment = judgment;
+export async function setRunJudgment(runId: string, judgment: RunJudgment): Promise<void> {
+  await saveJudgment(runId, judgment);
+}
+
+/** Poll persisted run until completed/failed (for sequential vuln evals). */
+export async function waitForRun(
+  runId: string,
+  timeoutMs = 180_000,
+  pollMs = 400,
+): Promise<RunSummary> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const run = await getRun(runId);
+    if (!run) throw new Error(`Run not found: ${runId}`);
+    if (run.status === "completed" || run.status === "failed") return run;
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  throw new Error(`Run timed out after ${timeoutMs}ms: ${runId}`);
 }
 
 function publicRun(run: InternalRun): RunSummary {
@@ -196,25 +223,28 @@ function publicRun(run: InternalRun): RunSummary {
     seedAgentId: _s,
     scenarioHint: _h,
     email: _e,
+    peerMessage: _p,
     roster: _r,
     judgment: _j,
+    expiresAt: _expires,
     ...rest
   } = run;
   return rest;
 }
 
-function startRun(
+async function startRun(
   agents: AgentSpec[],
   maxTurns: number,
   opts?: {
     seedAgentId?: string;
     scenarioHint?: string;
     email?: RunEmailInfo;
+    peerMessage?: PeerMessageScenario;
     roster?: RunRosterEntry[];
   },
-): RunSummary {
-  if (agents.length < 2) {
-    throw new Error("Select at least 2 agents.");
+): Promise<RunSummary> {
+  if (agents.length < 1) {
+    throw new Error("Select at least 1 agent.");
   }
   if (agents.length > MAX_PARTICIPANTS) {
     throw new Error(
@@ -239,9 +269,11 @@ function startRun(
     status: "pending",
     agents,
     createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + (process.env.VERCEL ? 270_000 : 630_000)).toISOString(),
     seedAgentId,
     scenarioHint: opts?.scenarioHint,
     email: opts?.email,
+    peerMessage: opts?.peerMessage,
     roster:
       opts?.roster ??
       agents.map((a) => ({
@@ -253,21 +285,41 @@ function startRun(
         motivation: "impact",
       })),
   };
+  // Registered before the first await, so a budget check right before this call cannot race
+  // with another start (activeRunCount already sees this run).
   runs.set(runId, run);
   evictOldRuns();
+  try {
+    await saveRun(run, []);
+  } catch (err) {
+    runs.delete(runId);
+    throw err;
+  }
   messageBus.ensureAgents(
     runId,
     agents.map((a) => a.id),
   );
-  void executeRun(run, maxTurns, {
+
+  if (opts?.peerMessage) {
+    const { fromAgentId, toAgentId, body } = opts.peerMessage;
+    const msg = messageBus.send(runId, fromAgentId, toAgentId, body);
+    // Same trace shape as a real send_message tool call, so the UI/judge see a peer edge.
+    traceBus.emit(runId, "agent.message_sent", { message: msg, injected: true }, fromAgentId);
+    traceBus.emit(runId, "agent.message_received", { message: msg, injected: true }, toAgentId);
+  }
+
+  const execution = executeRun(run, maxTurns, {
     seedAgentId,
     scenarioHint: opts?.scenarioHint,
     email: opts?.email,
+    peerMessage: opts?.peerMessage,
   });
-  return getRun(runId)!;
+  if (process.env.VERCEL) await execution;
+  else void execution.catch(error => console.error("No se pudo persistir la ejecución", error));
+  return publicRun(run);
 }
 
-export function createAndStartRun(body: CreateRunRequest): RunSummary {
+export function createAndStartRun(body: CreateRunRequest): Promise<RunSummary> {
   const agents: AgentSpec[] = body.agents.map((a, i) => ({
     id: `${slug(a.name) || `agent-${i + 1}`}-${nanoid(4)}`,
     name: a.name.trim(),
@@ -286,7 +338,13 @@ export function createAndStartRun(body: CreateRunRequest): RunSummary {
 export type PreparedStoredRun = {
   agents: AgentSpec[];
   maxTurns: number;
-  opts: { seedAgentId: string; scenarioHint?: string; email?: RunEmailInfo; roster: RunRosterEntry[] };
+  opts: {
+    seedAgentId: string;
+    scenarioHint?: string;
+    email?: RunEmailInfo;
+    peerMessage?: PeerMessageScenario;
+    roster: RunRosterEntry[];
+  };
 };
 
 /** Load N DB agents; only seedAgent receives the scenario instruction. */
@@ -296,8 +354,11 @@ export async function createAndStartStoredRun(
   return startPreparedRun(await prepareStoredRun(body));
 }
 
-/** Synchronous, so a budget check right before it cannot race with another start. */
-export function startPreparedRun(p: PreparedStoredRun): RunSummary {
+/**
+ * The run takes its budget slot synchronously (before the first await inside startRun), so a
+ * budget check right before this call cannot race with another start.
+ */
+export function startPreparedRun(p: PreparedStoredRun): Promise<RunSummary> {
   return startRun(p.agents, p.maxTurns, p.opts);
 }
 
@@ -311,8 +372,8 @@ export async function prepareStoredRun(
   const agentIds = [
     ...new Set(body.agentIds.map((id) => id.trim()).filter(Boolean)),
   ];
-  if (agentIds.length < 2) {
-    throw new Error("Select at least 2 agents.");
+  if (agentIds.length < 1) {
+    throw new Error("Select at least 1 agent.");
   }
   if (agentIds.length > MAX_PARTICIPANTS) {
     throw new Error(
@@ -320,16 +381,45 @@ export async function prepareStoredRun(
     );
   }
 
-  const seedAgentId = (body.seedAgentId ?? agentIds[0]).trim();
+  let peerMessage = body.peerMessage
+    ? {
+        fromAgentId: body.peerMessage.fromAgentId.trim(),
+        toAgentId: body.peerMessage.toAgentId.trim(),
+        body: body.peerMessage.body.trim(),
+      }
+    : undefined;
+
+  if (peerMessage) {
+    if (agentIds.length < 2) {
+      throw new Error("peerMessage requires at least 2 agents.");
+    }
+    if (!peerMessage.body) {
+      throw new Error("peerMessage.body is required.");
+    }
+    if (peerMessage.fromAgentId === peerMessage.toAgentId) {
+      throw new Error("peerMessage from and to must be different agents.");
+    }
+    if (!agentIds.includes(peerMessage.fromAgentId)) {
+      throw new Error("peerMessage.fromAgentId must be a selected agent.");
+    }
+    if (!agentIds.includes(peerMessage.toAgentId)) {
+      throw new Error("peerMessage.toAgentId must be a selected agent.");
+    }
+  }
+
+  // Recipient of an injected peer message is the kickoff agent.
+  const seedAgentId = peerMessage
+    ? peerMessage.toAgentId
+    : (body.seedAgentId ?? agentIds[0]).trim();
   if (!agentIds.includes(seedAgentId)) {
     throw new Error("seedAgentId must be one of the selected agents.");
   }
 
   // An email scenario replaces the free-text hint (resolved before loading agents
-  // so a bad file/id fails fast).
-  let scenarioHint = body.scenarioHint?.trim();
+  // so a bad file/id fails fast). Ignored when peerMessage is set.
+  let scenarioHint = peerMessage ? undefined : body.scenarioHint?.trim();
   let email: RunEmailInfo | undefined;
-  if (body.emailScenario) {
+  if (!peerMessage && body.emailScenario) {
     const scen = getEmailScenario(body.emailScenario);
     const banner = body.emailScenario.senderCheck ? scen.senderCheck : undefined;
     scenarioHint = emailScenarioHint(scen.email, banner);
@@ -367,12 +457,14 @@ export async function prepareStoredRun(
       throw new Error(`Agent not found: ${id}`);
     }
     const inv = buildInvokePayload(stored);
+    const mockDbTools = filterMockDbToolNames(stored.harnessTools);
     agents.push({
       id: stored.id,
       name: stored.name,
       role: inv.projection.systemPrompt.slice(0, 14000),
       goal: stored.goalTemplate,
       financeTools: financeIds.has(stored.id),
+      mockDbTools,
     });
     roster.push({
       id: stored.id,
@@ -382,6 +474,7 @@ export async function prepareStoredRun(
       seniority: stored.knobs.seniority,
       motivation: stored.knobs.motivation,
       financeTools: financeIds.has(stored.id),
+      mockDbTools,
     });
   }
 
@@ -404,14 +497,19 @@ export async function prepareStoredRun(
   return {
     agents,
     maxTurns: clampTurns(body.maxTurnsPerAgent),
-    opts: { seedAgentId, scenarioHint, email, roster },
+    opts: { seedAgentId, scenarioHint, email, peerMessage, roster },
   };
 }
 
 async function executeRun(
   run: InternalRun,
   maxTurns: number,
-  opts: { seedAgentId: string; scenarioHint?: string; email?: RunEmailInfo },
+  opts: {
+    seedAgentId: string;
+    scenarioHint?: string;
+    email?: RunEmailInfo;
+    peerMessage?: PeerMessageScenario;
+  },
 ): Promise<void> {
   run.status = "running";
   traceBus.emit(run.id, "run.started", {
@@ -424,11 +522,19 @@ async function executeRun(
     email: opts.email
       ? (({ email: _raw, ...meta }) => meta)(opts.email)
       : null,
+    peerMessage: opts.peerMessage
+      ? {
+          fromAgentId: opts.peerMessage.fromAgentId,
+          toAgentId: opts.peerMessage.toAgentId,
+          bodyPreview: opts.peerMessage.body.slice(0, 240),
+        }
+      : null,
     financeAgentIds: run.agents.filter((a) => a.financeTools).map((a) => a.id),
     participantCount: run.agents.length,
   });
 
-  const client = anthropicClient();
+  // No SDK retries on Vercel: the function has a hard time limit (see signal below).
+  const client = anthropicClient(process.env.VERCEL ? { maxRetries: 0 } : undefined);
   const tag = opts.email?.provenanceTag
     ? provenanceTag({ from: opts.email.from, senderCheck: opts.email.senderCheck })
     : undefined;
@@ -436,22 +542,31 @@ async function executeRun(
   const gate = opts.email?.approvalGate
     ? { refundLimit: opts.email.approvalRefundLimit ?? approvalRefundLimit() }
     : undefined;
+  const signal = AbortSignal.timeout(process.env.VERCEL ? 240_000 : 600_000);
+  const peerKickoffId = opts.peerMessage?.toAgentId;
   const sessions = run.agents.map((agent) => {
     const peers = run.agents.filter((a) => a.id !== agent.id);
+    const isKickoff = agent.id === opts.seedAgentId;
     return createSession(agent, peers, {
-      isSeed: agent.id === opts.seedAgentId,
+      isSeed: isKickoff && !peerKickoffId,
       scenarioHint:
-        agent.id === opts.seedAgentId ? opts.scenarioHint : undefined,
+        isKickoff && !peerKickoffId ? opts.scenarioHint : undefined,
+      peerInboxKickoff: Boolean(peerKickoffId && agent.id === peerKickoffId),
       provenanceTag: tag,
       approvalGate: gate,
     });
   });
 
   try {
+    await saveRun(run, traceBus.history(run.id));
     let cursor = 0;
-    const hardCap = maxTurns * sessions.length + sessions.length;
 
-    for (let step = 0; step < hardCap; step++) {
+    // Ends because every iteration that isn't skipped either spends one of an agent's
+    // maxTurns or retires it for good (max_turns), skipped iterations are bounded by the
+    // number of agents, and an agent can only be woken by mail sent during a turn.
+    // (Skipping finished agents no longer eats into the turn budget of the active ones.)
+    for (;;) {
+      for (const s of sessions) wakeIfMailWaiting(run.id, s, maxTurns);
       if (sessions.every((s) => s.done)) break;
 
       const session = sessions[cursor % sessions.length];
@@ -460,6 +575,7 @@ async function executeRun(
       if (session.done) continue;
       if (session.turnsUsed >= maxTurns) {
         session.done = true;
+        session.stopReason = "max_turns";
         traceBus.emit(
           run.id,
           "agent.done",
@@ -472,7 +588,9 @@ async function executeRun(
         continue;
       }
 
-      await runOneTurn(run.id, session, client, maxTurns);
+      signal.throwIfAborted();
+      await runOneTurn(run.id, session, client, maxTurns, signal);
+      await saveRun(run, traceBus.history(run.id));
     }
 
     run.status = "completed";
@@ -486,4 +604,5 @@ async function executeRun(
     run.finishedAt = new Date().toISOString();
     traceBus.emit(run.id, "run.failed", { error: message });
   }
+  await saveRun(run, traceBus.history(run.id));
 }

@@ -4,12 +4,11 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { assertApiKeyConfigured, config } from "./config.js";
-import { traceBus } from "./events.js";
+import { loadRun } from "./db/runs-repo.js";
 import { judgeRun, judgeTranscript, type RunJudgment } from "./harness/judge.js";
 import {
   createAndStartRun,
   evaluateInternalRun,
-  getInternalRun,
   getRun,
   listRuns,
   prepareStoredRun,
@@ -25,6 +24,7 @@ import { isRealMailFile, listEmailScenarios } from "./email/scenarios.js";
 import { enterpriseRoutes } from "./enterprise/routes.js";
 import { profileRoutes } from "./profiles/routes.js";
 import { refineModelId } from "./profiles/refine.js";
+import { MOCK_DB_CATALOG } from "./harness/mock-db.js";
 import { ADMIN_HEADER } from "./security/admin.js";
 import { demoGuard, denyIfOverBudget, requestIp } from "./security/budget.js";
 import { errorMessage } from "./security/redact.js";
@@ -61,12 +61,17 @@ const emailScenarioSchema = z.object({
 });
 
 const createStoredRunSchema = z.object({
-  agentIds: z.array(id).min(2).max(8),
+  agentIds: z.array(id).min(1).max(8),
   seedAgentId: id,
   maxTurnsPerAgent: z.number().int().min(1).max(30).optional(),
   scenarioHint: z.string().max(2000).optional(),
   emailScenario: emailScenarioSchema.optional(),
   financeAgentIds: z.array(id).max(8).optional(),
+  peerMessage: z.object({
+    fromAgentId: id,
+    toAgentId: id,
+    body: z.string().min(1).max(4000),
+  }).optional(),
 });
 
 const riskPathsSchema = z.object({
@@ -77,6 +82,15 @@ const riskPathsSchema = z.object({
 });
 
 export const app = new Hono();
+
+// API responses are never cached (runs are polled); the static web app served by index.ts
+// keeps normal caching.
+app.use("*", async (c, next) => {
+  await next();
+  if (c.req.path === "/health" || c.req.path.startsWith("/api/")) {
+    c.header("Cache-Control", "no-store");
+  }
+});
 
 app.use(
   "*",
@@ -133,7 +147,7 @@ app.route("/api/profiles", profileRoutes);
 app.route("/api/agents", agentRoutes);
 app.route("/api/enterprise", enterpriseRoutes);
 
-app.get("/api/runs", (c) => c.json({ runs: listRuns() }));
+app.get("/api/runs", async (c) => c.json({ runs: await listRuns() }));
 
 /** Emails from email-harness/scenarios, with the deterministic sender check pre-computed. */
 app.get("/api/email-scenarios", (c) => {
@@ -146,6 +160,9 @@ app.get("/api/email-scenarios", (c) => {
     errors: errors.map((e) => e.split(dir).join("email-harness/scenarios")),
   });
 });
+app.get("/api/mock-db", (c) => c.json({
+  databases: Object.entries(MOCK_DB_CATALOG).map(([tool, meta]) => ({ tool, file: meta.file, label: meta.label, sensitivity: meta.sensitivity, kind: "tool" })),
+}));
 
 /** Last published batch experiment (apps/api/results/batch-latest.json), or null if none yet. */
 app.get("/api/batch-results", (c) => {
@@ -156,16 +173,17 @@ app.get("/api/batch-results", (c) => {
   }
 });
 
-app.get("/api/runs/:id", (c) => {
-  const run = getRun(c.req.param("id"));
-  if (!run) return c.json({ error: "Ejecución no encontrada" }, 404);
-  const internal = getInternalRun(run.id);
+app.get("/api/runs/:id", async (c) => {
+  const stored = await loadRun(c.req.param("id"));
+  if (!stored) return c.json({ error: "Ejecución no encontrada" }, 404);
+  const run = await getRun(stored.run.id);
+  const internal = stored.run;
   return c.json({
     run,
-    events: traceBus.history(run.id),
+    events: stored.events,
     judgment: internal?.judgment ?? null,
-    evaluation: internal ? evaluateInternalRun(internal) : null,
-    riskPaths: internal?.email ? riskPathsForRun(internal) : null,
+    evaluation: evaluateInternalRun(internal, stored.events),
+    riskPaths: internal.email ? riskPathsForRun(internal, stored.events) : null,
   });
 });
 
@@ -201,12 +219,13 @@ app.post("/api/risk-paths", async (c) => {
 const judgeInFlight = new Map<string, Promise<RunJudgment>>();
 
 app.post("/api/runs/:id/judge", async (c) => {
-  const internal = getInternalRun(c.req.param("id"));
+  const stored = await loadRun(c.req.param("id"));
+  const internal = stored?.run;
   if (!internal) return c.json({ error: "Ejecución no encontrada" }, 404);
   if (internal.status !== "completed" && internal.status !== "failed") {
     return c.json({ error: "La ejecución todavía está en curso" }, 409);
   }
-  const evaluation = evaluateInternalRun(internal);
+  const evaluation = evaluateInternalRun(internal, stored!.events);
   if (internal.judgment) {
     return c.json({ judgment: internal.judgment, evaluation, cached: true });
   }
@@ -217,17 +236,19 @@ app.post("/api/runs/:id/judge", async (c) => {
       const denied = denyIfOverBudget(c, demoGuard.checkModelCall(requestIp(c)));
       if (denied) return denied;
       pending = judgeRun({
-        scenario: internal.scenarioHint ?? "",
+        scenario: internal.peerMessage
+          ? `Injected peer message ${internal.peerMessage.fromAgentId} → ${internal.peerMessage.toAgentId}:\n${internal.peerMessage.body}`
+          : internal.scenarioHint ?? "",
         seedAgentId: internal.seedAgentId ?? internal.agents[0]?.id ?? "",
         roster: internal.roster ?? [],
-        events: traceBus.history(internal.id),
+        events: stored!.events,
         email: internal.email,
         evaluation,
       }).finally(() => judgeInFlight.delete(internal.id));
       judgeInFlight.set(internal.id, pending);
     }
     const judgment = await pending;
-    setRunJudgment(internal.id, judgment);
+    await setRunJudgment(internal.id, judgment);
     return c.json({ judgment, evaluation, cached: false });
   } catch (err) {
     const message = errorMessage(err);
@@ -285,7 +306,7 @@ app.post("/api/runs", async (c) => {
     assertApiKeyConfigured();
     const denied = denyIfOverBudget(c, demoGuard.checkRun(requestIp(c)));
     if (denied) return denied;
-    const run = createAndStartRun(parsed.data);
+    const run = await createAndStartRun(parsed.data);
     return c.json({ run }, 201);
   } catch (err) {
     const message = errorMessage(err);
@@ -310,11 +331,11 @@ app.post("/api/runs/from-stored", async (c) => {
 
   try {
     // Validate first (no budget spent on a bad request), then check the budget and start
-    // synchronously, so two requests cannot both slip past the concurrency check.
+    // with no await in between, so two requests cannot both slip past the concurrency check.
     const prepared = await prepareStoredRun(parsed.data);
     const denied = denyIfOverBudget(c, demoGuard.checkRun(requestIp(c)));
     if (denied) return denied;
-    const run = startPreparedRun(prepared);
+    const run = await startPreparedRun(prepared);
     return c.json({ run }, 201);
   } catch (err) {
     const message = errorMessage(err);
@@ -338,56 +359,27 @@ app.post("/api/runs/from-stored", async (c) => {
   }
 });
 
-app.get("/api/runs/:id/events", (c) => {
+app.get("/api/runs/:id/events", async (c) => {
   const runId = c.req.param("id");
-  const run = getRun(runId);
-  if (!run) return c.json({ error: "Ejecución no encontrada" }, 404);
-
-  return streamSSE(c, async (stream) => {
-    const history = traceBus.history(runId);
-    for (const event of history) {
-      await stream.writeSSE({
-        event: "trace",
-        data: JSON.stringify(event),
-        id: event.id,
-      });
-    }
-
-    let closed = false;
-    const unsubscribe = traceBus.subscribe(runId, (event) => {
-      if (closed) return;
-      void stream.writeSSE({
-        event: "trace",
-        data: JSON.stringify(event),
-        id: event.id,
-      });
-
-      if (
-        event.type === "run.completed" ||
-        event.type === "run.failed"
-      ) {
-        closed = true;
-        unsubscribe();
-        void stream.close();
+  if (!await loadRun(runId)) return c.json({ error: "Ejecución no encontrada" }, 404);
+  return streamSSE(c, async stream => {
+    const sent = new Set<string>();
+    let aborted = false;
+    stream.onAbort(() => { aborted = true; });
+    const deadline = Date.now() + 20_000;
+    while (!aborted && Date.now() < deadline) {
+      const snapshot = await loadRun(runId);
+      if (!snapshot) break;
+      for (const event of snapshot.events) {
+        if (sent.has(event.id)) continue;
+        await stream.writeSSE({ event: "trace", data: JSON.stringify(event), id: event.id });
+        sent.add(event.id);
       }
-    });
-
-    // Keep alive until run ends or client disconnects.
-    while (!closed) {
-      await stream.sleep(15_000);
-      if (closed) break;
+      if (["completed", "failed", "stopped"].includes(snapshot.run.status)) break;
       await stream.writeSSE({ event: "ping", data: "{}" });
-      const current = getRun(runId);
-      if (
-        current &&
-        (current.status === "completed" || current.status === "failed")
-      ) {
-        closed = true;
-        unsubscribe();
-        break;
-      }
+      await stream.sleep(1000);
     }
-
-    unsubscribe();
   });
 });
+
+export default app;

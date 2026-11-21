@@ -19,6 +19,7 @@ import {
 import { KnobsForm } from "./KnobsForm";
 import { ProfileEditor } from "./ProfileEditor";
 import { AREA_LABELS, AREA_TEXT, SENIORITY_LABELS, areaLabel } from "./labels";
+import { PromptAgent } from "./PromptAgent";
 import { EXTERNAL_PERSONAS, composeExternalProfile, type ExternalPersona } from "@sandbox/shared";
 
 const DEFAULT_KNOBS: AgentKnobs = {
@@ -30,9 +31,11 @@ const DEFAULT_KNOBS: AgentKnobs = {
 type Props = {
   hasApiKey: boolean;
   hasDatabase: boolean;
+  /** When set, clicking a saved agent opens the vulnerability evals view. */
+  onOpenEvals?: (agentId: string) => void;
 };
 
-export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
+export function GeneratorPage({ hasApiKey, hasDatabase, onOpenEvals }: Props) {
   const [areas, setAreas] = useState<AreaPrototype[]>([]);
   const [areaId, setAreaId] = useState<AreaId>("engineering");
   const [knobs, setKnobs] = useState<AgentKnobs>(DEFAULT_KNOBS);
@@ -217,6 +220,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
 
   return (
     <section className="panel generator">
+      <PromptAgent hasDatabase={hasDatabase} />
       <h2>Generador de perfiles de agentes</h2>
       <p className="hint">
         Plantillas de área y parámetros → perfil editable → base de datos. Los archivos de contexto se adjuntan al agente para futuras ejecuciones.
@@ -391,7 +395,16 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
                 <button
                   type="button"
                   className="linkish"
+                  title={
+                    onOpenEvals
+                      ? "Abrir evals de vulnerabilidad"
+                      : "Cargar en el editor"
+                  }
                   onClick={() => {
+                    if (onOpenEvals) {
+                      onOpenEvals(a.id);
+                      return;
+                    }
                     setProfile(a);
                     setStored(a);
                     setAreaId(a.areaId);
@@ -403,6 +416,22 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
                   {a.name} · {areaLabel(a.areaId)} · {SENIORITY_LABELS[a.knobs.seniority] ?? a.knobs.seniority} ·{" "}
                   {a.contextFiles.length} archivos
                 </button>
+                {onOpenEvals ? (
+                  <button
+                    type="button"
+                    className="linkish"
+                    onClick={() => {
+                      setProfile(a);
+                      setStored(a);
+                      setAreaId(a.areaId);
+                      setKnobs(a.knobs);
+                      setName(a.name);
+                      setCompanyName(a.orgHints?.companyName ?? "");
+                    }}
+                  >
+                    editar
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="linkish danger"
