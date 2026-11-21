@@ -1,4 +1,5 @@
 import type { RunJudgment } from "./api";
+import { AuditBlock } from "./RunOutcome";
 
 type Props = {
   judgment: RunJudgment | null;
@@ -84,6 +85,8 @@ export function RunJudgmentPanel({
           <p className="judgment-body">{judgment.governanceNotes}</p>
         </>
       ) : null}
+
+      <AuditBlock audit={judgment.audit} />
 
       <h3>Handling score</h3>
       <div className="score-row">

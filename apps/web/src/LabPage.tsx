@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
+  CreateStoredRunRequest,
   EmailScenarioSummary,
+  RunEvaluation,
   RunSummary,
   TraceEvent,
 } from "@sandbox/shared";
@@ -16,6 +18,11 @@ import {
   type StoredAgent,
 } from "./api";
 import { RunJudgmentPanel } from "./RunJudgment";
+import {
+  BeforeAfterPanel,
+  RunOutcomePanel,
+  type RunSnapshot,
+} from "./RunOutcome";
 import { Timeline } from "./Timeline";
 
 type Props = {
@@ -44,6 +51,11 @@ export function LabPage({ hasApiKey }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [judgment, setJudgment] = useState<RunJudgment | null>(null);
+  const [evaluation, setEvaluation] = useState<RunEvaluation | null>(null);
+  /** Exact request of the last launch, so "re-run with fix" changes only the fix. */
+  const [lastLaunch, setLastLaunch] = useState<CreateStoredRunRequest | null>(null);
+  /** The run before the fix, kept for the before/after comparison. */
+  const [baseline, setBaseline] = useState<RunSnapshot | null>(null);
   const [judging, setJudging] = useState(false);
   const [judgeError, setJudgeError] = useState<string | null>(null);
   const [manualRunId, setManualRunId] = useState("");
@@ -90,12 +102,18 @@ export function LabPage({ hasApiKey }: Props) {
 
   useEffect(() => {
     if (!run) return;
+    let finished = false;
     const unsubscribe = subscribeRunEvents(run.id, (event) => {
+      if (finished) return;
       setEvents((prev) => {
         if (prev.some((e) => e.id === event.id)) return prev;
         return [...prev, event];
       });
       if (event.type === "run.completed" || event.type === "run.failed") {
+        // Close the stream: otherwise EventSource reconnects when the server ends it,
+        // replays the history and re-triggers the judge every few seconds.
+        finished = true;
+        unsubscribe();
         setBusy(false);
         setRun((current) =>
           current
@@ -109,6 +127,11 @@ export function LabPage({ hasApiKey }: Props) {
               }
             : current,
         );
+        if (run) {
+          void fetchRun(run.id)
+            .then((d) => setEvaluation(d.evaluation))
+            .catch(() => undefined);
+        }
         if (event.type === "run.completed" && run) {
           void requestJudge(run.id);
         }
@@ -123,8 +146,9 @@ export function LabPage({ hasApiKey }: Props) {
     setJudging(true);
     setJudgeError(null);
     try {
-      const { judgment: j } = await judgeRun(id);
+      const { judgment: j, evaluation: ev } = await judgeRun(id);
       setJudgment(j);
+      setEvaluation(ev);
     } catch (err) {
       setJudgeError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -144,6 +168,7 @@ export function LabPage({ hasApiKey }: Props) {
       setRun(data.run);
       setEvents(data.events ?? []);
       setJudgment(data.judgment ?? null);
+      setEvaluation(data.evaluation ?? null);
       setManualRunId(id);
       if (
         !data.judgment &&
@@ -260,15 +285,45 @@ export function LabPage({ hasApiKey }: Props) {
     });
   }
 
-  async function onLaunch() {
+  async function launch(body: CreateStoredRunRequest) {
     setError(null);
     setBusy(true);
     setEvents([]);
     setRun(null);
     setJudgment(null);
+    setEvaluation(null);
     setJudgeError(null);
     try {
-      const { run: created } = await createRunFromStored({
+      const { run: created } = await createRunFromStored(body);
+      setLastLaunch(body);
+      setRun(created);
+    } catch (err) {
+      setBusy(false);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /** Improve loop: same request, sender_check turned on; current run becomes "before". */
+  async function rerunWithFix() {
+    if (!run || !lastLaunch?.emailScenario) return;
+    setBaseline({ runId: run.id, label: "before (no fix)", evaluation, judgment });
+    setSenderCheckOn(true);
+    await launch({
+      ...lastLaunch,
+      emailScenario: { ...lastLaunch.emailScenario, senderCheck: true },
+    });
+  }
+
+  const canRerunWithFix =
+    !busy &&
+    run !== null &&
+    (run.status === "completed" || run.status === "failed") &&
+    lastLaunch?.emailScenario !== undefined &&
+    !lastLaunch.emailScenario.senderCheck;
+
+  async function onLaunch() {
+    setBaseline(null);
+    await launch({
         agentIds: selectedIds,
         seedAgentId,
         maxTurnsPerAgent: maxTurns,
@@ -282,12 +337,7 @@ export function LabPage({ hasApiKey }: Props) {
               },
             }
           : { scenarioHint: scenarioHint.trim() || undefined }),
-      });
-      setRun(created);
-    } catch (err) {
-      setBusy(false);
-      setError(err instanceof Error ? err.message : String(err));
-    }
+    });
   }
 
   return (
@@ -528,6 +578,21 @@ export function LabPage({ hasApiKey }: Props) {
             {busy ? "Running…" : "Launch conversation"}
           </button>
         </div>
+        {canRerunWithFix ? (
+          <div className="controls">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void rerunWithFix()}
+              title="Same agents, seed, finance tools and email; only adds the sender check"
+            >
+              Re-run with sender_check fix
+            </button>
+            {judgment?.audit?.recommendedFix === "sender_check" ? (
+              <span className="hint">The judge recommends this fix.</span>
+            ) : null}
+          </div>
+        ) : null}
         {error ? <p className="error">{error}</p> : null}
         {run ? (
           <p className="hint">
@@ -601,6 +666,15 @@ export function LabPage({ hasApiKey }: Props) {
         </p>
         <Timeline events={events} agentIndex={agentIndex} />
       </section>
+
+      <RunOutcomePanel evaluation={evaluation} />
+
+      {baseline && run ? (
+        <BeforeAfterPanel
+          before={baseline}
+          after={{ runId: run.id, label: "after (sender_check)", evaluation, judgment }}
+        />
+      ) : null}
 
       <RunJudgmentPanel
         judgment={judgment}

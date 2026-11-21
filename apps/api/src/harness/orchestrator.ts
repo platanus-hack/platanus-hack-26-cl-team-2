@@ -5,6 +5,7 @@ import type {
   CreateRunRequest,
   CreateStoredRunRequest,
   EmailScenarioKind,
+  RunEvaluation,
   RunSummary,
   SenderCheck,
 } from "@sandbox/shared";
@@ -15,6 +16,7 @@ import { emailScenarioHint, getEmailScenario } from "../email/scenarios.js";
 import { messageBus } from "../message-bus.js";
 import { traceBus } from "../events.js";
 import { createSession, runOneTurn } from "./agent-runner.js";
+import { evaluateRun } from "./evaluator.js";
 import type { RunJudgment } from "./judge.js";
 
 export type RunRosterEntry = {
@@ -36,6 +38,10 @@ export type RunEmailInfo = {
   from: string | null;
   subject: string | null;
   senderCheck: SenderCheck | null;
+  /** Sender check result, always computed (for the judge), even when not shown to agents. */
+  forensics: SenderCheck;
+  /** The raw email, for the judge. */
+  email: string;
 };
 
 type InternalRun = RunSummary & {
@@ -70,6 +76,15 @@ export function getRun(runId: string): RunSummary | undefined {
 
 export function getInternalRun(runId: string): InternalRun | undefined {
   return runs.get(runId);
+}
+
+export function evaluateInternalRun(run: InternalRun): RunEvaluation {
+  return evaluateRun({
+    events: traceBus.history(run.id),
+    email: run.email,
+    financeAgentIds: run.agents.filter((a) => a.financeTools).map((a) => a.id),
+    seedAgentId: run.seedAgentId,
+  });
 }
 
 export function setRunJudgment(runId: string, judgment: RunJudgment): void {
@@ -205,6 +220,8 @@ export async function createAndStartStoredRun(
       from: scen.from,
       subject: scen.subject,
       senderCheck: banner ?? null,
+      forensics: scen.senderCheck,
+      email: scen.email,
     };
   }
 
@@ -275,7 +292,9 @@ async function executeRun(
     scheduler: "round-robin",
     seedAgentId: opts.seedAgentId,
     scenarioHint: opts.scenarioHint ?? null,
-    email: opts.email ?? null,
+    email: opts.email
+      ? (({ email: _raw, ...meta }) => meta)(opts.email)
+      : null,
     financeAgentIds: run.agents.filter((a) => a.financeTools).map((a) => a.id),
     participantCount: run.agents.length,
   });

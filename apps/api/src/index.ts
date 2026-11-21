@@ -9,6 +9,7 @@ import { judgeRun, judgeTranscript } from "./harness/judge.js";
 import {
   createAndStartRun,
   createAndStartStoredRun,
+  evaluateInternalRun,
   getInternalRun,
   getRun,
   listRuns,
@@ -94,6 +95,7 @@ app.get("/api/runs/:id", (c) => {
     run,
     events: traceBus.history(run.id),
     judgment: internal?.judgment ?? null,
+    evaluation: internal ? evaluateInternalRun(internal) : null,
   });
 });
 
@@ -103,8 +105,9 @@ app.post("/api/runs/:id/judge", async (c) => {
   if (internal.status !== "completed" && internal.status !== "failed") {
     return c.json({ error: "Run still in progress" }, 409);
   }
+  const evaluation = evaluateInternalRun(internal);
   if (internal.judgment) {
-    return c.json({ judgment: internal.judgment, cached: true });
+    return c.json({ judgment: internal.judgment, evaluation, cached: true });
   }
 
   try {
@@ -113,9 +116,11 @@ app.post("/api/runs/:id/judge", async (c) => {
       seedAgentId: internal.seedAgentId ?? internal.agents[0]?.id ?? "",
       roster: internal.roster ?? [],
       events: traceBus.history(internal.id),
+      email: internal.email,
+      evaluation,
     });
     setRunJudgment(internal.id, judgment);
-    return c.json({ judgment, cached: false });
+    return c.json({ judgment, evaluation, cached: false });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const status = message.includes("ANTHROPIC_API_KEY") ? 503 : 502;

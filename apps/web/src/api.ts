@@ -9,6 +9,8 @@ import type {
   EmailScenarioSummary,
   OrgHints,
   OrgSizePreset,
+  RunAudit,
+  RunEvaluation,
   RunSummary,
   SeniorityMix,
   TraceEvent,
@@ -91,11 +93,12 @@ export type RunJudgment = {
   score: number;
   scoreRationale: string;
   model: string;
+  audit?: RunAudit;
 };
 
 export async function judgeRun(
   runId: string,
-): Promise<{ judgment: RunJudgment; cached: boolean }> {
+): Promise<{ judgment: RunJudgment; evaluation: RunEvaluation; cached: boolean }> {
   const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/judge`, {
     method: "POST",
   });
@@ -133,6 +136,7 @@ export async function fetchRun(runId: string): Promise<{
   run: RunSummary;
   events: TraceEvent[];
   judgment: RunJudgment | null;
+  evaluation: RunEvaluation | null;
 }> {
   const res = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
   const data = await res.json();
