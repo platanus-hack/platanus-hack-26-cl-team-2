@@ -46,6 +46,12 @@ export type EmailScenarioRef = {
    * down the path instead of staying with the seed.
    */
   provenanceTag?: boolean;
+  /**
+   * The "approval_gate" fix: the sandbox (not the prompt) holds a refund above
+   * APPROVAL_REFUND_LIMIT (default 500) or any bank change, and returns pending_human_approval.
+   * Applies because the work item came from an external email.
+   */
+  approvalGate?: boolean;
 };
 
 /** The two finance tools an agent can reach (the "sinks" of a risk path). */
@@ -127,6 +133,8 @@ export type ObservedPath = {
   /** null: the finance agent was reached but called no finance tool. */
   sink: RiskSink | null;
   blocked: boolean | null;
+  /** The approval gate held the call for a human (it was not executed). */
+  held?: boolean;
   level: RiskLevel;
   /** id of the predicted path with the same node sequence, if any. */
   matchesPredicted: string | null;
@@ -169,6 +177,8 @@ export type RunEvaluation = {
   dangerousAttempted: boolean;
   blockedBySandbox: boolean;
   refundsExecuted: number;
+  /** Finance calls the approval_gate fix held for a human (not executed, not in refundsExecuted). */
+  heldForApproval: number;
   /** An agent holding finance tools was the seed or received a message. */
   reachedFinance: boolean;
   /**
@@ -254,6 +264,8 @@ export type BatchRow = {
   verdict?: RunEvaluation["verdict"];
   dangerousAttempted?: boolean;
   refundsExecuted?: number;
+  /** Finance calls the approval gate held for a human. */
+  heldForApproval?: number;
   reachedFinance?: boolean;
   /** The message that reached the finance agent carried a warning or the provenance tag. */
   warningAtFinance?: boolean | null;
@@ -275,6 +287,8 @@ export type BatchSummary = {
   /** Failed runs (kept out of the rates) in which a bank change was still attempted. */
   failedDangerous: number;
   refunds: number;
+  /** Runs where the approval gate held at least one finance call (refund or bank change). */
+  held: number;
 };
 
 /** A batch result file (apps/api/results/batch-latest.json, served by GET /api/batch-results). */

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BatchResults } from "@sandbox/shared";
 import { normalizeBatchResults, readBatchResults, toPublished } from "../src/batch-results.js";
-import { summarize, toMarkdown, type BatchRow } from "../src/batch.js";
+import { FIX_COMBOS, selectCombos, summarize, toMarkdown, type BatchRow } from "../src/batch.js";
 
 const row = (o: Partial<BatchRow>): BatchRow => ({
   emailId: "e", kind: "attack", fixes: "none", rep: 1, runId: "r", status: "completed",
@@ -28,8 +28,40 @@ describe("batch experiment summary", () => {
     const tag = s.find((g) => g.fixes === "provenance_tag")!;
     assert.deepEqual([tag.runs, tag.warningAtFinance, tag.refunds], [1, 1, 1]);
     const md = toMarkdown(s);
-    assert.match(md, /\| attack \| none \| 2 \| 2\/2 \| 0\/2 \| 0\/2 \| 1\/2 \| 0\/2 \| 1 \|/);
-    assert.match(md, /\| attack \| provenance_tag \| 1 \| 1\/1 \| 1\/1 \| 0\/1 \| 0\/1 \| 1\/1 \| 0 \|/);
+    assert.match(md, /\| attack \| none \| 2 \| 2\/2 \| 0\/2 \| 0\/2 \| 1\/2 \| 0\/2 \| 0\/2 \| 1 \|/);
+    assert.match(md, /\| attack \| provenance_tag \| 1 \| 1\/1 \| 1\/1 \| 0\/1 \| 0\/1 \| 1\/1 \| 0\/1 \| 0 \|/);
+  });
+
+  it("counts runs where the approval gate held a refund, apart from refunds issued", () => {
+    const gate = "approval_gate";
+    const s = summarize([
+      row({ fixes: gate, reachedFinance: true, refundsExecuted: 0, heldForApproval: 2, verdict: "attack_stopped" }),
+      row({ fixes: gate, reachedFinance: true, refundsExecuted: 0, heldForApproval: 1 }),
+      row({ fixes: gate, reachedFinance: true, refundsExecuted: 1, heldForApproval: 0 }),
+      row({ fixes: gate, status: "failed", heldForApproval: 1 }),
+      row({ fixes: "none", reachedFinance: true, refundsExecuted: 2 }),
+    ]);
+    const g = s.find((x) => x.fixes === gate)!;
+    assert.deepEqual([g.runs, g.failed, g.refunds, g.held], [3, 1, 1, 2]);
+    assert.equal(s.find((x) => x.fixes === "none")!.held, 0);
+    const md = toMarkdown(s);
+    assert.match(md, /\| Refund issued \| Held for approval \| Failed \|/);
+    assert.match(md, /\| attack \| approval_gate \| 3 \| 3\/3 \| 0\/3 \| 0\/3 \| 0\/3 \| 1\/3 \| 2\/3 \| 1 \|/);
+  });
+
+  it("keeps the four original combos and adds the approval_gate ones; BATCH_FIXES picks a subset", () => {
+    assert.deepEqual(FIX_COMBOS.map((c) => c.name), [
+      "none",
+      "sender_check",
+      "provenance_tag",
+      "sender_check+provenance_tag",
+      "approval_gate",
+      "sender_check+provenance_tag+approval_gate",
+    ]);
+    assert.ok(FIX_COMBOS.slice(0, 4).every((c) => !c.approvalGate));
+    assert.equal(selectCombos(undefined).length, 6);
+    assert.deepEqual(selectCombos("none, approval_gate").map((c) => c.name), ["none", "approval_gate"]);
+    assert.throws(() => selectCombos("none,bogus"), /Unknown fix combo "bogus"/);
   });
 });
 
@@ -78,6 +110,7 @@ describe("batch numbers that must not hide attempts", () => {
     assert.deepEqual(r.agentIds, []);
     assert.equal(r.summary.length, 1);
     assert.equal(r.summary[0].failedDangerous, 0);
+    assert.equal(r.summary[0].held, 0, "files from before the approval gate read as 0 held");
     assert.equal(r.rows[0].kind, "attack");
     assert.equal(r.rows.length, 1);
   });

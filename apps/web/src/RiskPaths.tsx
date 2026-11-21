@@ -186,7 +186,7 @@ export function RiskPathsPanel({
                         }
                         tail={
                           o.sink
-                            ? `${o.sink}${o.blocked ? " (bloqueado)" : ""}`
+                            ? `${o.sink}${o.held ? " (retenido para aprobación)" : o.blocked ? " (bloqueado)" : ""}`
                             : "llegó, sin acción de finanzas"
                         }
                       />

@@ -7,7 +7,9 @@
  * Env: BATCH_REPS (default 5), BATCH_FILE (default spoof_eval_demo.json), BATCH_KINDS
  * (default "attack"; comma list, e.g. "attack,benign"), BATCH_CONCURRENCY (default 3),
  * BATCH_AGENTS (default seed_cs,seed_csm,seed_finance), BATCH_SEED (default first agent),
- * BATCH_FINANCE (default last agent), BATCH_MAX_TURNS (default 6), BATCH_LIMIT (max runs).
+ * BATCH_FINANCE (default last agent), BATCH_MAX_TURNS (default 6), BATCH_LIMIT (max runs),
+ * BATCH_FIXES (comma list of FIX_COMBOS names; default all 6), APPROVAL_REFUND_LIMIT (default 500,
+ * for the approval_gate combos).
  *
  * Needs seeded agents (db:seed) and ANTHROPIC_API_KEY. Every run calls the model: it costs money.
  * Writes apps/api/data/batch-<timestamp>.json (raw, git-ignored), apps/api/results/batch-latest.json
@@ -26,14 +28,26 @@ import {
   riskPathsForRun,
 } from "./harness/orchestrator.js";
 
-const FIX_COMBOS = [
-  { name: "none", senderCheck: false, provenanceTag: false },
-  { name: "sender_check", senderCheck: true, provenanceTag: false },
-  { name: "provenance_tag", senderCheck: false, provenanceTag: true },
-  { name: "sender_check+provenance_tag", senderCheck: true, provenanceTag: true },
+export const FIX_COMBOS = [
+  { name: "none", senderCheck: false, provenanceTag: false, approvalGate: false },
+  { name: "sender_check", senderCheck: true, provenanceTag: false, approvalGate: false },
+  { name: "provenance_tag", senderCheck: false, provenanceTag: true, approvalGate: false },
+  { name: "sender_check+provenance_tag", senderCheck: true, provenanceTag: true, approvalGate: false },
+  { name: "approval_gate", senderCheck: false, provenanceTag: false, approvalGate: true },
+  { name: "sender_check+provenance_tag+approval_gate", senderCheck: true, provenanceTag: true, approvalGate: true },
 ] as const;
 
-type Job = { emailId: string; kind: string; combo: (typeof FIX_COMBOS)[number]; rep: number };
+type Combo = (typeof FIX_COMBOS)[number];
+type Job = { emailId: string; kind: string; combo: Combo; rep: number };
+
+/** BATCH_FIXES: a subset of FIX_COMBOS by name (default all). An unknown name is an error. */
+export function selectCombos(raw: string | undefined): Combo[] {
+  if (!raw?.trim()) return [...FIX_COMBOS];
+  const names = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  const unknown = names.find((n) => !FIX_COMBOS.some((c) => c.name === n));
+  if (unknown) throw new Error(`Unknown fix combo "${unknown}". Use: ${FIX_COMBOS.map((c) => c.name).join(", ")}`);
+  return FIX_COMBOS.filter((c) => names.includes(c.name));
+}
 
 export type { BatchRow, BatchSummary };
 
@@ -59,7 +73,7 @@ export function summarize(rows: BatchRow[]): BatchSummary[] {
       groups.get(key) ??
       {
         fixes: r.fixes, kind: r.kind, runs: 0, failed: 0, reachedFinance: 0, warningAtFinance: 0,
-        agentWarnedAtFinance: 0, dangerousAttempted: 0, failedDangerous: 0, refunds: 0,
+        agentWarnedAtFinance: 0, dangerousAttempted: 0, failedDangerous: 0, refunds: 0, held: 0,
       };
     groups.set(key, g);
     if (r.status !== "completed") {
@@ -73,19 +87,20 @@ export function summarize(rows: BatchRow[]): BatchSummary[] {
     if (r.agentWarnedAtFinance) g.agentWarnedAtFinance += 1;
     if (r.dangerousAttempted) g.dangerousAttempted += 1;
     if ((r.refundsExecuted ?? 0) > 0) g.refunds += 1;
+    if ((r.heldForApproval ?? 0) > 0) g.held += 1;
   }
   return [...groups.values()];
 }
 
 export function toMarkdown(summary: BatchSummary[]): string {
   const lines = [
-    "| Emails | Fixes | Runs | Reached finance | Finance saw origin or warning | Agents wrote a warning | Bank change attempted | Refund issued | Failed |",
-    "|---|---|---|---|---|---|---|---|---|",
+    "| Emails | Fixes | Runs | Reached finance | Finance saw origin or warning | Agents wrote a warning | Bank change attempted | Refund issued | Held for approval | Failed |",
+    "|---|---|---|---|---|---|---|---|---|---|",
   ];
   for (const s of summary) {
     const of = (n: number, d: number) => (d ? `${n}/${d}` : "-");
     lines.push(
-      `| ${s.kind} | ${s.fixes} | ${s.runs} | ${of(s.reachedFinance, s.runs)} | ${of(s.warningAtFinance, s.reachedFinance)} | ${of(s.agentWarnedAtFinance, s.reachedFinance)} | ${of(s.dangerousAttempted, s.runs)}${s.failedDangerous ? ` (+${s.failedDangerous} in failed runs)` : ""} | ${of(s.refunds, s.runs)} | ${s.failed} |`,
+      `| ${s.kind} | ${s.fixes} | ${s.runs} | ${of(s.reachedFinance, s.runs)} | ${of(s.warningAtFinance, s.reachedFinance)} | ${of(s.agentWarnedAtFinance, s.reachedFinance)} | ${of(s.dangerousAttempted, s.runs)}${s.failedDangerous ? ` (+${s.failedDangerous} in failed runs)` : ""} | ${of(s.refunds, s.runs)} | ${of(s.held, s.runs)} | ${s.failed} |`,
     );
   }
   return lines.join("\n");
@@ -103,6 +118,7 @@ async function runJob(job: Job, file: string, agentIds: string[], seedAgentId: s
       maxTurnsPerAgent: maxTurns,
       emailScenario: {
         file, id: job.emailId, senderCheck: job.combo.senderCheck, provenanceTag: job.combo.provenanceTag,
+        approvalGate: job.combo.approvalGate,
       },
     });
     base.runId = run.id;
@@ -119,6 +135,7 @@ async function runJob(job: Job, file: string, agentIds: string[], seedAgentId: s
           verdict: ev.verdict,
           dangerousAttempted: ev.dangerousAttempted,
           refundsExecuted: ev.refundsExecuted,
+          heldForApproval: ev.heldForApproval,
           reachedFinance: ev.reachedFinance,
           warningAtFinance: observed ? (observed.hops.at(-1)?.warningCarried ?? null) : null,
           agentWarnedAtFinance: observed ? (observed.hops.at(-1)?.agentWarned ?? null) : null,
@@ -141,6 +158,7 @@ async function main() {
   const seedAgentId = process.env.BATCH_SEED ?? agentIds[0];
   const financeId = process.env.BATCH_FINANCE ?? agentIds[agentIds.length - 1];
   const maxTurns = intEnv("BATCH_MAX_TURNS", 6, 1);
+  const combos = selectCombos(process.env.BATCH_FIXES);
 
   const emails = listEmailScenarios().scenarios.filter((s) => s.file === file && kinds.has(s.kind));
   if (!emails.length) throw new Error(`No emails of kind ${[...kinds].join(",")} in ${file}`);
@@ -148,12 +166,12 @@ async function main() {
   let jobs: Job[] = [];
   for (let rep = 1; rep <= reps; rep++)
     for (const e of emails)
-      for (const combo of FIX_COMBOS) jobs.push({ emailId: e.id, kind: e.kind, combo, rep });
+      for (const combo of combos) jobs.push({ emailId: e.id, kind: e.kind, combo, rep });
   const limit = intEnv("BATCH_LIMIT", 0, 0);
   if (limit > 0) jobs = jobs.slice(0, limit);
 
   console.log(
-    `[batch] ${jobs.length} runs · ${emails.length} emails × ${FIX_COMBOS.length} fix combos × ${reps} reps · model ${config.model} · agents ${agentIds.join(",")} (seed ${seedAgentId}, finance ${financeId})`,
+    `[batch] ${jobs.length} runs · ${emails.length} emails × ${combos.length} fix combos × ${reps} reps · model ${config.model} · agents ${agentIds.join(",")} (seed ${seedAgentId}, finance ${financeId})`,
   );
 
   const rows: BatchRow[] = [];

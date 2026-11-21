@@ -90,7 +90,16 @@ function defaultEmail(scenarios: EmailScenarioSummary[]): EmailScenarioSummary |
   );
 }
 
-type FixName = "sender_check" | "provenance_tag";
+type FixName = "sender_check" | "provenance_tag" | "approval_gate";
+
+const ALL_FIXES: readonly FixName[] = ["sender_check", "provenance_tag", "approval_gate"];
+
+/** The emailScenario flag each fix turns on. */
+const FIX_FLAG: Record<FixName, "senderCheck" | "provenanceTag" | "approvalGate"> = {
+  sender_check: "senderCheck",
+  provenance_tag: "provenanceTag",
+  approval_gate: "approvalGate",
+};
 
 const FIX_BUTTON: Record<FixName, { label: string; title: string }> = {
   sender_check: {
@@ -103,20 +112,23 @@ const FIX_BUTTON: Record<FixName, { label: string; title: string }> = {
     title:
       "Misma configuración; el sistema agrega el origen del correo (y el veredicto del remitente, si está activo) a cada mensaje entre agentes",
   },
+  approval_gate: {
+    label: "Repetir con aprobación humana por procedencia",
+    title:
+      "Misma configuración; el entorno de finanzas retiene para aprobación humana los reembolsos grandes y los cambios bancarios pedidos desde un correo externo (los agentes no lo saben de antemano)",
+  },
 };
 
 const FIX_LABEL: Record<FixName, string> = {
   sender_check: "verificación del remitente",
   provenance_tag: "etiqueta de procedencia",
+  approval_gate: "aprobación humana por procedencia",
 };
 
 function fixesOf(req: CreateStoredRunRequest | null): FixName[] {
   const e = req?.emailScenario;
   if (!e) return [];
-  return [
-    ...(e.senderCheck ? (["sender_check"] as const) : []),
-    ...(e.provenanceTag ? (["provenance_tag"] as const) : []),
-  ];
+  return ALL_FIXES.filter((f) => e[FIX_FLAG[f]]);
 }
 
 function fixesLabel(fixes: FixName[]): string {
@@ -137,6 +149,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
   const [emailKey, setEmailKey] = useState("");
   const [senderCheckOn, setSenderCheckOn] = useState(false);
   const [provenanceTagOn, setProvenanceTagOn] = useState(false);
+  const [approvalGateOn, setApprovalGateOn] = useState(false);
   const [preview, setPreview] = useState<RiskPathAnalysis | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -364,6 +377,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
     email: scenarioSource === "email" && selectedEmail ? emailKeyOf(selectedEmail) : null,
     senderCheckOn,
     provenanceTagOn,
+    approvalGateOn,
   });
   useEffect(() => {
     if (selectedIds.length < 2 || !selectedIds.includes(seedAgentId)) {
@@ -387,6 +401,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
                   id: selectedEmail.id,
                   senderCheck: senderCheckOn,
                   provenanceTag: provenanceTagOn,
+                  approvalGate: approvalGateOn,
                 },
               }
             : {}),
@@ -484,13 +499,11 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
       judgment,
     });
     if (fix === "sender_check") setSenderCheckOn(true);
-    else setProvenanceTagOn(true);
+    else if (fix === "provenance_tag") setProvenanceTagOn(true);
+    else setApprovalGateOn(true);
     await launch({
       ...lastLaunch,
-      emailScenario: {
-        ...lastLaunch.emailScenario,
-        ...(fix === "sender_check" ? { senderCheck: true } : { provenanceTag: true }),
-      },
+      emailScenario: { ...lastLaunch.emailScenario, [FIX_FLAG[fix]]: true },
     });
   }
 
@@ -501,9 +514,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
     (run.status === "completed" || run.status === "failed") &&
     lastLaunch?.emailScenario !== undefined;
   const rerunFixes: FixName[] = runFinished
-    ? (["sender_check", "provenance_tag"] as const).filter(
-        (f) => !fixesOf(lastLaunch).includes(f),
-      )
+    ? ALL_FIXES.filter((f) => !fixesOf(lastLaunch).includes(f))
     : [];
   const afterLabel = `después (${fixesLabel(fixesOf(lastLaunch))})`;
 
@@ -521,6 +532,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
                 id: selectedEmail.id,
                 senderCheck: senderCheckOn,
                 provenanceTag: provenanceTagOn,
+                approvalGate: approvalGateOn,
               },
             }
           : { scenarioHint: scenarioHint.trim() || undefined }),
@@ -714,6 +726,18 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
                       disabled={busy}
                     />
                     Etiquetar cada mensaje entre agentes con la procedencia (mitigación)
+                  </label>
+                  <label
+                    className="check"
+                    title="El entorno de finanzas (no el modelo) retiene los reembolsos sobre el límite y los cambios bancarios pedidos desde un correo externo, y responde «pendiente de aprobación humana». Los agentes no lo saben de antemano."
+                  >
+                    <input
+                      type="checkbox"
+                      checked={approvalGateOn}
+                      onChange={(e) => setApprovalGateOn(e.target.checked)}
+                      disabled={busy}
+                    />
+                    Aprobación humana por procedencia: retener reembolsos grandes y cambios bancarios (mitigación)
                   </label>
                 </div>
                 {emailLoadError ? (

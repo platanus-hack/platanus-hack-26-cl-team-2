@@ -33,7 +33,7 @@ export function normalizeBatchResults(data: unknown): BatchResults {
       kind: s.kind, fixes: s.fixes, runs: num(s.runs), failed: num(s.failed),
       reachedFinance: num(s.reachedFinance), warningAtFinance: num(s.warningAtFinance),
       agentWarnedAtFinance: num(s.agentWarnedAtFinance), dangerousAttempted: num(s.dangerousAttempted),
-      failedDangerous: num(s.failedDangerous), refunds: num(s.refunds),
+      failedDangerous: num(s.failedDangerous), refunds: num(s.refunds), held: num(s.held),
     }];
   });
   const rows: BatchRow[] = r.rows.flatMap((x) => {
