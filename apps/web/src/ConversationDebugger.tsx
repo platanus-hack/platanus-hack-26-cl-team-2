@@ -6,13 +6,19 @@ import "./debugger.css";
 /**
  * Step-by-step graph debugger for one run: agents (plus the incoming email and the
  * sandboxed tools) as nodes, and each trace event lit up on the edge it travels.
+ *
+ * By default it steps through the conversation only (email, messages, sandbox attempts,
+ * agents finishing). The technical events behind each step (thoughts, turns, tool calls)
+ * stay one click away under "Inspeccionar más", or can be stepped through one by one.
  */
 
 type NodeKind = "external" | "agent" | "tool";
 type GraphNode = { id: string; kind: NodeKind; name: string; sub: string; ini: string; x: number; y: number };
 type Risk = "warn" | "crit" | null;
-type Step = {
+export type Step = {
   event: TraceEvent;
+  /** Position in the full (unfiltered) step list. */
+  order: number;
   /** Directed edge the event travels on, if any. */
   edge: [string, string] | null;
   /** Nodes involved in this event (for highlighting / counting). */
@@ -25,6 +31,10 @@ type Step = {
 const INTERNAL_TOOLS = new Set(["send_message", "read_inbox", "done"]);
 const FINANCE_TOOLS = new Set(["issue_refund", "update_vendor_bank_account"]);
 const DANGEROUS_TOOL = "update_vendor_bank_account";
+/** Event types shown in conversation mode. Everything else is a technical detail. */
+const CONVERSATION_TYPES = new Set<TraceEvent["type"]>([
+  "run.started", "agent.message_sent", "sandbox.tool_attempt", "agent.done", "agent.error", "run.completed", "run.failed",
+]);
 const SOURCE = "__source";
 const SANDBOX = "__sandbox";
 const W = 940;
@@ -44,6 +54,14 @@ const TYPE_COLOR: Record<string, string> = {
   "agent.done": "#86efac",
   "agent.error": "#fb7185",
 };
+const TYPE_NAME: Record<string, string> = {
+  "agent.turn.started": "Turno",
+  "agent.thought": "Pensamiento",
+  "agent.message_received": "Recepción",
+  "agent.tool_call": "Llamada a herramienta",
+  "agent.tool_result": "Resultado de herramienta",
+  "sandbox.tool_attempt": "Intento en sandbox",
+};
 const KIND_COLOR: Record<NodeKind, string> = { external: "#fbbf24", agent: "#5eead4", tool: "#c4b5fd" };
 
 const colorOf = (e: TraceEvent) => TYPE_COLOR[e.type] ?? "#94a3b8";
@@ -52,8 +70,13 @@ const initials = (name: string) =>
   name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
 const toolNodeId = (tool: string) => (FINANCE_TOOLS.has(tool) ? SANDBOX : `db:${tool}`);
 const edgeKey = (a: string, b: string) => [a, b].sort().join("|");
+const json = (v: unknown) => JSON.stringify(v, null, 2);
 
-type EmailMeta = { id?: string; from?: string | null; senderCheck?: { verdict?: string } | null } | null;
+type EmailMeta = {
+  id?: string; kind?: string; technique?: string; from?: string | null; subject?: string | null;
+  senderCheck?: { verdict?: string; reasons?: string[] } | null;
+} | null;
+type Message = { fromAgentId?: string; toAgentId?: string; body?: string };
 
 function emailOf(events: TraceEvent[]): EmailMeta {
   const start = events.find((e) => e.type === "run.started");
@@ -86,7 +109,7 @@ export function buildSteps(events: TraceEvent[], agents: AgentSpec[]): Step[] {
       }
       case "agent.message_sent":
       case "agent.message_received": {
-        const m = p.message as { fromAgentId?: string; toAgentId?: string } | undefined;
+        const m = p.message as Message | undefined;
         if (m?.fromAgentId && m.toAgentId) edge = [m.fromAgentId, m.toAgentId];
         label = event.type === "agent.message_sent" ? "Mensaje" : "Recibe";
         title = event.type === "agent.message_sent"
@@ -133,9 +156,21 @@ export function buildSteps(events: TraceEvent[], agents: AgentSpec[]): Step[] {
         break;
     }
     const nodes = edge ? [...edge] : event.agentId ? [event.agentId] : [];
-    steps.push({ event, edge, nodes, label, title, risk });
+    steps.push({ event, order: steps.length, edge, nodes, label, title, risk });
   }
   return steps;
+}
+
+/**
+ * Technical events behind a conversation step: what its agent did since the previous
+ * conversation step (thoughts, turns, tool calls and results).
+ */
+export function detailsFor(all: Step[], visible: Step[], k: number): Step[] {
+  const cur = visible[k];
+  if (!cur) return [];
+  const from = k > 0 ? visible[k - 1]!.order + 1 : 0;
+  const agent = cur.event.agentId;
+  return all.slice(from, cur.order).filter((s) => !CONVERSATION_TYPES.has(s.event.type) && (!agent || s.event.agentId === agent));
 }
 
 function layout(agents: AgentSpec[], steps: Step[], events: TraceEvent[]): GraphNode[] {
@@ -143,8 +178,7 @@ function layout(agents: AgentSpec[], steps: Step[], events: TraceEvent[]): Graph
   const seed = String(events.find((e) => e.type === "run.started")?.payload.seedAgentId ?? agents[0]?.id ?? "");
   const ordered = [...agents].sort((a, b) => (a.id === seed ? -1 : b.id === seed ? 1 : 0));
   const nodes: GraphNode[] = [];
-  const hasSource = steps.some((s) => s.nodes.includes(SOURCE));
-  if (hasSource) {
+  if (steps.some((s) => s.nodes.includes(SOURCE))) {
     nodes.push({
       id: SOURCE, kind: "external", ini: "@",
       name: email ? "Correo entrante" : "Escenario",
@@ -180,23 +214,114 @@ function shorten(a: GraphNode, b: GraphNode, r1: number, r2: number) {
   return { x1: a.x + (dx / len) * r1, y1: a.y + (dy / len) * r1, x2: b.x - (dx / len) * r2, y2: b.y - (dy / len) * r2 };
 }
 
-function JsonView({ value }: { value: Record<string, unknown> }) {
-  return <pre className="dbg-json">{JSON.stringify(value, null, 2)}</pre>;
+/** The readable part of a step: the message itself, the email, the sandbox decision… */
+function MainContent({ step, name }: { step: Step; name: (id?: string) => string }) {
+  const e = step.event, p = e.payload;
+  if (e.type === "agent.message_sent" || e.type === "agent.message_received") {
+    const m = p.message as Message | undefined;
+    return (
+      <div className="dbg-msg">
+        <div className="dbg-msg-h"><span>De <b>{name(m?.fromAgentId)}</b></span><span>Para <b>{name(m?.toAgentId)}</b></span></div>
+        <div className="dbg-msg-body">{m?.body ?? ""}</div>
+      </div>
+    );
+  }
+  if (e.type === "run.started") {
+    const email = p.email as EmailMeta;
+    if (!email) return <p className="dbg-quote">{String(p.scenarioHint ?? summarize(e))}</p>;
+    const verdict = email.senderCheck?.verdict;
+    return (
+      <div className="dbg-msg email">
+        <dl className="dbg-kv">
+          <dt>De</dt><dd>{email.from ?? "?"}</dd>
+          {email.subject ? <><dt>Asunto</dt><dd>{email.subject}</dd></> : null}
+          <dt>Escenario</dt><dd>{email.id}{email.technique ? ` · ${email.technique}` : ""}</dd>
+          <dt>Verificación del remitente</dt>
+          <dd className={verdict && verdict !== "OK" ? "bad" : ""}>{verdict ?? "desactivada"}</dd>
+        </dl>
+        {email.senderCheck?.reasons?.length ? <ul className="dbg-reasons">{email.senderCheck.reasons.map((r) => <li key={r}>{r}</li>)}</ul> : null}
+      </div>
+    );
+  }
+  if (e.type === "sandbox.tool_attempt") {
+    return (
+      <div className={`dbg-msg ${p.blocked ? "blocked" : ""}`}>
+        <div className="dbg-msg-h"><span><b>{name(e.agentId)}</b> intentó usar <code>{String(p.tool)}</code></span><span className="dbg-verdict">{p.blocked ? "BLOQUEADO" : "SIMULADO"}</span></div>
+        <pre className="dbg-json">{json(p.args)}</pre>
+      </div>
+    );
+  }
+  if (e.type === "agent.done") return <p className="dbg-quote">{String(p.summary ?? "")}</p>;
+  if (e.type === "agent.thought") return <p className="dbg-quote thought">{String(p.text ?? "")}</p>;
+  return <p className="dbg-quote">{summarize(e)}</p>;
+}
+
+/** Short, human-readable line for the conversation list. */
+function threadText(e: TraceEvent): string {
+  const p = e.payload;
+  switch (e.type) {
+    case "agent.message_sent":
+    case "agent.message_received":
+      return (p.message as Message | undefined)?.body ?? "";
+    case "run.started": {
+      const email = p.email as EmailMeta;
+      if (!email) return String(p.scenarioHint ?? "Escenario inicial");
+      const parts = [email.from ?? "remitente desconocido", email.subject, email.technique ?? email.id];
+      if (email.senderCheck?.verdict) parts.push(`verificación: ${email.senderCheck.verdict}`);
+      return parts.filter(Boolean).join(" · ");
+    }
+    case "sandbox.tool_attempt":
+      return `${String(p.tool)} · ${p.blocked ? "bloqueado" : "simulado"}`;
+    case "agent.done":
+      return String(p.summary ?? "");
+    case "agent.thought":
+      return String(p.text ?? "");
+    default:
+      return summarize(e);
+  }
+}
+
+/** One technical event inside "Inspeccionar más". */
+function TechItem({ step }: { step: Step }) {
+  const e = step.event, p = e.payload;
+  let body: ReactElement;
+  if (e.type === "agent.thought") body = <p className="dbg-tech-text">{String(p.text ?? "")}</p>;
+  else if (e.type === "agent.tool_call") body = <><code>{String(p.name)}</code><pre className="dbg-json">{json(p.input)}</pre></>;
+  else if (e.type === "agent.tool_result") body = <><code>{String(p.name)}</code><pre className="dbg-json">{json(p.result)}</pre></>;
+  else body = <p className="dbg-tech-text">{summarize(e)}</p>;
+  return (
+    <li className="dbg-tech">
+      <span className="dbg-type"><i style={{ background: colorOf(e) }} />{TYPE_NAME[e.type] ?? e.type}<small>{new Date(e.ts).toLocaleTimeString()}</small></span>
+      {body}
+    </li>
+  );
 }
 
 type Props = { events: TraceEvent[]; agents: AgentSpec[]; running: boolean };
 
 export function ConversationDebugger({ events, agents, running }: Props) {
-  const steps = useMemo(() => buildSteps(events, agents), [events, agents]);
-  const nodes = useMemo(() => layout(agents, steps, events), [agents, steps, events]);
+  const all = useMemo(() => buildSteps(events, agents), [events, agents]);
+  const [technical, setTechnical] = useState(false);
+  const steps = useMemo(() => (technical ? all : all.filter((s) => CONVERSATION_TYPES.has(s.event.type))), [all, technical]);
+  const nodes = useMemo(() => layout(agents, all, events), [agents, all, events]);
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
-  /** null = follow the latest event (live). */
-  const [pinned, setPinned] = useState<number | null>(null);
+  const name = (id?: string) => agents.find((a) => a.id === id)?.name ?? id ?? "Ejecución";
+  /** Event id of the step being looked at; null = follow the latest event (live). */
+  const [pinned, setPinned] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
+  const [expanded, setExpanded] = useState(false);
+  const threadRef = useRef<HTMLOListElement>(null);
   const reduced = useRef(typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const N = steps.length;
-  const step = N === 0 ? -1 : Math.min(pinned ?? N - 1, N - 1);
+
+  // Index of the pinned event in the visible list; if it is hidden (technical view off), the last visible step before it.
+  let step = N - 1;
+  if (pinned !== null) {
+    const order = all.find((s) => s.event.id === pinned)?.order ?? Infinity;
+    step = 0;
+    steps.forEach((s, k) => { if (s.order <= order) step = k; });
+  }
 
   // Reset to live follow when a new run starts.
   const firstId = events[0]?.id;
@@ -204,43 +329,49 @@ export function ConversationDebugger({ events, agents, running }: Props) {
 
   useEffect(() => {
     if (!playing) return;
-    const t = setInterval(() => {
-      setPinned((cur) => {
-        const next = (cur ?? N - 1) + 1;
-        if (next >= N - 1) setPlaying(false);
-        return Math.min(next, N - 1);
-      });
+    const t = setTimeout(() => {
+      if (step >= N - 1) return setPlaying(false);
+      setPinned(steps[step + 1]!.event.id);
     }, 1100 / speed);
-    return () => clearInterval(t);
-  }, [playing, speed, N]);
+    return () => clearTimeout(t);
+  }, [playing, speed, step, N, steps]);
+
+  // Keep the current message visible in the thread without scrolling the page.
+  useEffect(() => {
+    const list = threadRef.current, item = list?.querySelector<HTMLElement>(".cur");
+    if (list && item) list.scrollTop = item.offsetTop - list.offsetTop - list.clientHeight / 2 + item.clientHeight / 2;
+  }, [step, technical]);
 
   if (N === 0) {
     return <p className="empty">Inicia o carga una ejecución para recorrer la conversación paso a paso.</p>;
   }
 
-  const go = (k: number) => { setPlaying(false); setPinned(Math.max(0, Math.min(N - 1, k))); };
+  const go = (k: number) => { setPlaying(false); setPinned(steps[Math.max(0, Math.min(N - 1, k))]!.event.id); };
   const togglePlay = () => {
     if (playing) return setPlaying(false);
-    if (step >= N - 1) setPinned(0); else setPinned(step);
+    setPinned(steps[step >= N - 1 ? 0 : step]!.event.id);
     setPlaying(true);
   };
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).matches("input, select, textarea")) return;
     if (e.key === "ArrowRight") { e.preventDefault(); go(step + 1); }
     else if (e.key === "ArrowLeft") { e.preventDefault(); go(step - 1); }
-    else if (e.key === " " && !(e.target as HTMLElement).matches("button")) { e.preventDefault(); togglePlay(); }
+    else if (e.key === " " && !(e.target as HTMLElement).matches("button, summary")) { e.preventDefault(); togglePlay(); }
   };
 
   const cur = steps[step]!;
-  const past = steps.slice(0, step + 1);
+  /** Everything that has happened up to the current step, technical events included. */
+  const past = all.slice(0, cur.order + 1);
+  const details = technical ? [] : detailsFor(all, steps, step);
   const curKey = cur.edge ? edgeKey(...cur.edge) : null;
-  const visited = new Set(steps.slice(0, step).filter((s) => s.edge).map((s) => edgeKey(...s.edge!)));
+  const visited = new Set(all.slice(0, cur.order).filter((s) => s.edge).map((s) => edgeKey(...s.edge!)));
   const allEdges = new Map<string, [string, string]>();
-  for (const s of steps) if (s.edge && byId.has(s.edge[0]) && byId.has(s.edge[1])) allEdges.set(edgeKey(...s.edge), s.edge);
+  for (const s of all) if (s.edge && byId.has(s.edge[0]) && byId.has(s.edge[1])) allEdges.set(edgeKey(...s.edge), s.edge);
   const live = pinned === null;
   const c = colorOf(cur.event);
   const stats = {
     msgs: past.filter((s) => s.event.type === "agent.message_sent").length,
+    thoughts: past.filter((s) => s.event.type === "agent.thought").length,
     tools: past.filter((s) => s.event.type === "agent.tool_call").length,
     bank: past.filter((s) => s.event.type === "sandbox.tool_attempt" && s.event.payload.dangerous).length,
     blocked: past.filter((s) => s.event.type === "sandbox.tool_attempt" && s.event.payload.blocked).length,
@@ -252,6 +383,7 @@ export function ConversationDebugger({ events, agents, running }: Props) {
     for (let k = 0; k <= step; k++) if (steps[k]!.nodes.includes(id)) return k;
     return step;
   };
+  const thread = steps.map((s, k) => ({ s, k })).filter(({ s }) => s.event.type !== "agent.message_received" || !technical);
 
   let active: ReactElement | null = null;
   if (cur.edge) {
@@ -261,7 +393,7 @@ export function ConversationDebugger({ events, agents, running }: Props) {
       const ang = Math.atan2(y2 - y1, x2 - x1), ah = 11;
       const head = `M${x2 + Math.cos(ang) * 4},${y2 + Math.sin(ang) * 4} L${x2 - Math.cos(ang - 0.45) * ah},${y2 - Math.sin(ang - 0.45) * ah} L${x2 - Math.cos(ang + 0.45) * ah},${y2 - Math.sin(ang + 0.45) * ah}Z`;
       const lbl = cut(cur.label, 26), lw = lbl.length * 6.6 + 20;
-      const pathId = `dbg-active-${step}`;
+      const pathId = `dbg-active-${cur.event.id}`;
       active = (
         <g>
           <path id={pathId} className="dbg-e-act" style={{ stroke: c }} d={`M${x1},${y1} L${x2},${y2}`} />
@@ -291,16 +423,22 @@ export function ConversationDebugger({ events, agents, running }: Props) {
           <button type="button" onClick={() => go(N - 1)} disabled={step === N - 1} aria-label="Último paso" title="Último paso">⏭</button>
         </div>
         <div className="dbg-status" aria-live="polite">
-          <b>Paso {step + 1} de {N}</b> · <code>{cur.event.type}</code> · {new Date(cur.event.ts).toLocaleTimeString()}
+          <b>Paso {step + 1} de {N}</b> · {cur.title}
           {running && (live
             ? <span className="dbg-live">● En vivo</span>
             : <button type="button" className="dbg-follow" onClick={() => { setPlaying(false); setPinned(null); }}>Seguir en vivo</button>)}
         </div>
-        <label className="dbg-speed">Velocidad
-          <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
-            <option value={0.5}>0.5×</option><option value={1}>1×</option><option value={2}>2×</option><option value={4}>4×</option>
-          </select>
-        </label>
+        <div className="dbg-opts">
+          <label className="dbg-switch" title="Recorrer también pensamientos, turnos y llamadas a herramientas">
+            <input type="checkbox" checked={technical} onChange={(e) => { setTechnical(e.target.checked); setPlaying(false); if (live) setPinned(null); else setPinned(cur.event.id); }} />
+            Pasos técnicos
+          </label>
+          <label className="dbg-speed">Velocidad
+            <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
+              <option value={0.5}>0.5×</option><option value={1}>1×</option><option value={2}>2×</option><option value={4}>4×</option>
+            </select>
+          </label>
+        </div>
         <div className="dbg-scrub" style={{ gridTemplateColumns: `repeat(${N}, minmax(0, 1fr))` }}>
           {steps.map((s, k) => (
             <button type="button" key={s.event.id} className={`dbg-tick ${k === step ? "cur" : k < step ? "past" : ""}`}
@@ -310,72 +448,110 @@ export function ConversationDebugger({ events, agents, running }: Props) {
             </button>
           ))}
         </div>
-        <div className="dbg-kbd"><kbd>←</kbd> <kbd>→</kbd> avanzar o retroceder · <kbd>espacio</kbd> reproducir o pausar · clic en un nodo salta a su siguiente evento</div>
+        <div className="dbg-kbd">
+          {technical ? "Mostrando todos los eventos." : "Mostrando solo la conversación: correo, mensajes, intentos en el sandbox y cierres."}{" "}
+          <kbd>←</kbd> <kbd>→</kbd> avanzar · <kbd>espacio</kbd> reproducir · clic en un nodo salta a su siguiente evento
+        </div>
       </div>
 
       <div className="dbg-body">
-        <div className="dbg-graph">
-          <div className="dbg-canvas">
-            <div className="dbg-now">
-              <span className="dbg-type"><i style={{ background: c }} />{cur.event.type}</span>
-              <strong>{cur.title}</strong>
-              <span className="dbg-muted">{cut(summarize(cur.event), 160)}</span>
+        <div className="dbg-left">
+          <div className="dbg-graph">
+            <div className="dbg-canvas">
+              <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Grafo de la conversación con el evento actual resaltado">
+                {[...allEdges].map(([k, [a, b]]) => {
+                  const { x1, y1, x2, y2 } = shorten(byId.get(a)!, byId.get(b)!, 40, 40);
+                  return <line key={k} className={`dbg-e ${k === curKey ? "act" : visited.has(k) ? "vis" : "fut"}`} x1={x1} y1={y1} x2={x2} y2={y2} />;
+                })}
+                {active}
+                {nodes.map((n) => {
+                  const col = KIND_COLOR[n.kind];
+                  const count = past.filter((s) => s.nodes.includes(n.id) && CONVERSATION_TYPES.has(s.event.type)).length;
+                  const seen = past.some((s) => s.nodes.includes(n.id));
+                  const st = cur.nodes.includes(n.id) ? "on" : seen ? "seen" : "idle";
+                  const crit = past.some((s) => s.risk === "crit" && s.nodes.includes(n.id));
+                  const warn = !crit && past.some((s) => s.risk && s.nodes.includes(n.id));
+                  return (
+                    <g key={n.id} className={`dbg-n ${st}`} transform={`translate(${n.x},${n.y})`} role="button" tabIndex={0}
+                      aria-label={`${n.name}: ir a su siguiente evento`} onClick={() => go(nextFor(n.id))}
+                      onKeyDown={(e) => { if (e.key === "Enter") go(nextFor(n.id)); }}>
+                      <circle r={44} className="halo" style={{ stroke: col }} />
+                      <circle r={31} className="disc" style={{ stroke: col }} />
+                      <text className="ini" y={5} style={{ fill: col }}>{n.ini}</text>
+                      <text className="nm" y={58}>{cut(n.name, 20)}</text>
+                      <text className="sb" y={74}>{cut(n.sub, 26)}</text>
+                      {count > 0 && <g transform="translate(25,-25)"><circle r={11} className="badge" /><text y={4} className="bt">{count}</text></g>}
+                      {(crit || warn) && <g transform="translate(-26,-24)"><circle r={8} style={{ fill: crit ? "#fb7185" : "#fbbf24" }} /><text y={4} className="risk">!</text></g>}
+                      {n.kind === "tool" && blockedOn.has(n.id) && <g className="blocktag" transform="translate(0,94)"><rect x={-48} y={-11} width={96} height={21} rx={4} /><text y={4}>BLOQUEADO</text></g>}
+                    </g>
+                  );
+                })}
+              </svg>
             </div>
-            <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Grafo de la conversación con el evento actual resaltado">
-              {[...allEdges].map(([k, [a, b]]) => {
-                const { x1, y1, x2, y2 } = shorten(byId.get(a)!, byId.get(b)!, 40, 40);
-                return <line key={k} className={`dbg-e ${k === curKey ? "act" : visited.has(k) ? "vis" : "fut"}`} x1={x1} y1={y1} x2={x2} y2={y2} />;
-              })}
-              {active}
-              {nodes.map((n) => {
-                const col = KIND_COLOR[n.kind];
-                const count = past.filter((s) => s.nodes.includes(n.id)).length;
-                const st = cur.nodes.includes(n.id) ? "on" : count ? "seen" : "idle";
-                const crit = past.some((s) => s.risk === "crit" && s.nodes.includes(n.id));
-                const warn = !crit && past.some((s) => s.risk && s.nodes.includes(n.id));
+            <div className="dbg-legend">
+              <span><i style={{ background: "#2dd4bf" }} />Mensaje</span>
+              <span><i style={{ background: "#c4b5fd" }} />Herramienta</span>
+              <span><i style={{ background: "#fb7185" }} />Sandbox</span>
+              <span><i style={{ background: "#3d5570" }} />Ya recorrido</span>
+              <span><i className="dashed" />Aún no ocurre</span>
+            </div>
+          </div>
+
+          <div className="dbg-thread-card">
+            <div className="dbg-insp-h"><h3>Conversación</h3><small>Clic en un mensaje para ir a ese paso</small></div>
+            <ol className="dbg-thread" ref={threadRef}>
+              {thread.map(({ s, k }) => {
+                const text = threadText(s.event);
                 return (
-                  <g key={n.id} className={`dbg-n ${st}`} transform={`translate(${n.x},${n.y})`} role="button" tabIndex={0}
-                    aria-label={`${n.name}: ir a su siguiente evento`} onClick={() => go(nextFor(n.id))}
-                    onKeyDown={(e) => { if (e.key === "Enter") go(nextFor(n.id)); }}>
-                    <circle r={44} className="halo" style={{ stroke: col }} />
-                    <circle r={31} className="disc" style={{ stroke: col }} />
-                    <text className="ini" y={5} style={{ fill: col }}>{n.ini}</text>
-                    <text className="nm" y={58}>{cut(n.name, 20)}</text>
-                    <text className="sb" y={74}>{cut(n.sub, 26)}</text>
-                    {count > 0 && <g transform="translate(25,-25)"><circle r={11} className="badge" /><text y={4} className="bt">{count}</text></g>}
-                    {(crit || warn) && <g transform="translate(-26,-24)"><circle r={8} style={{ fill: crit ? "#fb7185" : "#fbbf24" }} /><text y={4} className="risk">!</text></g>}
-                    {n.kind === "tool" && blockedOn.has(n.id) && <g className="blocktag" transform="translate(0,94)"><rect x={-48} y={-11} width={96} height={21} rx={4} /><text y={4}>BLOQUEADO</text></g>}
-                  </g>
+                  <li key={s.event.id} className={`${k === step ? "cur" : k > step ? "fut" : ""} t-${s.event.type.replace(/\./g, "-")}`}>
+                    <button type="button" onClick={() => go(k)}>
+                      <span className="dbg-thread-n">{k + 1}</span>
+                      <span className="dbg-thread-b">
+                        <b>{s.title}</b>
+                        <span>{cut(text, 180)}</span>
+                      </span>
+                    </button>
+                  </li>
                 );
               })}
-            </svg>
-          </div>
-          <div className="dbg-legend">
-            <span><i style={{ background: "#2dd4bf" }} />Mensaje</span>
-            <span><i style={{ background: "#c4b5fd" }} />Herramienta</span>
-            <span><i style={{ background: "#fb7185" }} />Sandbox</span>
-            <span><i style={{ background: "#3d5570" }} />Ya recorrido</span>
-            <span><i className="dashed" />Aún no ocurre</span>
+            </ol>
           </div>
         </div>
 
         <aside className="dbg-inspector">
-          <div className="dbg-insp-h"><h3>Inspector</h3><small>Paso {step + 1} de {N}</small></div>
+          <div className="dbg-insp-h"><h3>Inspector</h3><small>Paso {step + 1} de {N} · {new Date(cur.event.ts).toLocaleTimeString()}</small></div>
           <div className="dbg-insp-b">
             <span className="dbg-type"><i style={{ background: c }} />{cur.event.type}</span>
-            <div><strong className="dbg-title">{cur.title}</strong></div>
-            <p className="dbg-quote" style={{ borderLeftColor: c }}>{summarize(cur.event)}</p>
+            <strong className="dbg-title">{cur.title}</strong>
+            <MainContent step={cur} name={name} />
             {cur.risk && (
               <div className={`dbg-flag ${cur.risk}`}>
                 <strong>{cur.risk === "crit" ? "Riesgo crítico" : "Señal de riesgo"}</strong>
                 {cur.risk === "crit" ? "Intento de cambiar datos bancarios de un proveedor." : "Revisa este paso: hubo un bloqueo, un error o un remitente sospechoso."}
               </div>
             )}
-            <h4>Payload</h4>
-            <JsonView value={cur.event.payload} />
+
+            <details className="dbg-more" open={expanded} onToggle={(e) => setExpanded((e.target as HTMLDetailsElement).open)}>
+              <summary>
+                Inspeccionar más
+                <small>{technical ? "payload del evento" : `${details.length} ${details.length === 1 ? "evento técnico" : "eventos técnicos"} · payload`}</small>
+              </summary>
+              {!technical && (
+                details.length
+                  ? <>
+                      <h4>Antes de este paso, {name(cur.event.agentId)}…</h4>
+                      <ol className="dbg-tech-list">{details.map((d) => <TechItem key={d.event.id} step={d} />)}</ol>
+                    </>
+                  : <p className="dbg-note">No hubo pensamientos ni llamadas a herramientas antes de este paso.</p>
+              )}
+              <h4>Payload del evento</h4>
+              <pre className="dbg-json">{json(cur.event.payload)}</pre>
+            </details>
+
             <h4>Acumulado hasta aquí</h4>
             <dl className="dbg-stats">
               <dt>Mensajes entre agentes</dt><dd>{stats.msgs}</dd>
+              <dt>Pensamientos</dt><dd>{stats.thoughts}</dd>
               <dt>Llamadas a herramientas</dt><dd>{stats.tools}</dd>
               <dt>Intentos bloqueados</dt><dd className={stats.blocked ? "bad" : ""}>{stats.blocked}</dd>
               <dt>Intentos de cambio bancario</dt><dd className={stats.bank ? "bad" : ""}>{stats.bank}</dd>
