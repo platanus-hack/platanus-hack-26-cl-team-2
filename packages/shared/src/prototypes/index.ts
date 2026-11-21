@@ -27,6 +27,7 @@ export {
   productDesignArea,
   dataArea,
   itArea,
+  financeArea,
 } from "./areas/index.js";
 
 export { composeProfile, listAreas } from "./compose.js";

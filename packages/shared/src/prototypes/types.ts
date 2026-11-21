@@ -5,7 +5,8 @@ export type AreaId =
   | "engineering"
   | "product_design"
   | "data"
-  | "it";
+  | "it"
+  | "finance";
 
 export type Seniority = "junior" | "mid" | "senior" | "staff";
 

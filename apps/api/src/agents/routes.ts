@@ -39,6 +39,7 @@ const profileSchema = z.object({
     "product_design",
     "data",
     "it",
+    "finance",
   ]),
   knobs: knobsSchema,
   systemContext: z.string().min(1),

@@ -15,6 +15,7 @@ const AREA_LABELS: Record<AreaId, string> = {
   product_design: "Producto y diseño",
   data: "Datos",
   it: "IT",
+  finance: "Finance",
 };
 
 const EMPTY: AreaHeadcount = {
@@ -25,6 +26,7 @@ const EMPTY: AreaHeadcount = {
   product_design: 0,
   data: 0,
   it: 0,
+  finance: 0,
 };
 
 type Props = {
