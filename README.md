@@ -43,7 +43,7 @@ cp .env.example .env              # then put your ANTHROPIC_API_KEY in .env
 npx -y pnpm@9.15.0 install
 npx -y pnpm@9.15.0 --filter @sandbox/api db:seed   # 8 senior agents (one per area)
 npx -y pnpm@9.15.0 run dev        # web http://localhost:5173 · API http://localhost:8787
-npx -y pnpm@9.15.0 test           # 59 tests (7 smoke tests need the app running), no AI calls
+npx -y pnpm@9.15.0 test           # 97 tests (7 smoke tests need the app running), no AI calls
 ```
 
 1. **Multi-agent lab** tab: use the seeded roster (or Enterprise generator to add more).
@@ -206,7 +206,7 @@ Branches: Luciano's email-harness fusion is merged into `main`.
 
 ### Tests (`apps/api/test`)
 
-`sender-check`, `scenarios`, `sandbox`, `evaluator`, `judge`, `risk-paths`, `batch`, `external-profiles`, `smoke` (59 tests). The smoke
+`sender-check`, `scenarios`, `sandbox`, `evaluator`, `judge`, `risk-paths`, `batch`, `external-profiles`, `demo-guard`, `app-security`, `smoke` (97 tests). The smoke
 tests need the app running and are skipped otherwise; none of them call the model.
 
 ### Known limits
@@ -221,6 +221,31 @@ tests need the app running and are skipped otherwise; none of them call the mode
 - `provenance_tag` exists only in the TypeScript lab, not in the Python harness yet.
 - In our test runs (Claude Haiku 5.5) the agents refused every bank change, so the "blocked
   attempt" path is covered by tests but has not been triggered by a real run yet.
+
+### Public demo protections (`apps/api/src/security/`)
+
+The deployed app is public and spends a shared API budget, so the API guards itself. All limits
+are in memory (a restart resets them) and `0` disables a limit.
+
+| Env var | Default | What it does |
+|---|---|---|
+| `RATE_LIMIT_PER_MINUTE` | `3` | Model-calling requests per client IP per minute: runs, judge, transcript judge, profile refine (and compose with refine). Over it: `429` "Límite de demo alcanzado, intenta en un minuto." |
+| `MAX_RUNS_PER_DAY` | `40` | Runs started per UTC day, all clients together. |
+| `MAX_CONCURRENT_RUNS` | `3` | Runs pending or running at the same time. |
+| `MAX_JUDGE_CALLS_PER_DAY` | `200` | Judge + refine calls per UTC day, all clients together. |
+| `MAX_TURNS_PER_AGENT` | `12` | Default **and ceiling**: a request may ask for fewer turns, never more. |
+| `MAX_STORED_RUNS` | `200` | Finished runs kept in memory; older ones (and their traces) are dropped. |
+| `MAX_STORED_AGENTS` | `2000` | Enterprise generate refuses to save past this many agents. |
+| `ADMIN_TOKEN` | unset | When set, writes need the header `x-admin-token`: `PUT`/`DELETE /api/agents…`, context files, `POST /api/profiles/save`, `POST /api/enterprise/generate` with `persist` (a preview with `persist: false` stays public). Unset (local dev): writes stay open. |
+| `CLIENT_IP_HEADER` | `true-client-ip` on Render, else unset | Header with the real client IP. On Render the Cloudflare edge sets `True-Client-IP` and overwrites client values, while the left side of `X-Forwarded-For` is whatever the client sent. |
+| `TRUST_PROXY_HOPS` | `0` | Without a trusted header: how many proxies append to `X-Forwarded-For` (read from the right). `0` takes the first entry, which a client can fake; the global caps still hold. |
+| `ALLOW_REAL_EMAIL_FILES` | unset | The git-ignored real-mailbox files (`gmail_*`, `outlook_*`, `spoof_eval.json`) are hidden from the HTTP API unless this is `1`. The batch and MCP scripts still read them locally. |
+
+To use writes on the deployed app, run `localStorage.setItem("meshAdminToken", "<token>")` in the
+browser console; the web client then sends it with every write. Other protections: every `POST`
+needs `Content-Type: application/json` (a cross-site form or `text/plain` POST cannot start runs),
+request bodies are capped at 1 MB, profile fields have length limits before they reach the model,
+and error messages are scrubbed of the API key, `ANTHROPIC_BASE_URL` and database credentials.
 
 Before Submitting:
 

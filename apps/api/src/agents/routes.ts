@@ -14,6 +14,8 @@ import {
   upsertAgent,
 } from "../db/agents-repo.js";
 import { buildInvokePayload } from "../db/invoke.js";
+import { requireAdmin } from "../security/admin.js";
+import { errorMessage } from "../security/redact.js";
 
 const knobsSchema = z.object({
   seniority: z.enum(["junior", "mid", "senior", "staff"]),
@@ -28,7 +30,7 @@ const knobsSchema = z.object({
 });
 
 const profileSchema = z.object({
-  id: z.string().min(1),
+  id: z.string().min(1).max(128),
   name: z.string().min(1).max(64),
   title: z.string().min(1).max(120),
   areaId: z.enum([
@@ -42,14 +44,14 @@ const profileSchema = z.object({
     "finance",
   ]),
   knobs: knobsSchema,
-  systemContext: z.string().min(1),
-  operatingStyle: z.array(z.string()).min(1),
-  goalTemplate: z.string().min(1),
+  systemContext: z.string().min(1).max(8000),
+  operatingStyle: z.array(z.string().max(600)).min(1).max(12),
+  goalTemplate: z.string().min(1).max(2000),
   rawCompose: z
     .object({
-      systemContext: z.string(),
-      operatingStyle: z.array(z.string()),
-      goalTemplate: z.string(),
+      systemContext: z.string().max(8000),
+      operatingStyle: z.array(z.string().max(600)).max(12),
+      goalTemplate: z.string().max(2000),
     })
     .optional(),
   refinedByModel: z.boolean().optional(),
@@ -60,13 +62,13 @@ const profileSchema = z.object({
       notes: z.string().max(400).optional(),
     })
     .optional(),
-  createdAt: z.string(),
+  createdAt: z.string().max(64),
 });
 
 const upsertSchema = z.object({
   profile: profileSchema,
-  harnessTools: z.array(z.string()).optional(),
-  harnessModel: z.string().nullable().optional(),
+  harnessTools: z.array(z.string().max(64)).max(32).optional(),
+  harnessModel: z.string().max(128).nullable().optional(),
 });
 
 const contextFileSchema = z.object({
@@ -83,7 +85,7 @@ agentRoutes.get("/", async (c) => {
     return c.json({ agents });
   } catch (err) {
     return c.json(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: errorMessage(err) },
       500,
     );
   }
@@ -102,7 +104,7 @@ agentRoutes.get("/:id", async (c) => {
     });
   } catch (err) {
     return c.json(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: errorMessage(err) },
       500,
     );
   }
@@ -115,13 +117,13 @@ agentRoutes.get("/:id/invoke", async (c) => {
     return c.json(buildInvokePayload(agent));
   } catch (err) {
     return c.json(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: errorMessage(err) },
       500,
     );
   }
 });
 
-agentRoutes.put("/", async (c) => {
+agentRoutes.put("/", requireAdmin, async (c) => {
   const json = await c.req.json().catch(() => null);
   const parsed = upsertSchema.safeParse(json);
   if (!parsed.success) {
@@ -138,26 +140,26 @@ agentRoutes.put("/", async (c) => {
     return c.json({ agent }, 200);
   } catch (err) {
     return c.json(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: errorMessage(err) },
       500,
     );
   }
 });
 
-agentRoutes.delete("/:id", async (c) => {
+agentRoutes.delete("/:id", requireAdmin, async (c) => {
   try {
     const ok = await deleteAgent(c.req.param("id"));
     if (!ok) return c.json({ error: "Agent not found" }, 404);
     return c.json({ ok: true });
   } catch (err) {
     return c.json(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: errorMessage(err) },
       500,
     );
   }
 });
 
-agentRoutes.post("/:id/context-files", async (c) => {
+agentRoutes.post("/:id/context-files", requireAdmin, async (c) => {
   const json = await c.req.json().catch(() => null);
   const parsed = contextFileSchema.safeParse(json);
   if (!parsed.success) {
@@ -171,13 +173,13 @@ agentRoutes.post("/:id/context-files", async (c) => {
     });
     return c.json({ file }, 201);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     const status = message === "Agent not found" ? 404 : 500;
     return c.json({ error: message }, status);
   }
 });
 
-agentRoutes.delete("/:id/context-files/:fileId", async (c) => {
+agentRoutes.delete("/:id/context-files/:fileId", requireAdmin, async (c) => {
   try {
     const ok = await deleteContextFile(
       c.req.param("id"),
@@ -187,7 +189,7 @@ agentRoutes.delete("/:id/context-files/:fileId", async (c) => {
     return c.json({ ok: true });
   } catch (err) {
     return c.json(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: errorMessage(err) },
       500,
     );
   }

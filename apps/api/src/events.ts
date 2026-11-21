@@ -39,6 +39,11 @@ export class TraceBus {
     return [...(this.byRun.get(runId) ?? [])];
   }
 
+  /** Forget a run's history (memory bound for evicted runs). */
+  drop(runId: string): void {
+    this.byRun.delete(runId);
+  }
+
   subscribe(runId: string, listener: Listener): () => void {
     this.emitter.on(runId, listener);
     return () => this.emitter.off(runId, listener);
