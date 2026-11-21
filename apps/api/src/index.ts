@@ -41,6 +41,13 @@ serve({ fetch: app.fetch, port: config.port }, async (info) => {
   console.log(
     `[api] demo guard: ${config.rateLimitPerMinute}/min per IP · ${config.maxRunsPerDay} runs/day · ` +
       `${config.maxConcurrentRuns} concurrent · ${config.maxJudgeCallsPerDay} judge+refine/day · ` +
-      `max ${config.maxTurnsPerAgent} turns/agent · writes ${config.adminToken ? "need x-admin-token" : "open (no ADMIN_TOKEN)"}`,
+      `max ${config.maxTurnsPerAgent} turns/agent · ` +
+      `${config.maxSpendUsdPerDay > 0 ? `US$${config.maxSpendUsdPerDay}/day spend cap` : "no spend cap"} · writes ${
+        config.adminToken
+          ? "need x-admin-token"
+          : config.adminFailClosed
+            ? "BLOCKED (deployed without ADMIN_TOKEN)"
+            : "open (no ADMIN_TOKEN)"
+      }`,
   );
 });

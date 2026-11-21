@@ -28,6 +28,7 @@ import { refineModelId } from "./profiles/refine.js";
 import { ADMIN_HEADER } from "./security/admin.js";
 import { demoGuard, denyIfOverBudget, requestIp } from "./security/budget.js";
 import { errorMessage } from "./security/redact.js";
+import { modelErrorStatus } from "./security/spend.js";
 
 const REAL_MAIL_DENIED =
   "Este archivo de correos es solo local (ALLOW_REAL_EMAIL_FILES no está activo).";
@@ -122,6 +123,8 @@ app.get("/health", async (c) => {
     model: config.model,
     refineModel: refineModelId(),
     writesNeedAdminToken: Boolean(config.adminToken),
+    /** Deployed without ADMIN_TOKEN: writes are blocked for everyone (fail closed). */
+    writesDisabled: config.adminFailClosed && !config.adminToken,
   });
 });
 
@@ -227,7 +230,7 @@ app.post("/api/runs/:id/judge", async (c) => {
     return c.json({ judgment, evaluation, cached: false });
   } catch (err) {
     const message = errorMessage(err);
-    const status = message.includes("ANTHROPIC_API_KEY") ? 503 : 502;
+    const status = modelErrorStatus(err, message);
     return c.json({ error: message }, status);
   }
 });
@@ -265,7 +268,7 @@ app.post("/api/judge/transcript", async (c) => {
     return c.json({ judgment });
   } catch (err) {
     const message = errorMessage(err);
-    const status = message.includes("ANTHROPIC_API_KEY") ? 503 : 502;
+    const status = modelErrorStatus(err, message);
     return c.json({ error: message }, status);
   }
 });

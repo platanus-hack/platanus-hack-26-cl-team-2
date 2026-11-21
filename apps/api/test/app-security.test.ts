@@ -12,6 +12,8 @@ process.env.ADMIN_TOKEN = "test-admin-token";
 process.env.RATE_LIMIT_PER_MINUTE = "1";
 process.env.RENDER = "";
 process.env.CLIENT_IP_HEADER = "";
+// One trusted proxy: the client IP is the rightmost X-Forwarded-For entry (what it appended).
+process.env.TRUST_PROXY_HOPS = "1";
 
 type App = { request: (path: string, init?: RequestInit) => Response | Promise<Response> };
 let app: App;
@@ -89,6 +91,30 @@ describe("API security (in-process)", () => {
     // Another client is not affected.
     const other = await app.request("/api/judge/transcript", json({ transcript: "agent A: hola, agent B: hola de vuelta" }, { "x-forwarded-for": "198.51.100.10" }));
     assert.equal(other.status, 503);
+    // A client cannot escape its bucket by prepending a fake address (the proxy appends the real one).
+    const spoofed = await app.request(
+      "/api/judge/transcript",
+      json({ transcript: "agent A: hola, agent B: transferir fondos ahora" }, { "x-forwarded-for": "6.6.6.6, 198.51.100.9" }),
+    );
+    assert.equal(spoofed.status, 429);
+  });
+
+  it("refuses model-calling routes with 429 once the daily US$ budget is spent", async () => {
+    const { spendMeter, SPEND_LIMIT_MESSAGE } = await import("../src/security/spend.js");
+    spendMeter.setLimit(0.01);
+    spendMeter.record("claude-sonnet-4-6", { input_tokens: 10_000, output_tokens: 1_000 }); // ~US$0.045
+    try {
+      const res = await app.request(
+        "/api/judge/transcript",
+        json({ transcript: "agent A: hola, agent B: hola de vuelta" }, { "x-forwarded-for": "198.51.100.77" }),
+      );
+      assert.equal(res.status, 429);
+      const data = (await res.json()) as { error: string; reason: string };
+      assert.equal(data.reason, "budget");
+      assert.equal(data.error, SPEND_LIMIT_MESSAGE);
+    } finally {
+      spendMeter.setLimit(0);
+    }
   });
 
   it("does not leak the scenarios folder path or real-mailbox files", async () => {
