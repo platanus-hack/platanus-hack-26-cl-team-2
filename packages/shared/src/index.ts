@@ -1,5 +1,7 @@
 export { summarizeMonitoring, type MonitoringRun } from "./monitoring.js";
 
+export { parseDemoImport, DEMO_IMPORT_TEMPLATE, type DemoImport } from "./demo-import.js";
+
 export type AgentId = string;
 
 export type AgentSpec = {

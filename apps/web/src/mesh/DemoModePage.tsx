@@ -7,6 +7,7 @@ import {
   type StoredAgent,
 } from "../api";
 import { EntityGlyph } from "./EntityGlyph";
+import { parseDemoImport, DEMO_IMPORT_TEMPLATE, type DemoImport } from "@sandbox/shared";
 
 type AgentDraft = { key: string; name: string; prompt: string };
 type FileDraft = {
@@ -142,6 +143,35 @@ export function DemoModePage({
   const [error, setError] = useState("");
   const [org, setOrg] = useState<DemoOrg | null>(null);
   const [created, setCreated] = useState<StoredAgent[]>([]);
+  const [importPreview, setImportPreview] = useState<DemoImport | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [importNotice, setImportNotice] = useState("");
+
+  async function readImport(file: File) {
+    setImporting(true);
+    setImportError("");
+    setImportNotice("");
+    setImportPreview(null);
+    try {
+      if (file.size > 5 * 1024 * 1024) throw new Error("El JSON no puede superar 5 MB.");
+      setImportPreview(parseDemoImport(await file.text()));
+    } catch (failure) { setImportError(failure instanceof Error ? failure.message : "No se pudo leer el archivo."); }
+    finally { setImporting(false); }
+  }
+
+  function applyImport() {
+    if (!importPreview) return;
+    const drafts = importPreview.agents.map(agent => newDraft(agent));
+    const keyByName = new Map(drafts.map(agent => [agent.name, agent.key]));
+    setCompanyName(importPreview.companyName);
+    setContext(importPreview.context);
+    setAgents(drafts);
+    setFiles(importPreview.files.map(file => newFileDraft({ ...file, readKeys: file.readAgentNames.map(name => keyByName.get(name)!), writeKeys: file.writeAgentNames.map(name => keyByName.get(name)!) })));
+    setImportNotice(`Formulario cargado: ${drafts.length} agentes y ${importPreview.files.length} archivos. Revisa los datos y pulsa Guardar DEMO para persistirlos.`);
+    setImportPreview(null);
+    setError("");
+  }
 
   const graphNodes = useMemo(() => layoutNodes(created), [created]);
   const graphHeight = Math.max(
@@ -339,6 +369,22 @@ export function DemoModePage({
       <div className="demo-mode-grid">
         <section className="demo-mode-form">
           {loading ? <p className="mesh-empty">Cargando DEMO…</p> : null}
+
+          <section className="mesh-callout" aria-label="Importar empresa DEMO desde JSON">
+            <h2>Importar empresa y usuarios/agentes desde JSON</h2>
+            <p>Carga el contexto, los participantes y opcionalmente archivos .txt con permisos. Primero valida el archivo; no se guarda nada automáticamente.</p>
+            <div className="controls">
+              <button className="btn ghost" type="button" onClick={() => {
+                const url = URL.createObjectURL(new Blob([JSON.stringify(DEMO_IMPORT_TEMPLATE, null, 2)], { type: "application/json" }));
+                const anchor = document.createElement("a"); anchor.href = url; anchor.download = "empresa-demo.json"; anchor.click(); URL.revokeObjectURL(url);
+              }}>Descargar plantilla JSON</button>
+              <label className="block-label">Seleccionar JSON (máximo 5 MB)<input type="file" accept=".json,application/json" disabled={busy || loading || importing} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void readImport(file); }} /></label>
+            </div>
+            {importing && <p role="status">Validando archivo…</p>}
+            {importError && <p className="error" role="alert">{importError}</p>}
+            {importPreview && <div><h3>{importPreview.companyName}</h3><p>{importPreview.agents.length} agentes · {importPreview.files.length} archivos</p><ul>{importPreview.agents.map(agent => <li key={agent.name}>{agent.name}</li>)}</ul><p>Aplicar reemplazará los campos del formulario, incluidos los archivos y sus permisos. La empresa guardada solo cambia al pulsar Guardar.</p><button type="button" className="btn" disabled={busy || loading} onClick={applyImport}>Aplicar JSON al formulario</button><button type="button" className="btn ghost" onClick={() => setImportPreview(null)}>Cancelar</button></div>}
+            {importNotice && <p role="status">{importNotice}</p>}
+          </section>
 
           <div className="demo-seba-presets">
             <div className="demo-agents-head">
