@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mesh-harness"
+version = "0.1.0"
+description = "Multi-agent risk-path harness: sandboxed agents, traces, auditor and self-improvement loop."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=2.12,<3",
+    "pydantic>=2",
+    # Pinned exactly: this version's source was reviewed (it only sends data online if
+    # AGENTSNOOP_API_KEY or a MongoDB URI is set; we use a local JSON backend instead).
+    "agent-snoop==0.1.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -4,14 +4,19 @@ import type {
   AgentSpec,
   CreateRunRequest,
   CreateStoredRunRequest,
+  EmailScenarioKind,
+  RunEvaluation,
   RunSummary,
+  SenderCheck,
 } from "@sandbox/shared";
 import { assertApiKeyConfigured, config } from "../config.js";
 import { getAgent } from "../db/agents-repo.js";
 import { buildInvokePayload } from "../db/invoke.js";
+import { emailScenarioHint, getEmailScenario } from "../email/scenarios.js";
 import { messageBus } from "../message-bus.js";
 import { traceBus } from "../events.js";
 import { createSession, runOneTurn } from "./agent-runner.js";
+import { evaluateRun } from "./evaluator.js";
 import type { RunJudgment } from "./judge.js";
 
 export type RunRosterEntry = {
@@ -21,11 +26,28 @@ export type RunRosterEntry = {
   areaId: string;
   seniority: string;
   motivation: string;
+  financeTools?: boolean;
+};
+
+/** Which email (if any) started the run; senderCheck is set only when the banner was shown. */
+export type RunEmailInfo = {
+  file: string;
+  id: string;
+  kind: EmailScenarioKind;
+  technique: string;
+  from: string | null;
+  subject: string | null;
+  senderCheck: SenderCheck | null;
+  /** Sender check result, always computed (for the judge), even when not shown to agents. */
+  forensics: SenderCheck;
+  /** The raw email, for the judge. */
+  email: string;
 };
 
 type InternalRun = RunSummary & {
   seedAgentId?: string;
   scenarioHint?: string;
+  email?: RunEmailInfo;
   roster?: RunRosterEntry[];
   judgment?: RunJudgment;
 };
@@ -56,6 +78,15 @@ export function getInternalRun(runId: string): InternalRun | undefined {
   return runs.get(runId);
 }
 
+export function evaluateInternalRun(run: InternalRun): RunEvaluation {
+  return evaluateRun({
+    events: traceBus.history(run.id),
+    email: run.email,
+    financeAgentIds: run.agents.filter((a) => a.financeTools).map((a) => a.id),
+    seedAgentId: run.seedAgentId,
+  });
+}
+
 export function setRunJudgment(runId: string, judgment: RunJudgment): void {
   const run = runs.get(runId);
   if (run) run.judgment = judgment;
@@ -65,6 +96,7 @@ function publicRun(run: InternalRun): RunSummary {
   const {
     seedAgentId: _s,
     scenarioHint: _h,
+    email: _e,
     roster: _r,
     judgment: _j,
     ...rest
@@ -78,6 +110,7 @@ function startRun(
   opts?: {
     seedAgentId?: string;
     scenarioHint?: string;
+    email?: RunEmailInfo;
     roster?: RunRosterEntry[];
   },
 ): RunSummary {
@@ -109,6 +142,7 @@ function startRun(
     createdAt: new Date().toISOString(),
     seedAgentId,
     scenarioHint: opts?.scenarioHint,
+    email: opts?.email,
     roster:
       opts?.roster ??
       agents.map((a) => ({
@@ -128,6 +162,7 @@ function startRun(
   void executeRun(run, maxTurns, {
     seedAgentId,
     scenarioHint: opts?.scenarioHint,
+    email: opts?.email,
   });
   return getRun(runId)!;
 }
@@ -169,6 +204,36 @@ export async function createAndStartStoredRun(
     throw new Error("seedAgentId must be one of the selected agents.");
   }
 
+  // An email scenario replaces the free-text hint (resolved before loading agents
+  // so a bad file/id fails fast).
+  let scenarioHint = body.scenarioHint?.trim();
+  let email: RunEmailInfo | undefined;
+  if (body.emailScenario) {
+    const scen = getEmailScenario(body.emailScenario);
+    const banner = body.emailScenario.senderCheck ? scen.senderCheck : undefined;
+    scenarioHint = emailScenarioHint(scen.email, banner);
+    email = {
+      file: scen.file,
+      id: scen.id,
+      kind: scen.kind,
+      technique: scen.technique,
+      from: scen.from,
+      subject: scen.subject,
+      senderCheck: banner ?? null,
+      forensics: scen.senderCheck,
+      email: scen.email,
+    };
+  }
+
+  const financeIds = new Set(
+    (body.financeAgentIds ?? []).map((id) => id.trim()).filter(Boolean),
+  );
+  for (const id of financeIds) {
+    if (!agentIds.includes(id)) {
+      throw new Error(`financeAgentIds must be selected agents (got ${id}).`);
+    }
+  }
+
   const agents: AgentSpec[] = [];
   const roster: RunRosterEntry[] = [];
   for (const id of agentIds) {
@@ -182,6 +247,7 @@ export async function createAndStartStoredRun(
       name: stored.name,
       role: inv.projection.systemPrompt.slice(0, 14000),
       goal: stored.goalTemplate,
+      financeTools: financeIds.has(stored.id),
     });
     roster.push({
       id: stored.id,
@@ -190,6 +256,7 @@ export async function createAndStartStoredRun(
       areaId: stored.areaId,
       seniority: stored.knobs.seniority,
       motivation: stored.knobs.motivation,
+      financeTools: financeIds.has(stored.id),
     });
   }
 
@@ -206,7 +273,8 @@ export async function createAndStartStoredRun(
 
   return startRun(agents, body.maxTurnsPerAgent ?? config.maxTurnsPerAgent, {
     seedAgentId,
-    scenarioHint: body.scenarioHint?.trim(),
+    scenarioHint,
+    email,
     roster,
   });
 }
@@ -214,7 +282,7 @@ export async function createAndStartStoredRun(
 async function executeRun(
   run: InternalRun,
   maxTurns: number,
-  opts: { seedAgentId: string; scenarioHint?: string },
+  opts: { seedAgentId: string; scenarioHint?: string; email?: RunEmailInfo },
 ): Promise<void> {
   run.status = "running";
   traceBus.emit(run.id, "run.started", {
@@ -224,6 +292,10 @@ async function executeRun(
     scheduler: "round-robin",
     seedAgentId: opts.seedAgentId,
     scenarioHint: opts.scenarioHint ?? null,
+    email: opts.email
+      ? (({ email: _raw, ...meta }) => meta)(opts.email)
+      : null,
+    financeAgentIds: run.agents.filter((a) => a.financeTools).map((a) => a.id),
     participantCount: run.agents.length,
   });
 

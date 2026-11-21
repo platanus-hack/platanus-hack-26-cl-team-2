@@ -6,8 +6,11 @@ import type {
   AreaPrototype,
   CreateRunRequest,
   CreateStoredRunRequest,
+  EmailScenarioSummary,
   OrgHints,
   OrgSizePreset,
+  RunAudit,
+  RunEvaluation,
   RunSummary,
   SeniorityMix,
   TraceEvent,
@@ -67,6 +70,17 @@ export async function createRunFromStored(
   return data;
 }
 
+export async function listEmailScenarios(): Promise<{
+  dir: string;
+  scenarios: EmailScenarioSummary[];
+  errors: string[];
+}> {
+  const res = await fetch("/api/email-scenarios");
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Failed to load email scenarios");
+  return data;
+}
+
 export type RunJudgment = {
   summary: string;
   decisions: string[];
@@ -79,11 +93,12 @@ export type RunJudgment = {
   score: number;
   scoreRationale: string;
   model: string;
+  audit?: RunAudit;
 };
 
 export async function judgeRun(
   runId: string,
-): Promise<{ judgment: RunJudgment; cached: boolean }> {
+): Promise<{ judgment: RunJudgment; evaluation: RunEvaluation; cached: boolean }> {
   const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/judge`, {
     method: "POST",
   });
@@ -121,6 +136,7 @@ export async function fetchRun(runId: string): Promise<{
   run: RunSummary;
   events: TraceEvent[];
   judgment: RunJudgment | null;
+  evaluation: RunEvaluation | null;
 }> {
   const res = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
   const data = await res.json();

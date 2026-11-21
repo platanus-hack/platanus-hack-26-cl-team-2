@@ -359,7 +359,7 @@ button {
 
 .fleet-row {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   gap: 0.75rem;
   align-items: center;
   padding: 0.45rem 0.25rem;
@@ -820,4 +820,103 @@ button {
   text-transform: none;
   letter-spacing: normal;
   font-size: 0.85rem;
+}
+
+/* Email scenarios (email-harness) in the multi-agent lab */
+.controls .check input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+}
+
+.email-preview {
+  max-height: 16rem;
+  overflow: auto;
+  margin: 0.5rem 0 0;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  background: var(--bg-0);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.email-kind {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.email-kind.kind-attack {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.email-kind.kind-benign {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.verdict-bad {
+  color: var(--danger);
+}
+
+.verdict-ok {
+  color: var(--ok);
+}
+
+.finance-on {
+  background: var(--agent-b);
+  color: var(--accent-ink);
+}
+
+/* Outcome (deterministic evaluator) and before/after */
+.outcome-verdict {
+  font-weight: 700;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+}
+
+.outcome-verdict.tone-bad {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.outcome-verdict.tone-warn {
+  color: var(--agent-b);
+  border-color: var(--agent-b);
+}
+
+.outcome-verdict.tone-ok {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.outcome-facts {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.before-after {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.before-after th,
+.before-after td {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.before-after thead th {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
