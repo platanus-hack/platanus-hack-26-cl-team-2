@@ -24,6 +24,7 @@ import { pingDatabase } from "./db/client.js";
 import { isRealMailFile, listEmailScenarios } from "./email/scenarios.js";
 import { enterpriseRoutes } from "./enterprise/routes.js";
 import { profileRoutes } from "./profiles/routes.js";
+import { vulnBatchRoutes } from "./vuln-batches/routes.js";
 import { refineModelId } from "./profiles/refine.js";
 import { MOCK_DB_CATALOG } from "./harness/mock-db.js";
 import { ADMIN_HEADER } from "./security/admin.js";
@@ -178,6 +179,7 @@ app.get("/health", async (c) => {
 app.route("/api/profiles", profileRoutes);
 app.route("/api/agents", agentRoutes);
 app.route("/api/enterprise", enterpriseRoutes);
+app.route("/api/vuln-batches", vulnBatchRoutes);
 
 app.get("/api/runs", async (c) => c.json({ runs: await listRuns() }));
 

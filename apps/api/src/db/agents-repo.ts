@@ -1,6 +1,6 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import type { AgentProfile, OrgHints } from "@sandbox/shared";
+import type { AgentOrigin, AgentProfile, OrgHints } from "@sandbox/shared";
 import { getDbDriver, getPgDb, getSqliteDb } from "./client.js";
 import {
   asNormalizedAgent,
@@ -99,6 +99,8 @@ export async function upsertAgent(
     harnessTools?: string[];
     harnessModel?: string | null;
     orgHints?: OrgHints | null;
+    /** Recorded when the row is first inserted; later saves never change it. */
+    origin?: AgentOrigin | null;
   },
 ): Promise<StoredAgent> {
   const values = profileToInsert(profile, extras);

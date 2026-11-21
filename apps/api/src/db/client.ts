@@ -84,6 +84,7 @@ function ensureSqliteTables(db: Database.Database): void {
       org_hints TEXT,
       harness_tools TEXT NOT NULL DEFAULT '[]',
       harness_model TEXT,
+      origin TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -116,7 +117,37 @@ function ensureSqliteTables(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS agent_vuln_assessments_agent_idx
       ON agent_vuln_assessments (agent_id);
+
+    CREATE TABLE IF NOT EXISTS vuln_eval_batches (
+      id TEXT PRIMARY KEY NOT NULL,
+      status TEXT NOT NULL,
+      settings TEXT NOT NULL,
+      estimate TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      finished_at INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS vuln_eval_batch_results (
+      id TEXT PRIMARY KEY NOT NULL,
+      batch_id TEXT NOT NULL REFERENCES vuln_eval_batches(id) ON DELETE CASCADE,
+      agent_id TEXT NOT NULL,
+      agent_name TEXT NOT NULL,
+      status TEXT NOT NULL,
+      previous_scores TEXT,
+      scores TEXT,
+      summary TEXT NOT NULL DEFAULT '',
+      run_ids TEXT NOT NULL DEFAULT '[]',
+      error TEXT,
+      position INTEGER NOT NULL,
+      finished_at INTEGER
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS vuln_eval_batch_results_batch_agent_idx
+      ON vuln_eval_batch_results (batch_id, agent_id);
   `);
+  // Databases made before agents.origin existed: add the column (CREATE TABLE IF NOT EXISTS skips it).
+  const agentColumns = db.prepare("PRAGMA table_info(agents)").all() as Array<{ name: string }>;
+  if (!agentColumns.some((c) => c.name === "origin")) {
+    db.exec("ALTER TABLE agents ADD COLUMN origin TEXT");
+  }
 }
 
 export async function pingDatabase(): Promise<{

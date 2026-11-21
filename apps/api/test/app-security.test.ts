@@ -76,6 +76,10 @@ describe("API security (in-process)", () => {
       const res = await app.request(`/api/agents/seed_cs/${route}`, json({}));
       assert.equal(res.status, 401, route);
     }
+    for (const path of ["/api/vuln-batches", "/api/vuln-batches/x/agents/a", "/api/vuln-batches/x/finish"]) {
+      const res = await app.request(path, json({ status: "ok" }));
+      assert.equal(res.status, 401, path);
+    }
     const read = await app.request("/api/agents/no-such-agent/vuln-assessment");
     assert.equal(read.status, 404);
   });

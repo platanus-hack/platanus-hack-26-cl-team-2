@@ -342,6 +342,7 @@ agentRoutes.put("/", requireAdmin, async (c) => {
       harnessTools: parsed.data.harnessTools,
       harnessModel: parsed.data.harnessModel,
       orgHints: profile.orgHints ?? null,
+      origin: "manual",
     });
     return c.json({ agent }, 200);
   } catch (err) {
