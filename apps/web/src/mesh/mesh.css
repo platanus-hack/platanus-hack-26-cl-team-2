@@ -63,5 +63,45 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .mesh-organization { display: grid; grid-template-columns: minmax(0,1fr) 310px; gap: 20px; align-items: start; }.mesh-graph-card, .mesh-profile { background: #101a27; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }.mesh-card-header { padding: 19px 20px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 10px; align-items: center; }.mesh-card-header h2 { font-size: 16px; margin: 0 0 7px; }.mesh-card-header span { font-size: 12px; color: var(--muted); }.mesh-card-header button { background: none; color: var(--muted); border: 0; font-size: 22px; }.mesh-filters { display: flex; flex-wrap: wrap; padding: 15px; gap: 8px; border-bottom: 1px solid var(--line); font-size: 12px; }.mesh-filters input { flex: 1; min-width: 150px; }.mesh-graph-scroll { max-height: 660px; overflow: auto; background: #0d1724; }.mesh-graph { display: block; width: 100%; min-width: 540px; }.mesh-graph line { stroke: #40546d; stroke-width: 1.7; }.mesh-graph line.attack-edge { stroke: #fb7185; stroke-width: 4; }.mesh-node { cursor: pointer; }.mesh-node circle { fill: #152b3b; stroke: #3d6a82; stroke-width: 1.5; }.mesh-node.person circle { fill: #103a36; stroke: #2dd4bf; }.mesh-node.external circle, .mesh-node.tool circle, .mesh-node.database circle { fill: #25273c; stroke: #827aa9; }
 .mesh-node.database circle { fill: #2a1f45; stroke: #a78bfa; }.mesh-node.selected circle { stroke: #5eead4; stroke-width: 3; filter: drop-shadow(0 0 10px #2dd4bf35); }.mesh-node.on-path circle { stroke: #fb7185; }.mesh-node text { fill: #cbd8e9; font-size: 17px; }.mesh-node .node-icon { fill: #5eead4; font-size: 25px; }.mesh-node .node-area { fill: #72869e; font-size: 13px; }.mesh-legend { display: flex; flex-wrap: wrap; gap: 18px; padding: 16px; border-top: 1px solid var(--line); color: #91a2b8; font-size: 12px; }.mesh-legend span:first-child { color: #66bdd1; }
 .mesh-profile-body { padding: 22px; }.mesh-avatar { width: 54px; height: 54px; display: grid; place-items: center; background: #163d3c; color: #5eead4; border-radius: 13px; font-size: 28px; margin-bottom: 18px; }.mesh-profile-body h2 { margin: 10px 0 15px; font-size: 23px; }.mesh-profile-tabs { display: flex; border-bottom: 1px solid var(--line); margin-top: 25px; }.mesh-profile-tabs button { flex: 1; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); padding: 12px; font-size: 13px; }.mesh-profile-tabs button.active { color: var(--accent); border-color: var(--accent); }.mesh-profile h3 { font-size: 13px; margin: 23px 0 10px; }.mesh-profile p { font-size: 14px; color: var(--muted); line-height: 1.7; }.mesh-tags { display: flex; flex-wrap: wrap; gap: 7px; }.mesh-tags code { font-size: 12px; color: #acc1d7; background: #1a293a; padding: 6px 8px; border-radius: 4px; overflow-wrap: anywhere; }.mesh-related { display: flex; width: 100%; justify-content: space-between; border: 0; border-bottom: 1px solid var(--line); background: none; color: #cbd8e9; padding: 12px 0; font-size: 13px; }.mesh-related span { font-size: 11px; color: var(--muted); }.mesh-profile .btn { width: 100%; margin-top: 25px; }.mesh-provenance { display: block; color: #778da6; font-size: 12px; line-height: 1.7; margin-top: 15px; }.mesh-evidence { padding: 14px 0; border-bottom: 1px solid var(--line); display: grid; gap: 8px; font-size: 14px; }.mesh-evidence small { color: var(--muted); }.mesh-empty { min-height: 260px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 30px; text-align: center; font-size: 15px; color: var(--muted); }.mesh-callout { padding: 18px; border: 1px solid #285557; color: #99dcd3; background: #102b2b; border-radius: 8px; font-size: 14px; line-height: 1.7; margin-bottom: 20px; }.mesh-replay { margin-top: 20px; padding: 22px; border: 1px solid var(--line); background: #101a27; border-radius: 9px; display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }.mesh-replay > div { flex: 1 1 100%; }.mesh-replay h2 { font-size: 16px; }.mesh-replay p, .mesh-replay label { font-size: 14px; color: var(--muted); }.mesh-replay input { accent-color: var(--accent); }.mesh-shell .panel { border-top: 0; }
+.mesh-vuln { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--line); }
+.mesh-vuln-summary { font-size: 13px !important; color: #cbd8e9 !important; line-height: 1.55 !important; margin: 0 0 12px !important; }
+.mesh-vuln-muted { font-size: 13px !important; color: #778da6 !important; margin: 0 0 12px !important; }
+.mesh-vuln-scores { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.mesh-vuln-scores li { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 6px; background: #0d1724; border: 1px solid #1c2a3b; }
+.mesh-vuln-scores li > div { display: grid; gap: 2px; min-width: 0; }
+.mesh-vuln-scores li span { font-size: 12px; color: #cbd8e9; }
+.mesh-vuln-scores li small { font-size: 11px; color: #778da6; line-height: 1.4; }
+.mesh-vuln-scores li strong { font-size: 16px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.mesh-vuln-scores li.tone-low strong { color: #5eead4; }
+.mesh-vuln-scores li.tone-mid strong { color: #fbbf24; }
+.mesh-vuln-scores li.tone-high strong { color: #fb7185; }
+.mesh-vuln-meta { font-size: 11px !important; color: #6f849c !important; margin: 10px 0 0 !important; }
+.mesh-vuln .btn { margin-top: 14px; }
+.mesh-vuln .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.mesh-vuln .error { margin-top: 10px; font-size: 12px; }
+
+.mesh-evals { display: grid; gap: 20px; }
+.mesh-evals-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mesh-evals-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 16px; }
+.mesh-evals-card { background: #101a27; border: 1px solid var(--line); border-radius: 10px; padding: 22px; }
+.mesh-evals-card h2 { margin: 8px 0 6px; font-size: 26px; letter-spacing: -0.4px; }
+.mesh-evals-meta { font-size: 13px; color: #91a2b8; margin: 0 0 12px; }
+.mesh-evals-style { margin: 0; padding-left: 1.1rem; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.mesh-evals-controls { display: grid; gap: 12px; margin-top: 18px; }
+.mesh-evals-controls label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.mesh-evals-controls input[type="number"] { width: 100%; max-width: 120px; background: #0d1724; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font: inherit; text-transform: none; letter-spacing: normal; font-size: 14px; }
+.mesh-evals-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.mesh-evals-actions .btn { margin-top: 0; width: auto; min-width: 110px; }
+.mesh-evals-stop { border-color: #7f1d1d !important; color: #fda4a4 !important; }
+.mesh-evals-console-wrap { background: #0a121c; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.mesh-evals-console-head { display: flex; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.mesh-evals-console { margin: 0; padding: 14px 16px; min-height: 220px; max-height: 360px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.55; color: #9fb3c8; white-space: pre-wrap; word-break: break-word; }
+.mesh-evals-console .log-ok { color: #5eead4; }
+.mesh-evals-console .log-warn { color: #fbbf24; }
+.mesh-evals-console .log-err { color: #fb7185; }
+.mesh-evals-console .log-info { color: #9fb3c8; }
+@media (max-width: 960px) {
+  .mesh-evals-grid { grid-template-columns: 1fr; }
+}
 @media(max-width:1200px) { .mesh-organization { grid-template-columns: minmax(0,1fr); }.mesh-profile-body { max-width: 700px; }.mesh-stats { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media(max-width:720px) { .mesh-shell { grid-template-columns: 1fr; }.mesh-sidebar { position: static; height: auto; padding: 20px; gap: 15px; }.mesh-sidebar nav { display: flex; overflow-x: auto; }.mesh-sidebar nav button { flex-shrink: 0; }.mesh-sidebar-footer, .mesh-workspace, .mesh-sidebar > .mesh-label { display: none; }.mesh-content { padding: 18px; }.mesh-topbar { padding: 0 18px; height: 55px; }.mesh-heading { align-items: start; }.mesh-heading .btn { flex-shrink: 0; }.mesh-stats > div { padding: 15px; } }

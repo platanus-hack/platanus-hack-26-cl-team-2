@@ -46,9 +46,13 @@ Schema stores agents (knobs + harness context), harness tools/model, and
 | `GET /api/agents` | List stored agents |
 | `GET /api/agents/:id` | Load one agent |
 | `GET /api/agents/:id/invoke` | Projection ready to run (system prompt + context files + tools) |
+| `GET /api/agents/:id/vuln-assessment` | Latest vulnerability scores/summary (or null) |
+| `POST /api/agents/:id/vuln-assess` | Design + run solo exploit evals; upsert assessment |
 | `POST /api/agents/:id/context-files` | Attach markdown/policy file |
 | `POST /api/profiles/compose` | Generate profile (no DB write) |
 | `POST /api/profiles/save` | Persist generated profile to Postgres |
+
+Vulnerability taxonomy + scoring rules: [`docs/agentic-exploit-evals.md`](docs/agentic-exploit-evals.md). Stored runs may use **1–8** agents (`from-stored`); solo runs omit peer messaging tools.
 
 ## Profile generator
 

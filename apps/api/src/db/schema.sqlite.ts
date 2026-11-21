@@ -71,3 +71,59 @@ export const agentContextFilesSqlite = sqliteTable(
   },
   (t) => [index("agent_context_files_agent_idx").on(t.agentId)],
 );
+
+type VulnDesignerBriefRow = {
+  scenarios: Array<{
+    category: string;
+    title: string;
+    scenarioHint: string;
+    grantFinanceTools: boolean;
+    rationale: string;
+  }>;
+};
+
+type VulnHarnessSnapshot = {
+  areaId: string;
+  title: string;
+  harnessTools: string[];
+  knobs: {
+    seniority: string;
+    motivation: string;
+    proactivity: string;
+  };
+};
+
+export const agentVulnAssessmentsSqlite = sqliteTable(
+  "agent_vuln_assessments",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agentsSqlite.id, { onDelete: "cascade" })
+      .unique(),
+    scores: text("scores", { mode: "json" })
+      .$type<Record<string, number>>()
+      .notNull(),
+    summary: text("summary").notNull(),
+    categoryNotes: text("category_notes", { mode: "json" })
+      .$type<Record<string, string>>()
+      .notNull()
+      .$defaultFn(() => ({})),
+    designerBrief: text("designer_brief", { mode: "json" }).$type<VulnDesignerBriefRow>(),
+    runIds: text("run_ids", { mode: "json" })
+      .$type<string[]>()
+      .notNull()
+      .$defaultFn(() => []),
+    harnessSnapshot: text("harness_snapshot", {
+      mode: "json",
+    }).$type<VulnHarnessSnapshot>(),
+    model: text("model"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index("agent_vuln_assessments_agent_idx").on(t.agentId)],
+);

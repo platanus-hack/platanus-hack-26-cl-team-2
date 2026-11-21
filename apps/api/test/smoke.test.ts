@@ -79,6 +79,22 @@ describe(`running app at ${API}`, async () => {
     assert.match(r.body.error ?? "", /financeAgentIds/);
   }, true);
 
+  test("accepts a single-agent from-stored body shape (no model call if agent missing)", async () => {
+    const r = await post("/api/runs/from-stored", {
+      agentIds: ["missing-solo-agent"],
+      seedAgentId: "missing-solo-agent",
+      scenarioHint: "solo probe",
+    });
+    // Zod accepts min(1); missing agent → 404 (not a "need 2 agents" validation error).
+    assert.equal(r.status, 404);
+    assert.match(r.body.error ?? "", /not found|Agent/i);
+  });
+
+  test("returns null vuln assessment for unknown agent", async () => {
+    const res = await fetch(`${API}/api/agents/no-such-agent/vuln-assessment`);
+    assert.equal(res.status, 404);
+  });
+
   test("returns 404 for an unknown email id", async () => {
     const [a, b] = agentIds;
     const r = await post("/api/runs/from-stored", {

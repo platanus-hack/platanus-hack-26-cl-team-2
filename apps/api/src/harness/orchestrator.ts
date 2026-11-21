@@ -96,6 +96,22 @@ export function setRunJudgment(runId: string, judgment: RunJudgment): void {
   if (run) run.judgment = judgment;
 }
 
+/** Poll in-memory run until completed/failed (for sequential vuln evals). */
+export async function waitForRun(
+  runId: string,
+  timeoutMs = 180_000,
+  pollMs = 400,
+): Promise<RunSummary> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const run = getRun(runId);
+    if (!run) throw new Error(`Run not found: ${runId}`);
+    if (run.status === "completed" || run.status === "failed") return run;
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  throw new Error(`Run timed out after ${timeoutMs}ms: ${runId}`);
+}
+
 function publicRun(run: InternalRun): RunSummary {
   const {
     seedAgentId: _s,
@@ -120,8 +136,8 @@ function startRun(
     roster?: RunRosterEntry[];
   },
 ): RunSummary {
-  if (agents.length < 2) {
-    throw new Error("Select at least 2 agents.");
+  if (agents.length < 1) {
+    throw new Error("Select at least 1 agent.");
   }
   if (agents.length > MAX_PARTICIPANTS) {
     throw new Error(
@@ -207,8 +223,8 @@ export async function createAndStartStoredRun(
   const agentIds = [
     ...new Set(body.agentIds.map((id) => id.trim()).filter(Boolean)),
   ];
-  if (agentIds.length < 2) {
-    throw new Error("Select at least 2 agents.");
+  if (agentIds.length < 1) {
+    throw new Error("Select at least 1 agent.");
   }
   if (agentIds.length > MAX_PARTICIPANTS) {
     throw new Error(
@@ -225,6 +241,9 @@ export async function createAndStartStoredRun(
     : undefined;
 
   if (peerMessage) {
+    if (agentIds.length < 2) {
+      throw new Error("peerMessage requires at least 2 agents.");
+    }
     if (!peerMessage.body) {
       throw new Error("peerMessage.body is required.");
     }

@@ -41,7 +41,7 @@ const createRunSchema = z.object({
 });
 
 const createStoredRunSchema = z.object({
-  agentIds: z.array(z.string().min(1)).min(2).max(8),
+  agentIds: z.array(z.string().min(1)).min(1).max(8),
   seedAgentId: z.string().min(1),
   maxTurnsPerAgent: z.number().int().min(1).max(30).optional(),
   scenarioHint: z.string().max(2000).optional(),
