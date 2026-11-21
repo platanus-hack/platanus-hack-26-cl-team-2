@@ -23,7 +23,7 @@ export function RunJudgmentPanel({
     return (
       <section className="panel">
         <h2>Evaluación posterior a la ejecución</h2>
-        <p className="hint">Haiku está evaluando la interacción…</p>
+        <p className="hint">El evaluador está revisando la interacción…</p>
       </section>
     );
   }

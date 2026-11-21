@@ -148,7 +148,7 @@ export function BatchResultsPanel() {
                   {s.failedDangerous ? ` (+${s.failedDangerous} en fallidas)` : ""}
                 </td>
                 <td className={attack && s.refunds ? "verdict-bad" : undefined}>{of(s.refunds, s.runs)}</td>
-                <td>{of(s.held ?? 0, s.runs)}</td>
+                <td>{s.fixes.split("+").includes("approval_gate") ? of(s.held ?? 0, s.runs) : "–"}</td>
                 <td>{s.failed}</td>
               </tr>
             );

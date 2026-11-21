@@ -1,5 +1,6 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { HTTPException } from "hono/http-exception";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
@@ -91,6 +92,37 @@ app.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
   }
 });
+/**
+ * Last resort for anything a route did not catch: a JSON 500 with secrets stripped, instead of
+ * Hono's plain-text "Internal Server Error". HTTPException keeps its own response (e.g. 413).
+ */
+export function handleUnexpectedError(err: unknown, c: Context): Response {
+  if (err instanceof HTTPException) return err.getResponse();
+  const message = errorMessage(err);
+  console.error("[api] unhandled error:", message);
+  return c.json({ error: message }, 500);
+}
+
+app.onError(handleUnexpectedError);
+
+/** Pure: HTTP status for an error thrown while preparing or starting a stored-agents run. */
+export function storedRunErrorStatus(message: string): 400 | 404 | 500 | 503 {
+  if (message.includes("ANTHROPIC_API_KEY")) return 503;
+  if (message.includes("not found") || message.includes("ENOENT")) return 404;
+  if (
+    message.includes("Invalid scenario file") ||
+    message.includes("JSON") ||
+    message.includes("financeAgentIds") ||
+    message.includes("different") ||
+    // Bad selection: the request is wrong, not the server.
+    message.includes("seedAgentId must be one of the selected agents") ||
+    message.includes("Select at least") ||
+    message.includes("peerMessage")
+  ) {
+    return 400;
+  }
+  return 500;
+}
 
 app.use(
   "*",
@@ -339,23 +371,7 @@ app.post("/api/runs/from-stored", async (c) => {
     return c.json({ run }, 201);
   } catch (err) {
     const message = errorMessage(err);
-    if (message.includes("ANTHROPIC_API_KEY")) {
-      return c.json({ error: message }, 503);
-    }
-    if (message.includes("not found") || message.includes("ENOENT")) {
-      return c.json({ error: message }, 404);
-    }
-    if (
-      message.includes("Invalid scenario file") ||
-      message.includes("JSON") ||
-      message.includes("financeAgentIds")
-    ) {
-      return c.json({ error: message }, 400);
-    }
-    if (message.includes("different")) {
-      return c.json({ error: message }, 400);
-    }
-    return c.json({ error: message }, 500);
+    return c.json({ error: message }, storedRunErrorStatus(message));
   }
 });
 

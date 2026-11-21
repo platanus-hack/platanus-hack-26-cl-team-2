@@ -36,6 +36,11 @@ import { selectObservedRun } from "./mesh/runSelection";
 type Props = {
   hasApiKey: boolean;
   onRunCreated?: (run: RunSummary) => void;
+  /**
+   * False while the lab is kept mounted but hidden (another sidebar section is open), so the
+   * trace and "Antes y después" survive. Each time it is shown again the agent list is reloaded.
+   */
+  active?: boolean;
 };
 
 const MAX_PARTICIPANTS = 8;
@@ -52,7 +57,7 @@ const AREA_LABELS: Record<string, string> = {
   engineering: "Ingeniería",
   product_design: "Producto y diseño",
   data: "Datos",
-  it: "IT",
+  it: "TI",
   finance: "Finanzas",
 };
 
@@ -136,7 +141,7 @@ function fixesLabel(fixes: FixName[]): string {
   return fixes.length ? fixes.map((f) => FIX_LABEL[f]).join(" + ") : "sin mitigación";
 }
 
-export function LabPage({ hasApiKey, onRunCreated }: Props) {
+export function LabPage({ hasApiKey, onRunCreated, active = true }: Props) {
   const [catalog, setCatalog] = useState<StoredAgent[]>([]);
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
   const [seedAgentId, setSeedAgentId] = useState("");
@@ -182,10 +187,20 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
   const [manualRunId, setManualRunId] = useState("");
   const [pastedTranscript, setPastedTranscript] = useState("");
 
+  const catalogLoaded = useRef(false);
   useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
     listAgents()
       .then((agents) => {
+        if (cancelled) return;
         setCatalog(agents);
+        if (catalogLoaded.current) {
+          // Shown again (agents may have been created meanwhile): keep the current selection.
+          setEnabled((prev) => Object.fromEntries(agents.map((a) => [a.id, Boolean(prev[a.id])])));
+          return;
+        }
+        catalogLoaded.current = true;
         const next: Record<string, boolean> = {};
         for (const a of agents) next[a.id] = false;
         // Enable first two by default for a quick start
@@ -194,10 +209,15 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
         setEnabled(next);
         if (agents[0]) setSeedAgentId(agents[0].id);
       })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : String(err)),
-      );
-  }, []);
+      .catch((err) => {
+        // A failed refresh keeps the list already on screen.
+        if (cancelled || catalogLoaded.current) return;
+        setError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active]);
 
   useEffect(() => {
     listEmailScenarios()
@@ -292,6 +312,14 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
     setBusy(false);
     try {
       const data = await fetchRun(id);
+      // A completed run that is new on screen is judged by the event stream (it replays
+      // run.completed); asking here too would send a second judge request.
+      const streamWillJudge =
+        currentRunId.current !== data.run.id && data.run.status === "completed";
+      // This run was not launched from this form: "re-run with fix" and the before/after
+      // table would mix it with the previous launch.
+      setLastLaunch(null);
+      setBaseline(null);
       setRun(data.run);
       selectObservedRun(data.run.id);
       onRunCreated?.(data.run);
@@ -302,6 +330,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
       setManualRunId(id);
       if (
         !data.judgment &&
+        !streamWillJudge &&
         (data.run.status === "completed" || data.run.status === "failed")
       ) {
         if (hasApiKey) await requestJudge(id);
@@ -500,17 +529,22 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
     });
   }
 
-  async function launch(body: CreateStoredRunRequest) {
+  /**
+   * The screen (trace, result, judgment, "Antes y después") is only replaced once the server
+   * accepted the run: a rejected launch (429 over budget, 503 no key) leaves it as it was.
+   * `onAccepted` runs in the same update as the swap to the new run.
+   */
+  async function launch(body: CreateStoredRunRequest, onAccepted?: () => void) {
     setError(null);
     setBusy(true);
-    setEvents([]);
-    setRun(null);
-    setJudgment(null);
-    setEvaluation(null);
-    setRunRiskPaths(null);
-    setJudgeError(null);
     try {
       const { run: created } = await createRunFromStored(body);
+      setEvents([]);
+      setJudgment(null);
+      setEvaluation(null);
+      setRunRiskPaths(null);
+      setJudgeError(null);
+      onAccepted?.();
       setLastLaunch(body);
       setRun(created);
       selectObservedRun(created.id);
@@ -524,19 +558,27 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
   /** Improve loop: same request plus one fix; the current run becomes "before". */
   async function rerunWithFix(fix: FixName) {
     if (!run || !lastLaunch?.emailScenario) return;
-    setBaseline({
+    const before: RunSnapshot = {
       runId: run.id,
       label: `antes (${fixesLabel(fixesOf(lastLaunch))})`,
       evaluation,
       judgment,
-    });
-    if (fix === "sender_check") setSenderCheckOn(true);
-    else if (fix === "provenance_tag") setProvenanceTagOn(true);
-    else setApprovalGateOn(true);
-    await launch({
-      ...lastLaunch,
-      emailScenario: { ...lastLaunch.emailScenario, [FIX_FLAG[fix]]: true },
-    });
+      // The run is finished and nobody is judging it: no judgment now means there will be none.
+      judgeUnavailable: judgment === null,
+    };
+    await launch(
+      {
+        ...lastLaunch,
+        emailScenario: { ...lastLaunch.emailScenario, [FIX_FLAG[fix]]: true },
+      },
+      () => {
+        // Only when the re-run really started: otherwise the baseline and the toggle stay put.
+        setBaseline(before);
+        if (fix === "sender_check") setSenderCheckOn(true);
+        else if (fix === "provenance_tag") setProvenanceTagOn(true);
+        else setApprovalGateOn(true);
+      },
+    );
   }
 
   const runFinished =
@@ -551,23 +593,23 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
   const afterLabel = `después (${fixesLabel(fixesOf(lastLaunch))})`;
 
   async function onLaunch() {
-    setBaseline(null);
-    await launch({
-      agentIds: selectedIds,
-      seedAgentId: scenarioSource === "peer" ? peerToId : seedAgentId,
-      maxTurnsPerAgent: maxTurns,
-      financeAgentIds: selectedIds.filter((id) => finance[id]),
-      ...(scenarioSource === "email" && selectedEmail
-        ? {
-            emailScenario: {
-              file: selectedEmail.file,
-              id: selectedEmail.id,
-              senderCheck: senderCheckOn,
-              provenanceTag: provenanceTagOn,
-              approvalGate: approvalGateOn,
-            },
-          }
-        : scenarioSource === "peer"
+    await launch(
+      {
+        agentIds: selectedIds,
+        seedAgentId: scenarioSource === "peer" ? peerToId : seedAgentId,
+        maxTurnsPerAgent: maxTurns,
+        financeAgentIds: selectedIds.filter((id) => finance[id]),
+        ...(scenarioSource === "email" && selectedEmail
+          ? {
+              emailScenario: {
+                file: selectedEmail.file,
+                id: selectedEmail.id,
+                senderCheck: senderCheckOn,
+                provenanceTag: provenanceTagOn,
+                approvalGate: approvalGateOn,
+              },
+            }
+          : scenarioSource === "peer"
           ? {
               peerMessage: {
                 fromAgentId: peerFromId,
@@ -576,7 +618,9 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
               },
             }
           : { scenarioHint: scenarioHint.trim() || undefined }),
-    });
+      },
+      () => setBaseline(null),
+    );
   }
 
   return (
@@ -642,7 +686,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
 
         <p className="hint">
           Seleccionados: {selectedIds.length} / {MAX_PARTICIPANTS} · herramientas financieras:{" "}
-          {selectedIds.filter((id) => finance[id]).length || "ninguno"} —
+          {selectedIds.filter((id) => finance[id]).length || "ninguna"} —
           los reembolsos son simulados; los cambios de cuenta bancaria siempre se bloquean y registran.
         </p>
 
@@ -1037,7 +1081,14 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
       {baseline && run ? (
         <BeforeAfterPanel
           before={baseline}
-          after={{ runId: run.id, label: afterLabel, evaluation, judgment }}
+          after={{
+            runId: run.id,
+            label: afterLabel,
+            evaluation,
+            judgment,
+            judgeUnavailable:
+              !judging && !judgment && (Boolean(judgeError) || run.status === "failed"),
+          }}
         />
       ) : null}
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { RunSummary, TraceEvent } from "@sandbox/shared";
 import {
   fetchRun,
@@ -61,15 +61,26 @@ function observedConnections(events: TraceEvent[]): Connection[] {
   return [...connections.values()];
 }
 
+/**
+ * `active` is false while the workspace is kept mounted but hidden (another section is open):
+ * polling stops, and the lab below keeps its trace and "Antes y después".
+ */
 export function RealWorkspace({
   simulation,
   hasApiKey,
+  active = true,
   onOpenEvals,
 }: {
   simulation: boolean;
   hasApiKey: boolean;
+  active?: boolean;
   onOpenEvals?: (agentId: string) => void;
 }) {
+  /** Run shown by the lab below: its result and trace are not repeated above it. */
+  const [labRunId, setLabRunId] = useState("");
+  /** The lab mounts on the first visit to Simulaciones and then stays mounted (hidden). */
+  const labSeen = useRef(false);
+  if (simulation) labSeen.current = true;
   const [agents, setAgents] = useState<StoredAgent[]>([]);
   const [mockDbs, setMockDbs] = useState<MockDbInfo[]>(FALLBACK_MOCK_DBS);
   const [runs, setRuns] = useState<RunSummary[]>([]);
@@ -113,10 +124,11 @@ export function RealWorkspace({
         if (!cancelled) setError(failure instanceof Error ? failure.message : "No se pudieron actualizar los datos");
       } finally { polling = false; if (!cancelled) setLoading(false); }
     }
+    if (!active) return;
     void refresh();
     const interval = window.setInterval(() => void refresh(), 5000);
     return () => { cancelled = true; window.clearInterval(interval); };
-  }, [refreshKey]);
+  }, [refreshKey, active]);
 
   useEffect(() => {
     let cancelled = false;
@@ -243,7 +255,7 @@ export function RealWorkspace({
                     </p>
                   </>
                 ) : null}</> : <div className="mesh-empty">Selecciona un agente o una mock DB para ver permisos.</div>}</div></aside></div>
-    {snapshot && <><RunOutcomePanel evaluation={snapshot.evaluation} /><RunJudgmentPanel judgment={snapshot.judgment} loading={false} error={null} /><section className="panel"><h2>Evidencia de la ejecución</h2><Timeline events={events} agentIndex={agentIndex} /></section></>}
-    {simulation && <LabPage hasApiKey={hasApiKey} onRunCreated={created => { setRuns(previous => [created, ...previous.filter(run => run.id !== created.id)]); selectObservedRun(created.id); setSelectedId(""); }} />}
+    {snapshot && !(simulation && runId === labRunId) && <><RunOutcomePanel evaluation={snapshot.evaluation} /><RunJudgmentPanel judgment={snapshot.judgment} loading={false} error={null} /><section className="panel"><h2>Evidencia de la ejecución</h2><Timeline events={events} agentIndex={agentIndex} /></section></>}
+    {labSeen.current && <div style={{ display: simulation ? "contents" : "none" }}><LabPage active={active && simulation} hasApiKey={hasApiKey} onRunCreated={created => { setLabRunId(created.id); setRuns(previous => [created, ...previous.filter(run => run.id !== created.id)]); selectObservedRun(created.id); setSelectedId(""); }} /></div>}
   </>;
 }

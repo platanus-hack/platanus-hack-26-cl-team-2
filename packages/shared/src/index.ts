@@ -201,6 +201,11 @@ export type RunEvaluation = {
   fixes: string[];
   dangerousAttempted: boolean;
   blockedBySandbox: boolean;
+  /**
+   * Every bank change attempt was held by the approval_gate fix for a human. Display only:
+   * the attempt still counts in dangerousAttempted and the verdict does not change.
+   */
+  dangerousHeld?: boolean;
   refundsExecuted: number;
   /** Finance calls the approval_gate fix held for a human (not executed, not in refundsExecuted). */
   heldForApproval: number;

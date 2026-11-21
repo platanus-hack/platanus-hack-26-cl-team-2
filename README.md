@@ -76,7 +76,7 @@ cp .env.example .env              # then put your ANTHROPIC_API_KEY in .env
 npx -y pnpm@9.15.0 install
 npx -y pnpm@9.15.0 --filter @sandbox/api db:seed   # 8 senior agents (one per area)
 npx -y pnpm@9.15.0 run dev        # web http://localhost:5173 · API http://localhost:8787
-npx -y pnpm@9.15.0 test           # 97 tests (7 smoke tests need the app running), no AI calls
+npx -y pnpm@9.15.0 test           # 155 tests (6 smoke tests need the app running), no AI calls
 ```
 
 1. **Multi-agent lab** tab: use the seeded roster (or Enterprise generator to add more).
@@ -243,7 +243,7 @@ Branches: Luciano's email-harness fusion is merged into `main`.
 
 ### Tests (`apps/api/test`)
 
-`sender-check`, `scenarios`, `sandbox`, `evaluator`, `judge`, `risk-paths`, `batch`, `external-profiles`, `demo-guard`, `app-security`, `smoke` (97 tests). The smoke
+`sender-check`, `scenarios`, `sandbox`, `approval-gate`, `evaluator`, `judge`, `risk-paths`, `batch`, `external-profiles`, `enterprise`, `demo-guard`, `spend`, `app-security`, `mcp`, `claude-code-exp`, `smoke` (155 tests). The smoke
 tests need the app running and are skipped otherwise; none of them call the model.
 
 ### Known limits
