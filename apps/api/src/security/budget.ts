@@ -3,7 +3,7 @@ import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context } from "hono";
 import { config } from "../config.js";
 import { activeRunCount } from "../harness/orchestrator.js";
-import { clientIp, DemoGuard, type GuardResult } from "./demo-guard.js";
+import { clientIp, DemoGuard, vercelClientIp, type GuardResult } from "./demo-guard.js";
 import { spendMeter } from "./spend.js";
 
 // Only the HTTP server loads this module, so only it enforces the daily US$ cap
@@ -30,7 +30,14 @@ export function requestIp(c: Context): string {
   } catch {
     remote = undefined; // app.request() in tests has no socket
   }
-  const trusted = config.clientIpHeader ? c.req.header(config.clientIpHeader) : undefined;
+  const trusted = config.clientIpHeader
+    ? c.req.header(config.clientIpHeader)
+    : config.onVercel
+      ? vercelClientIp({
+          realIp: c.req.header("x-real-ip"),
+          vercelForwardedFor: c.req.header("x-vercel-forwarded-for"),
+        })
+      : undefined;
   if (config.clientIpHeader && !trusted && !config.trustProxyHops && !warnedMissingIpHeader) {
     // Without it every visitor falls back to the proxy's socket address: one shared bucket.
     warnedMissingIpHeader = true;

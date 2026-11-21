@@ -266,7 +266,7 @@ are in memory (a restart resets them) and `0` disables a limit.
 
 | Env var | Default | What it does |
 |---|---|---|
-| `RATE_LIMIT_PER_MINUTE` | `3` | Model-calling requests per client IP per minute: runs, judge, transcript judge, profile refine (and compose with refine). Over it: `429` "Límite de demo alcanzado, intenta en un minuto." |
+| `RATE_LIMIT_PER_MINUTE` | `3` (`12` on Vercel) | Model-calling requests per client IP per minute: runs, judge, transcript judge, profile refine (and compose with refine). Over it: `429` "Límite de demo alcanzado, intenta en un minuto." |
 | `MAX_RUNS_PER_DAY` | `40` | Runs started per UTC day, all clients together. |
 | `MAX_CONCURRENT_RUNS` | `3` | Runs pending or running at the same time. |
 | `MAX_JUDGE_CALLS_PER_DAY` | `200` | Judge + refine calls per UTC day, all clients together. |

@@ -180,6 +180,23 @@ function cleanIp(raw: string | undefined | null): string | null {
 }
 
 /**
+ * Vercel, when CLIENT_IP_HEADER is not set: its edge sets x-real-ip and
+ * x-vercel-forwarded-for itself and overwrites whatever the client sent, so both can be
+ * trusted (unlike X-Forwarded-For). Returns the value to use as the trusted header, or
+ * undefined when neither holds an address.
+ */
+export function vercelClientIp(input: {
+  realIp?: string | null;
+  vercelForwardedFor?: string | null;
+}): string | undefined {
+  return (
+    cleanIp(input.realIp) ??
+    cleanIp((input.vercelForwardedFor ?? "").split(",")[0]) ??
+    undefined
+  );
+}
+
+/**
  * Client address for rate limiting.
  *
  * - trustedHeader (e.g. "true-client-ip" on Render, set by its Cloudflare edge, which

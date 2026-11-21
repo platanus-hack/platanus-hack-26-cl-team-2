@@ -78,7 +78,8 @@ export const config = {
   /** Default AND ceiling: a request may ask for fewer turns, never more. */
   maxTurnsPerAgent: Math.max(1, intEnv("MAX_TURNS_PER_AGENT", 12)),
   // --- public-demo guard (see security/demo-guard.ts); 0 disables a limit ---
-  rateLimitPerMinute: intEnv("RATE_LIMIT_PER_MINUTE", 3),
+  // Vercel: the POST that starts a run waits for it and the page polls, so 3 is too tight.
+  rateLimitPerMinute: intEnv("RATE_LIMIT_PER_MINUTE", process.env.VERCEL ? 12 : 3),
   maxRunsPerDay: intEnv("MAX_RUNS_PER_DAY", 40),
   maxConcurrentRuns: intEnv("MAX_CONCURRENT_RUNS", 3),
   maxJudgeCallsPerDay: intEnv("MAX_JUDGE_CALLS_PER_DAY", 200),
@@ -98,6 +99,8 @@ export const config = {
   clientIpHeader:
     process.env.CLIENT_IP_HEADER?.trim().toLowerCase() ||
     (process.env.RENDER ? "true-client-ip" : ""),
+  /** On Vercel with no CLIENT_IP_HEADER, the client IP comes from Vercel's own headers. */
+  onVercel: Boolean(process.env.VERCEL?.trim()),
   /** Proxies that append to X-Forwarded-For; 0 = ignore it and use the socket address. */
   trustProxyHops: intEnv("TRUST_PROXY_HOPS", 0),
   /** When set, writes (agents, context files, saved profiles, persisted fleets) need x-admin-token. */

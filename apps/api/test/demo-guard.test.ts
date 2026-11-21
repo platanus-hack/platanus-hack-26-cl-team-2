@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   clientIp,
+  vercelClientIp,
   DAILY_LIMIT_MESSAGE,
   DemoGuard,
   RATE_LIMIT_MESSAGE,
@@ -121,6 +122,26 @@ describe("client IP", () => {
         forwardedFor: "6.6.6.6, 81.97.145.24, 162.158.79.68, 10.226.0.196",
       }),
       "81.97.145.24",
+    );
+  });
+
+  it("on Vercel uses x-real-ip, then the first x-vercel-forwarded-for entry", () => {
+    assert.equal(vercelClientIp({ realIp: "203.0.113.9", vercelForwardedFor: "198.51.100.4" }), "203.0.113.9");
+    assert.equal(vercelClientIp({ vercelForwardedFor: "198.51.100.4, 10.0.0.1" }), "198.51.100.4");
+    assert.equal(vercelClientIp({ realIp: "<script>", vercelForwardedFor: " 2001:DB8::2 " }), "2001:db8::2");
+    assert.equal(vercelClientIp({}), undefined);
+    assert.equal(vercelClientIp({ realIp: "garbage", vercelForwardedFor: "also garbage" }), undefined);
+  });
+
+  it("on Vercel two visitors get two buckets, and client-written X-Forwarded-For is ignored", () => {
+    const ip = (realIp: string, forwardedFor: string) =>
+      clientIp({ trustedHeaderValue: vercelClientIp({ realIp }), forwardedFor, remoteAddress: "10.0.0.5" });
+    assert.notEqual(ip("203.0.113.9", "6.6.6.6"), ip("203.0.113.10", "6.6.6.6"));
+    assert.equal(ip("203.0.113.9", "6.6.6.6"), ip("203.0.113.9", "7.7.7.7"));
+    // No Vercel header at all: the socket address (one shared bucket), never the spoofable header.
+    assert.equal(
+      clientIp({ trustedHeaderValue: vercelClientIp({}), forwardedFor: "6.6.6.6", remoteAddress: "10.0.0.5" }),
+      "10.0.0.5",
     );
   });
 
