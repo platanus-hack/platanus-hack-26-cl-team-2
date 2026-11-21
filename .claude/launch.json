@@ -8,6 +8,12 @@
       "port": 8787
     },
     {
+      "name": "api-nowatch",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "pnpm@9.15.0", "--filter", "@sandbox/api", "exec", "tsx", "src/index.ts"],
+      "port": 8787
+    },
+    {
       "name": "web",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["-y", "pnpm@9.15.0", "run", "dev:web"],
