@@ -248,7 +248,7 @@ tests need the app running and are skipped otherwise; none of them call the mode
 
 ### Known limits
 
-- Runs live in memory: restarting the API clears them (saved agents stay in the database).
+- Runs and their traces are saved in the database (`simulation_runs`). A run still executes inside the API process: restarting the API interrupts the runs in progress, and they show as failed once their deadline passes.
 - The sender check only reads the `From:` line; real deployments should check SPF/DKIM/DMARC.
 - No live mailbox connection yet: emails come from JSON files in `email-harness/scenarios/`
   (`gmail_*.json` / `outlook_*.json` are git-ignored for real mail).
@@ -272,7 +272,7 @@ are in memory (a restart resets them) and `0` disables a limit.
 | `MAX_JUDGE_CALLS_PER_DAY` | `200` | Judge + refine calls per UTC day, all clients together. |
 | `MAX_SPEND_USD_PER_DAY` | `5` | **Hard money ceiling.** US$ the server may spend per UTC day, priced from the `usage` of every model response (Sonnet 4.6 $3/$15, Haiku 4.5 $1/$5 per million tokens; cache writes 1.25x, reads 0.1x). Once spent, new runs, judge and refine calls get `429` "Presupuesto diario de la demo agotado, intenta mañana." and running agents stop before their next call. The counters above bound requests; this bounds what they cost (an 8-agent run that never calls `done`, a 200k-character transcript). Only the HTTP server enforces it (`batch` and `mcp:quick` are deliberate spend). Like the other limits it resets on restart, so each redeploy grants a fresh day. |
 | `MAX_TURNS_PER_AGENT` | `12` | Default **and ceiling**: a request may ask for fewer turns, never more. |
-| `MAX_STORED_RUNS` | `200` | Finished runs kept in memory; older ones (and their traces) are dropped. |
+| `MAX_STORED_RUNS` | `200` | Finished runs whose live trace and inboxes stay in memory; older ones are dropped from memory (they remain in the database). |
 | `MAX_STORED_AGENTS` | `2000` | Enterprise generate refuses to save past this many agents. |
 | `ADMIN_TOKEN` | unset | When set, writes need the header `x-admin-token`: `PUT`/`DELETE /api/agents…`, context files, `POST /api/profiles/save`, `POST /api/enterprise/generate` with `persist` (a preview with `persist: false` stays public). Unset locally: writes stay open. Unset on Render (`RENDER` is set) or with `REQUIRE_ADMIN_TOKEN=1`: writes are **blocked**, so a forgotten dashboard variable cannot leave the store writable. |
 | `CLIENT_IP_HEADER` | `true-client-ip` on Render, else unset | Header with the real client IP. On Render the Cloudflare edge sets `True-Client-IP` and overwrites client values, while the left side of `X-Forwarded-For` is whatever the client sent. |

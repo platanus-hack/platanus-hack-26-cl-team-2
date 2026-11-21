@@ -1,6 +1,6 @@
 # Render Blueprint: one web service that runs the API and serves the built web app.
 # SQLite lives on the instance disk: it is wiped on every deploy and re-seeded at start
-# with the same senior agents (db:seed is idempotent). Runs live in memory anyway.
+# with the same senior agents (db:seed is idempotent). Saved runs are wiped with it.
 services:
   - type: web
     name: mesh-lab
