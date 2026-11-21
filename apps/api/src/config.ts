@@ -50,6 +50,8 @@ export const config = {
   port: Number(process.env.PORT ?? 8787),
   webOrigin: process.env.WEB_ORIGIN ?? "http://localhost:5173",
   anthropicApiKey: normalizeApiKey(process.env.ANTHROPIC_API_KEY),
+  /** Hackathon proxy (or any gateway). Every model call goes through anthropicClient(). */
+  anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL?.trim() || undefined,
   model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6",
   maxTurnsPerAgent: Number(process.env.MAX_TURNS_PER_AGENT ?? 12),
   databaseUrl,

@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { anthropicClient } from "../anthropic-client.js";
 import type { RunAudit, RunEvaluation, TraceEvent } from "@sandbox/shared";
 import { FIX_NAMES, FIXES } from "./fixes.js";
 import { assertApiKeyConfigured, config } from "../config.js";
@@ -280,7 +281,7 @@ async function callJudge(
   withAudit = false,
 ): Promise<RunJudgment> {
   assertApiKeyConfigured();
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = anthropicClient();
 
   const call = () =>
     client.messages.create({

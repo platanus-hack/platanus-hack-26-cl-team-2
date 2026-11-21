@@ -84,6 +84,7 @@ app.get("/health", async (c) => {
   return c.json({
     ok: true,
     hasApiKey: Boolean(config.anthropicApiKey),
+    viaProxy: Boolean(config.anthropicBaseUrl),
     hasDatabase: db.ok,
     dbDriver: config.dbDriver,
     database: db,
@@ -334,7 +335,9 @@ serve({ fetch: app.fetch, port: config.port }, async (info) => {
   const db = await pingDatabase();
   console.log(`[api] http://localhost:${info.port}`);
   console.log(
-    `[api] ANTHROPIC_API_KEY ${config.anthropicApiKey ? "loaded" : "MISSING — set .env"}`,
+    `[api] ANTHROPIC_API_KEY ${config.anthropicApiKey ? "loaded" : "MISSING — set .env"} · ${
+      config.anthropicBaseUrl ? "via ANTHROPIC_BASE_URL (proxy)" : "direct to api.anthropic.com"
+    }`,
   );
   console.log(
     `[api] DB ${db.driver}${db.ok ? " ok" : ` FAIL: ${db.error}`}${

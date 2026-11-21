@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropicClient } from "../anthropic-client.js";
 import { nanoid } from "nanoid";
 import type {
   AgentSpec,
@@ -362,7 +362,7 @@ async function executeRun(
     participantCount: run.agents.length,
   });
 
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = anthropicClient();
   const tag = opts.email?.provenanceTag
     ? provenanceTag({ from: opts.email.from, senderCheck: opts.email.senderCheck })
     : undefined;
