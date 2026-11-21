@@ -71,6 +71,31 @@ describe("API security (in-process)", () => {
     assert.equal(wrong.status, 401);
   });
 
+  it("the vulnerability eval routes are writes: 401 without the token, readable without it", async () => {
+    for (const route of ["vuln-assess", "vuln-design", "vuln-run-one", "vuln-finalize"]) {
+      const res = await app.request(`/api/agents/seed_cs/${route}`, json({}));
+      assert.equal(res.status, 401, route);
+    }
+    const read = await app.request("/api/agents/no-such-agent/vuln-assessment");
+    assert.equal(read.status, 404);
+  });
+
+  it("the vulnerability eval routes stop with 429 once the daily US$ budget is spent", async () => {
+    const { spendMeter } = await import("../src/security/spend.js");
+    spendMeter.setLimit(0.01);
+    spendMeter.record("claude-sonnet-4-6", { input_tokens: 10_000, output_tokens: 1_000 });
+    try {
+      const res = await app.request(
+        "/api/agents/seed_cs/vuln-design",
+        json({}, { "x-admin-token": "test-admin-token" }),
+      );
+      assert.equal(res.status, 429);
+      assert.equal(((await res.json()) as { reason: string }).reason, "budget");
+    } finally {
+      spendMeter.setLimit(0);
+    }
+  });
+
   it("an enterprise preview (persist=false) stays public", async () => {
     const res = await app.request("/api/enterprise/generate", json({ counts: { gtm: 2 }, persist: false }));
     assert.equal(res.status, 200);
