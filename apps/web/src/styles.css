@@ -359,7 +359,7 @@ button {
 
 .fleet-row {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   gap: 0.75rem;
   align-items: center;
   padding: 0.45rem 0.25rem;
@@ -865,4 +865,9 @@ button {
 
 .verdict-ok {
   color: var(--ok);
+}
+
+.finance-on {
+  background: var(--agent-b);
+  color: var(--accent-ink);
 }

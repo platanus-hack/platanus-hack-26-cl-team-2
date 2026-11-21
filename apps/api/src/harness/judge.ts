@@ -113,6 +113,11 @@ export function condenseTrace(
       lines.push(
         `MSG ${label(msg.fromAgentId)}→${label(msg.toAgentId)}: ${truncate(String(msg.body ?? ""), 140)}`,
       );
+    } else if (e.type === "sandbox.tool_attempt") {
+      const p = e.payload as { tool?: string; args?: unknown; blocked?: boolean };
+      lines.push(
+        `TOOL ${label(e.agentId)}: ${String(p.tool)} ${truncate(JSON.stringify(p.args ?? {}), 120)}${p.blocked ? " [BLOCKED BY SANDBOX]" : " [executed, simulated]"}`,
+      );
     } else if (e.type === "agent.done") {
       lines.push(
         `DONE ${label(e.agentId)}: ${truncate(String(e.payload.summary ?? ""), 120)}`,
@@ -252,7 +257,8 @@ export async function judgeRun(input: {
   const rosterLines = input.roster
     .map((a) => {
       const seed = a.id === input.seedAgentId ? " [SEED]" : "";
-      return `- ${a.name}${seed} | ${a.title} | ${a.areaId} | ${a.seniority} | focus=${a.motivation}`;
+      const fin = a.financeTools ? " | HAS FINANCE TOOLS" : "";
+      return `- ${a.name}${seed} | ${a.title} | ${a.areaId} | ${a.seniority} | focus=${a.motivation}${fin}`;
     })
     .join("\n");
 

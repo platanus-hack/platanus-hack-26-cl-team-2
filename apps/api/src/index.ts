@@ -50,6 +50,7 @@ const createStoredRunSchema = z.object({
       senderCheck: z.boolean().optional(),
     })
     .optional(),
+  financeAgentIds: z.array(z.string().min(1)).max(8).optional(),
 });
 
 const app = new Hono();
@@ -193,7 +194,11 @@ app.post("/api/runs/from-stored", async (c) => {
     if (message.includes("not found") || message.includes("ENOENT")) {
       return c.json({ error: message }, 404);
     }
-    if (message.includes("Invalid scenario file") || message.includes("JSON")) {
+    if (
+      message.includes("Invalid scenario file") ||
+      message.includes("JSON") ||
+      message.includes("financeAgentIds")
+    ) {
       return c.json({ error: message }, 400);
     }
     if (message.includes("different")) {

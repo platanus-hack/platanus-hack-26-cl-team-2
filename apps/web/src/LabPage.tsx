@@ -37,6 +37,7 @@ export function LabPage({ hasApiKey }: Props) {
   const [emailLoadError, setEmailLoadError] = useState<string | null>(null);
   const [emailKey, setEmailKey] = useState("");
   const [senderCheckOn, setSenderCheckOn] = useState(false);
+  const [finance, setFinance] = useState<Record<string, boolean>>({});
   const [maxTurns, setMaxTurns] = useState(6);
   const [run, setRun] = useState<RunSummary | null>(null);
   const [events, setEvents] = useState<TraceEvent[]>([]);
@@ -271,6 +272,7 @@ export function LabPage({ hasApiKey }: Props) {
         agentIds: selectedIds,
         seedAgentId,
         maxTurnsPerAgent: maxTurns,
+        financeAgentIds: selectedIds.filter((id) => finance[id]),
         ...(scenarioSource === "email" && selectedEmail
           ? {
               emailScenario: {
@@ -351,7 +353,10 @@ export function LabPage({ hasApiKey }: Props) {
         </div>
 
         <p className="hint">
-          Selected: {selectedIds.length} / {MAX_PARTICIPANTS}
+          Selected: {selectedIds.length} / {MAX_PARTICIPANTS} · finance tools:{" "}
+          {selectedIds.filter((id) => finance[id]).length || "nobody"} —
+          refunds are simulated, bank account changes are always blocked and
+          recorded.
         </p>
 
         <div className="fleet-list">
@@ -379,6 +384,20 @@ export function LabPage({ hasApiKey }: Props) {
                 title="Receive initial scenario"
               >
                 {seedAgentId === a.id ? "seed" : "make seed"}
+              </button>
+              <button
+                type="button"
+                className={
+                  finance[a.id] ? "btn seed-btn finance-on" : "btn ghost seed-btn"
+                }
+                disabled={busy || !enabled[a.id]}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setFinance((prev) => ({ ...prev, [a.id]: !prev[a.id] }));
+                }}
+                title="Give this agent the sandboxed finance tools: issue_refund (simulated) and update_vendor_bank_account (always blocked)"
+              >
+                {finance[a.id] ? "finance tools" : "+ finance"}
               </button>
             </label>
           ))}

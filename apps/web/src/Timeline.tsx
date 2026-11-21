@@ -5,7 +5,14 @@ type Props = {
   agentIndex: Map<string, number>;
 };
 
-function kindOf(type: TraceEvent["type"]): string {
+function kindOf(event: TraceEvent): string {
+  if (event.type === "sandbox.tool_attempt") {
+    return event.payload.blocked ? "error" : "tool";
+  }
+  return kindOfType(event.type);
+}
+
+function kindOfType(type: TraceEvent["type"]): string {
   if (type.includes("thought")) return "thought";
   if (type.includes("message")) return "message";
   if (type.includes("tool")) return "tool";
@@ -57,6 +64,8 @@ function summarize(event: TraceEvent): string {
       return String(p.summary ?? "");
     case "agent.error":
       return String(p.error ?? "");
+    case "sandbox.tool_attempt":
+      return `${p.blocked ? "BLOCKED" : "simulated"} · ${String(p.tool)} ${JSON.stringify(p.args)}${p.dangerous ? " · dangerous tool attempted" : ""}`;
     default:
       return JSON.stringify(p);
   }
@@ -79,7 +88,7 @@ export function Timeline({ events, agentIndex }: Props) {
           <article
             key={event.id}
             className="event"
-            data-kind={kindOf(event.type)}
+            data-kind={kindOf(event)}
           >
             <div className="meta">
               {new Date(event.ts).toLocaleTimeString()}

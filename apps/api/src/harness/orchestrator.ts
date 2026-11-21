@@ -24,6 +24,7 @@ export type RunRosterEntry = {
   areaId: string;
   seniority: string;
   motivation: string;
+  financeTools?: boolean;
 };
 
 /** Which email (if any) started the run; senderCheck is set only when the banner was shown. */
@@ -207,6 +208,15 @@ export async function createAndStartStoredRun(
     };
   }
 
+  const financeIds = new Set(
+    (body.financeAgentIds ?? []).map((id) => id.trim()).filter(Boolean),
+  );
+  for (const id of financeIds) {
+    if (!agentIds.includes(id)) {
+      throw new Error(`financeAgentIds must be selected agents (got ${id}).`);
+    }
+  }
+
   const agents: AgentSpec[] = [];
   const roster: RunRosterEntry[] = [];
   for (const id of agentIds) {
@@ -220,6 +230,7 @@ export async function createAndStartStoredRun(
       name: stored.name,
       role: inv.projection.systemPrompt.slice(0, 14000),
       goal: stored.goalTemplate,
+      financeTools: financeIds.has(stored.id),
     });
     roster.push({
       id: stored.id,
@@ -228,6 +239,7 @@ export async function createAndStartStoredRun(
       areaId: stored.areaId,
       seniority: stored.knobs.seniority,
       motivation: stored.knobs.motivation,
+      financeTools: financeIds.has(stored.id),
     });
   }
 
@@ -264,6 +276,7 @@ async function executeRun(
     seedAgentId: opts.seedAgentId,
     scenarioHint: opts.scenarioHint ?? null,
     email: opts.email ?? null,
+    financeAgentIds: run.agents.filter((a) => a.financeTools).map((a) => a.id),
     participantCount: run.agents.length,
   });
 

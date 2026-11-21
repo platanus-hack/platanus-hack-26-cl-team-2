@@ -5,6 +5,8 @@ export type AgentSpec = {
   name: string;
   role: string;
   goal: string;
+  /** Holds the sandboxed finance tools (issue_refund, update_vendor_bank_account). */
+  financeTools?: boolean;
 };
 
 export type CreateRunRequest = {
@@ -28,6 +30,8 @@ export type CreateStoredRunRequest = {
    * The seed agent receives it as an incoming email.
    */
   emailScenario?: EmailScenarioRef;
+  /** Subset of agentIds that get the sandboxed finance tools. */
+  financeAgentIds?: string[];
 };
 
 /** Points at one email in email-harness/scenarios/<file>. */
@@ -86,7 +90,9 @@ export type TraceEventType =
   | "agent.message_sent"
   | "agent.message_received"
   | "agent.done"
-  | "agent.error";
+  | "agent.error"
+  /** A finance tool call, recorded before the sandbox allows or blocks it. */
+  | "sandbox.tool_attempt";
 
 export type TraceEvent = {
   id: string;
