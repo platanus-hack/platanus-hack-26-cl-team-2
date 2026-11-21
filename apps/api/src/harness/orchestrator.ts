@@ -12,6 +12,7 @@ import type {
   SenderCheck,
 } from "@sandbox/shared";
 import { assertApiKeyConfigured, config } from "../config.js";
+import { redactSecrets } from "../security/redact.js";
 import { getAgent } from "../db/agents-repo.js";
 import { buildInvokePayload } from "../db/invoke.js";
 import { emailScenarioHint, getEmailScenario } from "../email/scenarios.js";
@@ -69,6 +70,32 @@ function slug(name: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 24);
+}
+
+/** Runs that still hold a model budget slot (for MAX_CONCURRENT_RUNS). */
+export function activeRunCount(): number {
+  let n = 0;
+  for (const r of runs.values()) if (r.status === "pending" || r.status === "running") n += 1;
+  return n;
+}
+
+/** A request may ask for fewer turns than MAX_TURNS_PER_AGENT, never more (budget ceiling). */
+export function clampTurns(requested: number | undefined): number {
+  const ceiling = config.maxTurnsPerAgent;
+  if (!requested || !Number.isFinite(requested)) return ceiling;
+  return Math.max(1, Math.min(Math.floor(requested), ceiling));
+}
+
+/** Keep memory bounded: drop the oldest finished runs (and their traces) past MAX_STORED_RUNS. */
+function evictOldRuns(): void {
+  if (runs.size <= config.maxStoredRuns) return;
+  for (const [id, r] of runs) {
+    if (runs.size <= config.maxStoredRuns) break;
+    if (r.status === "pending" || r.status === "running") continue;
+    runs.delete(id);
+    traceBus.drop(id);
+    messageBus.dropRun(id);
+  }
 }
 
 export function listRuns(): RunSummary[] {
@@ -217,6 +244,7 @@ function startRun(
       })),
   };
   runs.set(runId, run);
+  evictOldRuns();
   messageBus.ensureAgents(
     runId,
     agents.map((a) => a.id),
@@ -240,15 +268,36 @@ export function createAndStartRun(body: CreateRunRequest): RunSummary {
   const [a, b] = agents;
   if (a.id === b.id) b.id = `${b.id}-b`;
 
-  return startRun(agents, body.maxTurnsPerAgent ?? config.maxTurnsPerAgent, {
+  return startRun(agents, clampTurns(body.maxTurnsPerAgent), {
     seedAgentId: a.id,
   });
 }
+
+export type PreparedStoredRun = {
+  agents: AgentSpec[];
+  maxTurns: number;
+  opts: { seedAgentId: string; scenarioHint?: string; email?: RunEmailInfo; roster: RunRosterEntry[] };
+};
 
 /** Load N DB agents; only seedAgent receives the scenario instruction. */
 export async function createAndStartStoredRun(
   body: CreateStoredRunRequest,
 ): Promise<RunSummary> {
+  return startPreparedRun(await prepareStoredRun(body));
+}
+
+/** Synchronous, so a budget check right before it cannot race with another start. */
+export function startPreparedRun(p: PreparedStoredRun): RunSummary {
+  return startRun(p.agents, p.maxTurns, p.opts);
+}
+
+/**
+ * Everything that can fail for a bad request (agents, email, finance ids, API key), with no
+ * model call: the HTTP route checks the demo budget only after this succeeds.
+ */
+export async function prepareStoredRun(
+  body: CreateStoredRunRequest,
+): Promise<PreparedStoredRun> {
   const agentIds = [
     ...new Set(body.agentIds.map((id) => id.trim()).filter(Boolean)),
   ];
@@ -334,12 +383,16 @@ export async function createAndStartStoredRun(
     return 0;
   });
 
-  return startRun(agents, body.maxTurnsPerAgent ?? config.maxTurnsPerAgent, {
-    seedAgentId,
-    scenarioHint,
-    email,
-    roster,
-  });
+  if (agents.length > MAX_PARTICIPANTS) {
+    throw new Error(`Max ${MAX_PARTICIPANTS} agents per run (token safety). Turn some off.`);
+  }
+  assertApiKeyConfigured();
+
+  return {
+    agents,
+    maxTurns: clampTurns(body.maxTurnsPerAgent),
+    opts: { seedAgentId, scenarioHint, email, roster },
+  };
 }
 
 async function executeRun(
@@ -408,7 +461,8 @@ async function executeRun(
     run.finishedAt = new Date().toISOString();
     traceBus.emit(run.id, "run.completed", { status: run.status });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // Trace events are public (GET /api/runs/:id, SSE): never leak key or proxy URL.
+    const message = redactSecrets(err instanceof Error ? err.message : String(err));
     run.status = "failed";
     run.error = message;
     run.finishedAt = new Date().toISOString();

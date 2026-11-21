@@ -34,6 +34,22 @@ export type StoredAgent = AgentProfile & {
   updatedAt: string;
 };
 
+/**
+ * Writes that change the shared agent store need x-admin-token when the API has ADMIN_TOKEN
+ * set (public demo). Locally there is no token and nothing is sent. Team members on the
+ * deployed app: run localStorage.setItem("meshAdminToken", "<token>") in the browser console.
+ */
+function writeHeaders(json: boolean): Record<string, string> {
+  const headers: Record<string, string> = json ? { "Content-Type": "application/json" } : {};
+  try {
+    const token = localStorage.getItem("meshAdminToken");
+    if (token) headers["x-admin-token"] = token;
+  } catch {
+    // storage blocked: no token
+  }
+  return headers;
+}
+
 export async function fetchHealth(): Promise<{
   ok: boolean;
   hasApiKey: boolean;
@@ -74,7 +90,7 @@ export async function createRunFromStored(
 }
 
 export async function listEmailScenarios(): Promise<{
-  dir: string;
+  dir?: string;
   scenarios: EmailScenarioSummary[];
   errors: string[];
 }> {
@@ -102,8 +118,11 @@ export type RunJudgment = {
 export async function judgeRun(
   runId: string,
 ): Promise<{ judgment: RunJudgment; evaluation: RunEvaluation; cached: boolean }> {
+  // JSON content type is required on every POST (CSRF guard on the API).
   const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/judge`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "Falló la evaluación");
@@ -240,7 +259,7 @@ export async function saveProfile(
 ): Promise<{ agent: StoredAgent }> {
   const res = await fetch("/api/profiles/save", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: writeHeaders(true),
     body: JSON.stringify({ profile }),
   });
   const data = await res.json();
@@ -256,7 +275,10 @@ export async function listAgents(): Promise<StoredAgent[]> {
 }
 
 export async function deleteAgent(id: string): Promise<void> {
-  const res = await fetch(`/api/agents/${id}`, { method: "DELETE" });
+  const res = await fetch(`/api/agents/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: writeHeaders(false),
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? "No se pudo eliminar");
 }
@@ -265,9 +287,9 @@ export async function addContextFile(
   agentId: string,
   body: { name: string; kind?: string; content: string },
 ): Promise<StoredAgent["contextFiles"][number]> {
-  const res = await fetch(`/api/agents/${agentId}/context-files`, {
+  const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/context-files`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: writeHeaders(true),
     body: JSON.stringify(body),
   });
   const data = await res.json();
@@ -279,9 +301,10 @@ export async function removeContextFile(
   agentId: string,
   fileId: string,
 ): Promise<void> {
-  const res = await fetch(`/api/agents/${agentId}/context-files/${fileId}`, {
-    method: "DELETE",
-  });
+  const res = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/context-files/${encodeURIComponent(fileId)}`,
+    { method: "DELETE", headers: writeHeaders(false) },
+  );
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? "No se pudo eliminar el archivo de contexto");
 }
@@ -333,7 +356,7 @@ export async function generateEnterprise(body: {
 }> {
   const res = await fetch("/api/enterprise/generate", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: writeHeaders(true),
     body: JSON.stringify(body),
   });
   const data = await res.json();

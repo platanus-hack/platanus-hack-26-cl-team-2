@@ -8,7 +8,9 @@ import {
   type AreaHeadcount,
 } from "@sandbox/shared";
 import { z } from "zod";
-import { upsertAgent } from "../db/agents-repo.js";
+import { config } from "../config.js";
+import { listAgents, upsertAgent } from "../db/agents-repo.js";
+import { adminDenied, isAdminRequest } from "../security/admin.js";
 
 const areaCountSchema = z.object({
   gtm: z.number().int().min(0).max(200).optional(),
@@ -72,6 +74,19 @@ enterpriseRoutes.post("/generate", async (c) => {
       { error: "Cap is 500 agents per generate call for the MVP." },
       400,
     );
+  }
+
+  // Persisting writes the shared DB: admin only when ADMIN_TOKEN is set, and never past
+  // MAX_STORED_AGENTS in total. A preview (persist=false) stays public.
+  if (persist && !isAdminRequest(c)) return adminDenied(c);
+  if (persist && config.maxStoredAgents > 0) {
+    const existing = (await listAgents()).length;
+    if (existing + result.profiles.length > config.maxStoredAgents) {
+      return c.json(
+        { error: `Máximo ${config.maxStoredAgents} agentes guardados (hay ${existing}).` },
+        400,
+      );
+    }
   }
 
   let saved = 0;

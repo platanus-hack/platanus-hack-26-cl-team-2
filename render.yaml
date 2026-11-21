@@ -23,3 +23,15 @@ services:
         value: claude-haiku-4-5-20251001
       - key: MAX_TURNS_PER_AGENT
         value: "12"
+      # Public demo protections (README "Public demo protections"). ADMIN_TOKEN: set a long
+      # random value in the dashboard; writes (agents, fleets, saved profiles) then need it.
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "3"
+      - key: MAX_RUNS_PER_DAY
+        value: "40"
+      - key: MAX_CONCURRENT_RUNS
+        value: "3"
+      - key: MAX_JUDGE_CALLS_PER_DAY
+        value: "200"

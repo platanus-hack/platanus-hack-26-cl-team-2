@@ -45,6 +45,11 @@ export class MessageBus {
     return box;
   }
 
+  dropRun(runId: string): void {
+    const prefix = `${runId}:`;
+    for (const k of this.inboxes.keys()) if (k.startsWith(prefix)) this.inboxes.delete(k);
+  }
+
   peek(runId: string, agentId: AgentId): PeerMessage[] {
     return [...(this.inboxes.get(this.key(runId, agentId)) ?? [])];
   }

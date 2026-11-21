@@ -21,6 +21,13 @@ const SCENARIO_DIR =
   resolve(process.cwd(), "../../email-harness/scenarios");
 
 const SAFE_FILE = /^[A-Za-z0-9_.-]+\.json$/;
+
+/** Git-ignored real-mailbox files (see email-harness/.gitignore): local only, never served by default. */
+const REAL_MAIL_FILE = /^(gmail_.*|outlook_.*|spoof_eval)\.json$/;
+
+export function isRealMailFile(file: string): boolean {
+  return REAL_MAIL_FILE.test(file);
+}
 const KINDS = new Set<EmailScenarioKind>(["attack", "benign", "real_email"]);
 
 type RawScenario = { id: string; kind: string; technique?: string; ticket: string };
@@ -53,7 +60,7 @@ function summarize(file: string, s: RawScenario): EmailScenarioSummary {
   };
 }
 
-export function listEmailScenarios(): {
+export function listEmailScenarios(opts: { includeRealMail?: boolean } = {}): {
   dir: string;
   scenarios: EmailScenarioSummary[];
   errors: string[];
@@ -61,7 +68,10 @@ export function listEmailScenarios(): {
   const errors: string[] = [];
   let files: string[] = [];
   try {
-    files = readdirSync(SCENARIO_DIR).filter((f) => SAFE_FILE.test(f)).sort();
+    files = readdirSync(SCENARIO_DIR)
+      .filter((f) => SAFE_FILE.test(f))
+      .filter((f) => opts.includeRealMail !== false || !isRealMailFile(f))
+      .sort();
   } catch (err) {
     errors.push(`Cannot read ${SCENARIO_DIR}: ${err instanceof Error ? err.message : String(err)}`);
   }
