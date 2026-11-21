@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# Local-only dependency folder used on the original dev machine
+vendor/
+
+# Secrets
+.env
+.env.*
+
+# Generated traces and loop runs (re-create them with the commands in README.md)
+traces/
+traces_*/
+runs/
+
+# Real mailbox contents: never commit
+scenarios/gmail_*.json
+scenarios/outlook_*.json
+
+# Local editor / app settings
+.claude/
+.vscode/
+
+# Contains real (non-anonymised) Outlook emails; share scenarios/spoof_eval_demo.json instead
+scenarios/spoof_eval.json

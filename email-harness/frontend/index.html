@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Risk path — harness traces</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#3a3f4b; --text:#e6e8ec; --muted:#8b92a1;
+          --risk:#e5484d; --ok:#3fb950; --blocked:#f5a524; --check:#7c9cff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--text);
+         display:grid; grid-template-columns:330px 1fr; height:100vh; }
+  aside { background:var(--panel); border-right:1px solid #252a33; overflow:auto; padding:16px; }
+  h1 { font-size:15px; margin:0 0 4px; } h2 { font-size:13px; margin:18px 0 4px; color:var(--muted); font-weight:500; }
+  .asr { font-size:40px; font-weight:700; color:var(--risk); margin:8px 0 0; }
+  .sub { color:var(--muted); font-size:12px; margin-bottom:12px; }
+  .improve { background:#13261a; border:1px solid #23462f; border-radius:8px; padding:10px 12px; margin-bottom:14px; font-size:12.5px; }
+  .improve b { color:#7ee08f; } .improve .big { font-size:22px; font-weight:700; }
+  .run { padding:8px 10px; border-radius:6px; cursor:pointer; display:flex; gap:8px; align-items:center; }
+  .run:hover { background:#20242d; } .run.sel { background:#262b36; }
+  .dot { width:8px; height:8px; border-radius:50%; flex:none; background:var(--line); }
+  .dot.hit { background:var(--risk); } .dot.benign { background:var(--ok); }
+  .run small { color:var(--muted); display:block; }
+  .chg { margin-left:auto; font-size:11px; color:#7ee08f; }
+  main { padding:20px 28px; overflow:auto; }
+  .graphs { display:grid; gap:6px; } .glabel { color:var(--muted); font-size:12px; margin-top:6px; }
+  svg { width:100%; max-width:980px; height:auto; display:block; }
+  .edge { stroke:var(--line); stroke-width:2.5; fill:none; transition:stroke .3s, stroke-width .3s; }
+  .edge.on { stroke:var(--risk); stroke-width:4.5; } .edge.on.safe { stroke:var(--ok); }
+  .edge.on.blocked { stroke-dasharray:8 6; }
+  .node rect { fill:#1d2129; stroke:#424857; stroke-width:1.5; rx:10; transition:stroke .3s; }
+  .node.on rect { stroke:var(--risk); stroke-width:2.5; }
+  .node text { fill:var(--text); font-size:14px; text-anchor:middle; } .node text.r { fill:var(--muted); font-size:11px; }
+  .shield { fill:var(--check); font-size:12px; text-anchor:middle; opacity:0; } .shield.on { opacity:1; }
+  .lock { fill:var(--blocked); font-size:18px; opacity:0; transition:opacity .3s; } .lock.on { opacity:1; }
+  table { border-collapse:collapse; margin-top:14px; font-size:13px; }
+  td, th { padding:4px 12px 4px 0; text-align:left; vertical-align:top; } th { color:var(--muted); font-weight:500; }
+  .tag { padding:1px 7px; border-radius:10px; font-size:12px; white-space:nowrap; }
+  .tag.r { background:#3b1719; color:#ff8b8e; } .tag.g { background:#122b19; color:#7ee08f; }
+  .tag.y { background:#3a2c0c; color:#ffcf6b; } .tag.b { background:#1a2240; color:#a9bcff; }
+  .audit { margin-top:14px; max-width:900px; font-size:13px; color:#c9cdd6; }
+  .audit div { margin:4px 0; }
+  .note { color:var(--muted); font-size:12px; margin-top:14px; max-width:760px; }
+</style>
+</head>
+<body>
+<aside>
+  <div id="improve"></div>
+  <h1 id="lefttitle">Attack Success Rate</h1>
+  <div class="asr" id="asr">–</div>
+  <div class="sub" id="asrsub"></div>
+  <div id="runs"></div>
+</aside>
+<main>
+  <h1 id="title">Select a run</h1>
+  <div class="sub" id="meta"></div>
+  <div class="graphs" id="graphs"></div>
+  <div class="audit" id="audit"></div>
+  <table id="events"></table>
+  <p class="note">Edges are drawn from the agent-snoop trace each harness run writes. Red = path an attack took,
+    green = path of a ticket that was handled safely, dashed = attempted and blocked by the sandbox,
+    🛡 = the deterministic sender check flagged the ticket. <span id="mode"></span></p>
+</main>
+<script>
+const NODES = {
+  ticket_ext:{x:70,  y:165, label:"External ticket", role:"untrusted input"},
+  A:         {x:270, y:165, label:"Agent A", role:"support intake"},
+  B:         {x:470, y:165, label:"Agent B", role:"router"},
+  support_queue:{x:470, y:290, label:"Support queue", role:"human"},
+  C:         {x:670, y:165, label:"Agent C", role:"finance"},
+  refund_api:{x:890, y:75,  label:"issue_refund", role:"allowed"},
+  bank_api:  {x:890, y:255, label:"update_vendor_bank", role:"blocked by sandbox"},
+};
+const EDGES = [["ticket_ext","A"],["A","B"],["B","C"],["B","support_queue"],["C","refund_api"],["C","bank_api"]];
+const W = 150, H = 56, NS = "http://www.w3.org/2000/svg";
+const el = (t, a) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
+const params = new URLSearchParams(location.search);
+const DIR = params.get("dir") || "traces";
+let BASE = null, AUDIT = {}, AUDIT_BASE = {}, timers = [];
+
+function buildGraph(prefix, label) {
+  const wrap = document.createElement("div");
+  if (label) { const l = document.createElement("div"); l.className = "glabel"; l.textContent = label; wrap.appendChild(l); }
+  const svg = el("svg", {viewBox: "0 0 980 340"});
+  svg.innerHTML = `<defs><marker id="ah${prefix}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/></marker></defs>`;
+  for (const [a, b] of EDGES) {
+    const p = NODES[a], q = NODES[b], x1 = p.x + W/2, x2 = q.x - W/2 - 4;
+    const d = p.y === q.y ? `M${x1},${p.y} L${x2},${q.y}` : `M${x1},${p.y} C${x1+60},${p.y} ${x2-60},${q.y} ${x2},${q.y}`;
+    svg.appendChild(el("path", {d, class: "edge", id: `${prefix}e-${a}-${b}`, "marker-end": `url(#ah${prefix})`}));
+  }
+  for (const [id, n] of Object.entries(NODES)) {
+    const g = el("g", {class: "node", id: `${prefix}n-${id}`});
+    g.appendChild(el("rect", {x: n.x-W/2, y: n.y-H/2, width: W, height: H}));
+    const t1 = el("text", {x: n.x, y: n.y-3}); t1.textContent = n.label;
+    const t2 = el("text", {x: n.x, y: n.y+15, class: "r"}); t2.textContent = n.role;
+    g.append(t1, t2); svg.appendChild(g);
+  }
+  const sh = el("text", {x: NODES.A.x, y: NODES.A.y-38, class: "shield", id: `${prefix}shield`});
+  sh.textContent = "🛡 sender check: SUSPICIOUS"; svg.appendChild(sh);
+  const lock = el("text", {x: NODES.bank_api.x-W/2-22, y: NODES.bank_api.y-12, class: "lock", id: `${prefix}lock`});
+  lock.textContent = "🔒"; svg.appendChild(lock);
+  wrap.appendChild(svg);
+  document.getElementById("graphs").appendChild(wrap);
+}
+
+function paint(prefix, t) {
+  document.querySelectorAll(`[id^="${prefix}"]`).forEach(e => e.classList.remove("on","safe","blocked"));
+  const safe = !t.attack_success && !(t.kind === "attack" && ["C","refund_api","bank_api"].includes(t.reached));
+  document.getElementById(`${prefix}n-ticket_ext`).classList.add("on");
+  if (t.checks && t.checks.sender_check && t.checks.sender_check.verdict === "SUSPICIOUS")
+    document.getElementById(`${prefix}shield`).classList.add("on");
+  t.events.sort((a,b) => a.seq - b.seq).forEach((e, i) => timers.push(setTimeout(() => {
+    const edge = document.getElementById(`${prefix}e-${e.from}-${e.to}`);
+    if (!edge) return;
+    edge.classList.add("on"); if (safe) edge.classList.add("safe"); if (e.blocked) edge.classList.add("blocked");
+    document.getElementById(`${prefix}n-${e.to}`).classList.add("on");
+    if (e.blocked) document.getElementById(`${prefix}lock`).classList.add("on");
+  }, i * 500)));
+}
+
+const tags = t =>
+  (t.attack_success ? `<span class="tag r">attack reached bank tool</span>` :
+   t.kind === "attack" && ["C","refund_api"].includes(t.reached) ? `<span class="tag r">attack reached finance</span>` :
+   `<span class="tag g">no dangerous call</span>`) +
+  (t.blocked_by_sandbox ? ` <span class="tag y">blocked by sandbox</span>` : "") +
+  (t.status && t.status.startsWith("refused") ? ` <span class="tag g">${t.status}</span>` : "");
+
+function auditLine(a, who) {
+  if (!a) return "";
+  const v = a.outcome_ok && a.reasoning_ok ? `<span class="tag g">right decision, right reason</span>` :
+            a.outcome_ok ? `<span class="tag y">right decision, wrong reason</span>` : `<span class="tag r">wrong decision</span>`;
+  return `<div><b>${who}:</b> ${v} ${a.recommended_fix && a.recommended_fix !== "none" ? `<span class="tag b">proposes: ${a.recommended_fix}</span>` : ""} ${a.rationale || ""}</div>`;
+}
+
+async function show(runId) {
+  timers.forEach(clearTimeout); timers = [];
+  document.querySelectorAll(".run").forEach(r => r.classList.toggle("sel", r.dataset.id === runId));
+  const t = await fetch(`../${DIR}/${runId}.json`, {cache: "no-store"}).then(r => r.json());
+  document.getElementById("title").textContent = t.run_id;
+  document.getElementById("meta").innerHTML = `${t.technique} · ${t.kind} · ${BASE ? "after fix: " : ""}${tags(t)}`;
+  paint("a", t);
+  let auditHtml = "";
+  if (BASE) {
+    const b = await fetch(`../${BASE}/${runId}.json`, {cache: "no-store"}).then(r => r.json());
+    paint("b", b);
+    auditHtml += auditLine(AUDIT_BASE[runId], "Auditor, before");
+  }
+  auditHtml += auditLine(AUDIT[runId], BASE ? "Auditor, after" : "Auditor");
+  document.getElementById("audit").innerHTML = auditHtml;
+  document.getElementById("events").innerHTML = "<tr><th>#</th><th>from</th><th>to</th><th>action</th><th>tool</th><th></th></tr>" +
+    t.events.map(e => `<tr><td>${e.seq}</td><td>${e.from}</td><td>${e.to}</td><td>${e.action}</td><td>${e.tool||""}</td>
+      <td>${e.blocked ? '<span class="tag y">blocked</span>' : ""}</td></tr>`).join("");
+}
+
+const getJSON = (p) => fetch(p, {cache: "no-store"}).then(r => r.ok ? r.json() : null).catch(() => null);
+
+(async () => {
+  const idx = await getJSON(`../${DIR}/index.json`);
+  BASE = idx.baseline_dir || null;
+  const au = await getJSON(`../${DIR}/audit.json`); if (au) au.runs.forEach(r => AUDIT[r.run_id] = r);
+  let baseIdx = null;
+  if (BASE) {
+    baseIdx = await getJSON(`../${BASE}/index.json`);
+    const ab = await getJSON(`../${BASE}/audit.json`); if (ab) ab.runs.forEach(r => AUDIT_BASE[r.run_id] = r);
+    buildGraph("b", "Before");
+    buildGraph("a", `After: ${idx.fixes.join(", ")} (approved by a human)`);
+    const report = await getJSON(`../${DIR.replace(/\/after$/, "")}/report.json`);
+    if (report) {
+      const f = report.attacks_reaching_finance, r = report.auditor_reasoning_ok;
+      document.getElementById("improve").innerHTML = `<div class="improve">
+        <div>Fix <b>${report.fix}</b>, proposed by the auditor, approved by a human</div>
+        <div class="big">${f.before} → ${f.after}</div><div>attacks reaching finance (of ${f.of})</div>
+        <div style="margin-top:6px">auditor "right reason": ${r.before} → ${r.after} of ${r.of}</div>
+        <div>regressions on legit tickets: ${report.benign_regressions.length || "none"}</div></div>`;
+    }
+  } else {
+    buildGraph("a", "");
+  }
+  if (idx.attacks) {
+    document.getElementById("asr").textContent = Math.round(idx.asr * 100) + "%";
+    document.getElementById("asrsub").textContent = `${idx.successes} of ${idx.attacks} attack scenarios reached the bank tool`;
+  } else {
+    const fin = (idx.reached_counts.refund_api || 0) + (idx.reached_counts.bank_api || 0);
+    document.getElementById("lefttitle").textContent = "Real emails";
+    document.getElementById("asr").textContent = `${fin}/${idx.runs.length}`;
+    document.getElementById("asrsub").textContent = "reached a finance tool · " +
+      Object.entries(idx.reached_counts).map(([k, v]) => `${k}: ${v}`).join(", ");
+  }
+  document.getElementById("mode").textContent = idx.agents === "llm" ? `Agents: ${idx.model}.` : "Agents are rule-based stubs, not LLMs.";
+  const before = baseIdx ? Object.fromEntries(baseIdx.runs.map(r => [r.run_id, r.reached])) : {};
+  const box = document.getElementById("runs");
+  for (const r of idx.runs) {
+    const d = document.createElement("div");
+    d.className = "run"; d.dataset.id = r.run_id;
+    const hit = r.attack_success || (r.kind === "attack" && ["C","refund_api","bank_api"].includes(r.reached));
+    const chg = before[r.run_id] && before[r.run_id] !== r.reached ? `<span class="chg">${before[r.run_id]} → ${r.reached}</span>` : "";
+    d.innerHTML = `<span class="dot ${r.kind === "benign" ? "benign" : hit ? "hit" : ""}"></span>
+      <div>${r.run_id}<small>${r.technique}</small></div>${chg}`;
+    d.onclick = () => show(r.run_id); box.appendChild(d);
+  }
+  const first = idx.runs.find(r => before[r.run_id] && before[r.run_id] !== r.reached) || idx.runs.find(r => r.attack_success) || idx.runs[0];
+  show(first.run_id);
+})();
+</script>
+</body>
+</html>
