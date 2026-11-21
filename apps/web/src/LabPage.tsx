@@ -24,6 +24,7 @@ import {
   type RunSnapshot,
 } from "./RunOutcome";
 import { Timeline } from "./Timeline";
+import { ConversationDebugger } from "./ConversationDebugger";
 import { selectObservedRun } from "./mesh/runSelection";
 
 type Props = {
@@ -756,6 +757,18 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
             </button>
           </div>
         </label>
+      </section>
+
+      <section className="panel">
+        <h2>Depurador de conversación</h2>
+        <p className="hint">
+          Recorre la ejecución paso a paso sobre el grafo de agentes. Mientras corre, sigue el último evento.
+        </p>
+        <ConversationDebugger
+          events={events}
+          agents={run?.agents ?? []}
+          running={run?.status === "running" || run?.status === "pending"}
+        />
       </section>
 
       <section className="panel">
