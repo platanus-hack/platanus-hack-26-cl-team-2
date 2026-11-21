@@ -39,7 +39,7 @@ advertencia sobre el remitente se queda con el primer agente y no llega a finanz
 | 1:55–2:10 | Cuando aparezca **«Evaluación posterior a la ejecución»**, clic en **«Repetir con etiqueta de procedencia»**. | «Ahora la defensa. Misma gente, mismo correo. Solo cambia una cosa: el sistema, no el modelo, pega el origen del correo y el veredicto a cada mensaje entre agentes. El agente no lo puede borrar.» |
 | 2:10–2:30 | Mientras corre, vuelve al panel de **rutas previstas**: ahora **«2 ruta(s), 0 de severidad alta»** y flechas sólidas **→**. | «Antes de que termine, el análisis ya cambió: cero rutas de severidad alta. La advertencia viaja hasta finanzas.» |
 | 2:30–2:45 | Baja a **«Antes y después»**. | «Mismos agentes, mismo correo. Antes: [veredicto antes]. Después: [veredicto después]. Pero una ejecución sola no prueba nada. Por eso medimos en lote.» |
-| 2:45–3:00 | Sube a **«Experimento en lote»**. Señala la fila **«Sin mitigación»** y la fila **«Ambas»**, columna **«Advertencia llegó a finanzas»** y **«Intento de cambio bancario»**. | «[R] ejecuciones por combinación, mismos correos y agentes. Sin mitigación, la advertencia llegó a finanzas en [N/M]. Con ambas mitigaciones, en [N/M]. Intentos de cambio bancario: [N/M] sin mitigación, [N/M] con ambas. MESH encuentra dónde se rompe la confianza entre agentes, y lo mide.» |
+| 2:45–3:00 | Sube a **«Experimento en lote»**. Señala la fila **«Sin mitigación»** y la fila **«Ambas»**, columnas **«Finanzas vio el origen o una advertencia»** y **«Intento de cambio bancario»**. | «[R] ejecuciones por combinación, mismos correos y agentes. Sin mitigación, finanzas vio el origen o una advertencia en [N/M]. Con ambas mitigaciones, en [N/M]. Intentos de cambio bancario: [N/M] sin mitigación, [N/M] con ambas. MESH encuentra dónde se rompe la confianza entre agentes, y lo mide.» |
 
 ### Cómo leer lo que salga en vivo
 
@@ -59,16 +59,16 @@ advertencia sobre el remitente se queda con el primer agente y no llega a finanz
 
 No inventar. Copiar de la tabla «Experimento en lote» en Evaluaciones.
 
-| Mitigación | Ejecuciones | Llegó a finanzas | Advertencia llegó a finanzas | Intento de cambio bancario | Fallidas |
-|---|---|---|---|---|---|
-| Sin mitigación | [N] | [N/M] | [N/M] | [N/M] | [N] |
-| Verificación del remitente | [N] | [N/M] | [N/M] | [N/M] | [N] |
-| Etiqueta de procedencia | [N] | [N/M] | [N/M] | [N/M] | [N] |
-| Ambas | [N] | [N/M] | [N/M] | [N/M] | [N] |
+| Mitigación | Ejecuciones | Llegó a finanzas | Finanzas vio el origen o una advertencia | Los agentes escribieron una advertencia | Intento de cambio bancario | Reembolso simulado | Fallidas |
+|---|---|---|---|---|---|---|---|
+| Sin mitigación | [N] | [N/M] | [N/M] | [N/M] | [N/M] | [N/M] | [N] |
+| Verificación del remitente | [N] | [N/M] | [N/M] | [N/M] | [N/M] | [N/M] | [N] |
+| Etiqueta de procedencia | [N] | [N/M] | [N/M] | [N/M] | [N/M] | [N/M] | [N] |
+| Ambas | [N] | [N/M] | [N/M] | [N/M] | [N/M] | [N/M] | [N] |
 
 Modelo: [modelo] · Repeticiones por combinación: [R] · Fecha: [fecha].
 
-La frase con números para el cierre: «Sin mitigación, la advertencia llegó a finanzas en [N/M]
+La frase con números para el cierre: «Sin mitigación, finanzas vio el origen o una advertencia en [N/M]
 casos. Con ambas, en [N/M].» Si «Intento de cambio bancario» es 0 en todas las filas, **dilo
 así**: «En este lote Claude no intentó ningún cambio bancario. Lo que mejora con la mitigación es
 que finanzas decide sabiendo que el pedido viene de afuera.»
