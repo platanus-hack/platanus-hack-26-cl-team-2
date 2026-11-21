@@ -55,6 +55,7 @@ const TYPE_COLOR: Record<string, string> = {
   "agent.tool_result": "#a78bfa",
   "sandbox.tool_attempt": "#fb7185",
   "agent.done": "#86efac",
+  "agent.woken": "#fde68a",
   "agent.error": "#fb7185",
 };
 const TYPE_NAME: Record<string, string> = {
@@ -62,6 +63,7 @@ const TYPE_NAME: Record<string, string> = {
   "run.completed": "Fin de la ejecución",
   "run.failed": "Ejecución fallida",
   "agent.done": "Termina",
+  "agent.woken": "Se reactiva",
   "agent.error": "Error",
   "agent.turn.started": "Turno",
   "agent.thought": "Pensamiento",
@@ -150,6 +152,9 @@ export function buildSteps(events: TraceEvent[], agents: AgentSpec[]): Step[] {
         break;
       case "agent.done":
         title = `${who} termina`;
+        break;
+      case "agent.woken":
+        title = `${who} se reactiva: tiene mensajes nuevos`;
         break;
       case "agent.error":
         title = `Error en ${who}`;

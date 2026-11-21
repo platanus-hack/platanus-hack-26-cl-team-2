@@ -150,6 +150,8 @@ export type TraceEventType =
   | "agent.message_sent"
   | "agent.message_received"
   | "agent.done"
+  /** An agent that had called done got new peer mail and was re-opened. */
+  | "agent.woken"
   | "agent.error"
   /** A finance tool call, recorded before the sandbox allows or blocks it. */
   | "sandbox.tool_attempt";

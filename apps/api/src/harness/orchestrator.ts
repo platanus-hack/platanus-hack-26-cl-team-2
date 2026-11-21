@@ -17,7 +17,7 @@ import { buildInvokePayload } from "../db/invoke.js";
 import { emailScenarioHint, getEmailScenario } from "../email/scenarios.js";
 import { messageBus } from "../message-bus.js";
 import { traceBus } from "../events.js";
-import { createSession, runOneTurn } from "./agent-runner.js";
+import { createSession, runOneTurn, wakeIfMailWaiting } from "./agent-runner.js";
 import { evaluateRun } from "./evaluator.js";
 import type { RunJudgment } from "./judge.js";
 import { loadRun, loadRuns, saveJudgment, saveRun } from "../db/runs-repo.js";
@@ -398,9 +398,13 @@ async function executeRun(
   try {
     await saveRun(run, traceBus.history(run.id));
     let cursor = 0;
-    const hardCap = maxTurns * sessions.length + sessions.length;
 
-    for (let step = 0; step < hardCap; step++) {
+    // Ends because every iteration that isn't skipped either spends one of an agent's
+    // maxTurns or retires it for good (max_turns), skipped iterations are bounded by the
+    // number of agents, and an agent can only be woken by mail sent during a turn.
+    // (Skipping finished agents no longer eats into the turn budget of the active ones.)
+    for (;;) {
+      for (const s of sessions) wakeIfMailWaiting(run.id, s, maxTurns);
       if (sessions.every((s) => s.done)) break;
 
       const session = sessions[cursor % sessions.length];
@@ -409,6 +413,7 @@ async function executeRun(
       if (session.done) continue;
       if (session.turnsUsed >= maxTurns) {
         session.done = true;
+        session.stopReason = "max_turns";
         traceBus.emit(
           run.id,
           "agent.done",
