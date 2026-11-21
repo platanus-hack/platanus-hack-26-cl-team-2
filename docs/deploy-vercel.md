@@ -13,12 +13,19 @@ un servidor escuchando puertos dentro de la función.
 3. Con la conexión de producción disponible de forma segura en tu terminal,
    ejecuta `pnpm --filter @sandbox/api db:push`. Este cambio agrega
    `simulation_runs`; la ejecución anterior de db:push no incluyó esa tabla.
-4. Despliega de nuevo. La compilación es `pnpm --filter @sandbox/web build`
-   y la salida está en `apps/web/dist`.
+4. Despliega de nuevo. Usa el build definido en `vercel.json`:
+   `pnpm --filter @sandbox/shared build && pnpm --filter @sandbox/web build`.
+   La salida está en `apps/web/dist`.
 5. Verifica `/health`, `/api/agents`, `/api/runs` y
    `/api/email-scenarios` en el dominio público.
 
 No pongas secretos en variables `VITE_*` ni en archivos versionados.
+
+El paquete `@sandbox/shared` exporta JavaScript y declaraciones desde `dist`.
+Se compila al instalar dependencias y antes del build de Vercel. La función
+incluye explícitamente esos archivos; no debe cargar fuentes `.ts` del workspace
+en producción. Si aparece `ERR_MODULE_NOT_FOUND` para ese paquete, verifica que
+el despliegue incluya este cambio y no tenga un Build Command antiguo sobrescrito.
 
 ## Simulaciones y persistencia
 
