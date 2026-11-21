@@ -8,18 +8,19 @@
   --bg-0: #020602;
   --bg-1: #050d06;
   --bg-2: #0a170c;
-  --ink: #c8ffd2;
-  --muted: #6fa57a;
-  --line: #1d3b22;
-  --edge: #39ff6a;
-  --accent: #39ff6a;
+  --ink: #a9cdb1;
+  --muted: #5f8668;
+  --line: #17301c;
+  --edge: #2c6a3b;
+  --accent: #4fc46d;
   --accent-ink: #020602;
-  --accent-dim: #0f4a1c;
-  --glow: 0 0 6px rgba(57, 255, 106, 0.55);
-  --agent-a: #00e5ff;
-  --agent-b: #ffb000;
-  --danger: #ff3864;
-  --ok: #39ff6a;
+  --accent-dim: #0c2d14;
+  --fill: #10301a;
+  --glow: 0 0 4px rgba(79, 196, 109, 0.25);
+  --agent-a: #3cb8c9;
+  --agent-b: #d99a1e;
+  --danger: #e0475f;
+  --ok: #4fc46d;
   --font-display: "Press Start 2P", "Courier New", monospace;
   --font-mono: "Space Mono", ui-monospace, monospace;
 }
@@ -28,9 +29,9 @@
 body {
   background-color: var(--bg-0);
   background-image:
-    radial-gradient(ellipse at 50% 40%, rgba(57, 255, 106, 0.06), transparent 70%),
-    linear-gradient(rgba(57, 255, 106, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(57, 255, 106, 0.045) 1px, transparent 1px);
+    radial-gradient(ellipse at 50% 40%, rgba(79, 196, 109, 0.035), transparent 70%),
+    linear-gradient(rgba(79, 196, 109, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79, 196, 109, 0.03) 1px, transparent 1px);
   background-size: auto, 24px 24px, 24px 24px;
   background-attachment: fixed;
   font-family: var(--font-mono);
@@ -49,8 +50,8 @@ body::after {
 }
 
 ::selection {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--fill);
+  color: var(--accent);
 }
 
 .mesh-shell *,
@@ -122,8 +123,8 @@ g:focus-visible {
 }
 
 .mesh-logo span {
-  color: var(--accent-ink);
-  background: var(--accent);
+  color: var(--accent);
+  background: var(--fill);
   display: inline-block;
   padding: 2px 6px;
   font-family: var(--font-mono);
@@ -150,8 +151,8 @@ g:focus-visible {
 }
 
 .mesh-sidebar nav button.active {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--fill);
+  color: var(--accent);
   border-color: var(--accent);
   box-shadow: 4px 4px 0 var(--edge);
 }
@@ -182,8 +183,8 @@ g:focus-visible {
 }
 
 .mesh-heading .mesh-label {
-  color: var(--accent-ink);
-  background: var(--accent);
+  color: var(--accent);
+  background: var(--fill);
   display: inline-block;
   padding: 3px 8px;
   font-weight: 700;
@@ -195,7 +196,7 @@ g:focus-visible {
   -webkit-text-fill-color: currentColor;
   font-size: clamp(20px, 2.8vw, 38px);
   line-height: 1.25;
-  text-shadow: 2px 0 0 var(--danger), -2px 0 0 var(--agent-a), 0 0 14px rgba(57, 255, 106, 0.6);
+  text-shadow: 1px 0 0 rgba(224, 71, 95, 0.6), -1px 0 0 rgba(60, 184, 201, 0.6), 0 0 8px rgba(79, 196, 109, 0.3);
 }
 
 .mesh-heading h1::after {
@@ -236,8 +237,8 @@ g:focus-visible {
 .mesh-shell .panel > h2:first-child {
   margin: 0 -1.5rem 1.1rem;
   padding: 0.55rem 1.5rem;
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--fill);
+  color: var(--accent);
   display: flex;
   gap: 0.6rem;
 }
@@ -282,9 +283,9 @@ g:focus-visible {
 /* ---------- controls ---------- */
 .btn,
 .mesh-shell .btn {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: 2px solid var(--edge);
+  background: var(--fill);
+  color: var(--accent);
+  border: 2px solid var(--accent);
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -361,8 +362,8 @@ g:focus-visible {
 
 .dbg-ctrls button.play,
 .dbg-mode button[aria-pressed="true"] {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--fill);
+  color: var(--accent);
 }
 
 /* ---------- data ---------- */
@@ -407,13 +408,13 @@ g:focus-visible {
 .mesh-walk-path li.hit .mesh-walk-node {
   border-color: var(--danger);
   background: var(--danger);
-  color: var(--accent-ink);
+  color: var(--accent);
 }
 
 .mesh-walk-path li.safe .mesh-walk-node {
   border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--fill);
+  color: var(--accent);
 }
 
 .mesh-walk-line.hit {
