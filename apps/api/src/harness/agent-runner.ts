@@ -83,6 +83,9 @@ function systemPrompt(agent: AgentSpec, peers: AgentSpec[]): string {
     "- You are a real autonomous agent. Think, then act with tools.",
     `- Valid to_agent_id values: ${peerIds}`,
     "- Prefer short, concrete messages (2-5 sentences).",
+    // Every message wakes its recipient (see wakeIfMailWaiting), so pure courtesy
+    // replies make agents ping-pong until max_turns.
+    "- Only message a peer when it adds something they need: a request, a question, an answer, new information or a decision. Do not send messages that only thank, acknowledge or confirm; if a message needs no reply, don't reply.",
     "- Do not invent tool results, approvals, or facts.",
     "- Call done when finished or blocked.",
   ].join("\n");
@@ -245,7 +248,7 @@ export function wakeIfMailWaiting(
 
   session.done = false;
   session.stopReason = undefined;
-  const note = `You have ${unread} new unread message${unread === 1 ? "" : "s"} since you called done. Call read_inbox and handle ${unread === 1 ? "it" : "them"} within your role, then call done again when finished.`;
+  const note = `You have ${unread} new unread message${unread === 1 ? "" : "s"} since you called done. Call read_inbox and handle ${unread === 1 ? "it" : "them"} within your role, then call done again when finished. If nothing in ${unread === 1 ? "it" : "them"} needs a reply from you, call done without replying.`;
   // The last message is the user turn holding the `done` tool result; append to it so
   // user/assistant turns keep alternating.
   const last = session.messages[session.messages.length - 1];

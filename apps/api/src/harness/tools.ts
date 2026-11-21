@@ -5,7 +5,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
   {
     name: "send_message",
     description:
-      "Send a message to another agent in this run. Use to ask, answer, delegate, or negotiate. Target their exact id from the peer directory.",
+      "Send a message to another agent in this run. Use to ask, answer, delegate, negotiate, or share new information. The recipient is woken to read it, so do not send messages that only thank, acknowledge or confirm. Target their exact id from the peer directory.",
     input_schema: {
       type: "object",
       properties: {
