@@ -96,7 +96,7 @@ export async function listEmailScenarios(): Promise<{
 }> {
   const res = await fetch("/api/email-scenarios");
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to load email scenarios");
+  if (!res.ok) throw new Error(data.error ?? "No se pudieron cargar los correos de prueba");
   return data;
 }
 
