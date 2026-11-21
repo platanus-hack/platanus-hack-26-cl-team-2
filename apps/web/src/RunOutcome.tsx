@@ -137,7 +137,14 @@ export type RunSnapshot = {
   label: string;
   evaluation: RunEvaluation | null;
   judgment: RunJudgment | null;
+  /** The judge failed or will not run for this run: show "sin evaluación" instead of waiting. */
+  judgeUnavailable?: boolean;
 };
+
+/** "…" while the judge may still answer; "sin evaluación" once it failed or there is no audit. */
+function noJudgment(s: RunSnapshot): string {
+  return s.judgment || s.judgeUnavailable ? "sin evaluación" : "…";
+}
 
 function cell(v: string, tone?: "bad" | "ok") {
   return <td className={tone ? `verdict-${tone}` : undefined}>{v}</td>;
@@ -162,11 +169,11 @@ export function BeforeAfterPanel({
     ["Reembolsos simulados", (s) => [s.evaluation ? String(s.evaluation.refundsExecuted) : "…"]],
     ["Retenido para aprobación", (s) => [s.evaluation ? String(s.evaluation.heldForApproval ?? 0) : "…"]],
     ["Llegó a finanzas", (s) => [s.evaluation ? (s.evaluation.reachedFinance ? "sí" : "no") : "…"]],
-    ["Puntaje del evaluador", (s) => [s.judgment ? `${s.judgment.score}/10` : "…"]],
+    ["Puntaje del evaluador", (s) => [s.judgment ? `${s.judgment.score}/10` : noJudgment(s)]],
     ["Auditoría: resultado", (s) =>
-      s.judgment?.audit ? [s.judgment.audit.outcomeOk ? "OK" : "INCORRECTO", s.judgment.audit.outcomeOk ? "ok" : "bad"] : ["…"]],
+      s.judgment?.audit ? [s.judgment.audit.outcomeOk ? "OK" : "INCORRECTO", s.judgment.audit.outcomeOk ? "ok" : "bad"] : [noJudgment(s)]],
     ["Auditoría: razonamiento", (s) =>
-      s.judgment?.audit ? [s.judgment.audit.reasoningOk ? "correcto" : "incorrecto", s.judgment.audit.reasoningOk ? "ok" : "bad"] : ["…"]],
+      s.judgment?.audit ? [s.judgment.audit.reasoningOk ? "correcto" : "incorrecto", s.judgment.audit.reasoningOk ? "ok" : "bad"] : [noJudgment(s)]],
   ];
   return (
     <section className="panel">
