@@ -1,6 +1,7 @@
 import { anthropicClient } from "../anthropic-client.js";
 import { nanoid } from "nanoid";
 import type {
+  CommEdge,
   AgentSpec,
   CreateRunRequest,
   CreateStoredRunRequest,
@@ -23,11 +24,12 @@ import { traceBus } from "../events.js";
 import { createSession, runOneTurn, wakeIfMailWaiting } from "./agent-runner.js";
 import { evaluateRun } from "./evaluator.js";
 import { provenanceTag } from "./provenance.js";
-import { analyzeRiskPaths, observeRiskPaths, type RiskSetup } from "./risk-paths.js";
+import { analyzeRiskPaths, observeRiskPaths, type CommCount, type RiskSetup } from "./risk-paths.js";
 import { approvalRefundLimit } from "./sandbox.js";
 import type { RunJudgment } from "./judge.js";
 import { loadRun, loadRuns, saveJudgment, saveRun } from "../db/runs-repo.js";
 import { getCurrentDemoOrg } from "../db/demo-orgs-repo.js";
+import { getCommGraph, recordRunComms } from "../db/comm-repo.js";
 import { filterMockDbToolNames } from "./mock-db.js";
 import { filterDemoFileToolNames } from "./demo-files.js";
 
@@ -74,6 +76,10 @@ export type InternalRun = RunSummary & {
   peerMessage?: PeerMessageScenario;
   roster?: RunRosterEntry[];
   judgment?: RunJudgment;
+  /** Messages between this run's agents in earlier runs, taken at start: weights its risk paths. */
+  commCounts?: CommCount[];
+  /** Experiments: this run's messages are not added to the communication weights. */
+  skipCommRecording?: boolean;
 };
 
 /** Soft cap to avoid burning credits on huge fleets in one run. */
@@ -152,6 +158,7 @@ function riskSetupFor(run: InternalRun): RiskSetup {
       provenanceTag: Boolean(run.email?.provenanceTag),
       approvalGate: Boolean(run.email?.approvalGate),
     },
+    comm: run.commCounts,
   };
 }
 
@@ -188,7 +195,13 @@ export async function previewRiskPaths(body: {
     agents.push({ id, name: stored.name, finance: financeIds.has(id) });
   }
   const scen = body.emailScenario ? getEmailScenario(body.emailScenario) : null;
+  const comm = (await getCommGraph().catch(() => ({ edges: [] as CommEdge[] }))).edges.map((e) => ({
+    from: e.from,
+    to: e.to,
+    messages: e.messages,
+  }));
   return analyzeRiskPaths({
+    comm,
     agents,
     seedAgentId,
     email: scen ? { from: scen.from, senderCheck: scen.senderCheck } : null,
@@ -229,6 +242,8 @@ function publicRun(run: InternalRun): RunSummary {
     roster: _r,
     judgment: _j,
     expiresAt: _expires,
+    commCounts: _c,
+    skipCommRecording: _skip,
     ...rest
   } = run;
   return rest;
@@ -243,6 +258,8 @@ async function startRun(
     email?: RunEmailInfo;
     peerMessage?: PeerMessageScenario;
     roster?: RunRosterEntry[];
+    commCounts?: CommCount[];
+    skipCommRecording?: boolean;
   },
 ): Promise<RunSummary> {
   if (agents.length < 1) {
@@ -276,6 +293,8 @@ async function startRun(
     scenarioHint: opts?.scenarioHint,
     email: opts?.email,
     peerMessage: opts?.peerMessage,
+    ...(opts?.commCounts?.length ? { commCounts: opts.commCounts } : {}),
+    ...(opts?.skipCommRecording ? { skipCommRecording: true } : {}),
     roster:
       opts?.roster ??
       agents.map((a) => ({
@@ -346,6 +365,8 @@ export type PreparedStoredRun = {
     email?: RunEmailInfo;
     peerMessage?: PeerMessageScenario;
     roster: RunRosterEntry[];
+    commCounts?: CommCount[];
+    skipCommRecording?: boolean;
   };
 };
 
@@ -454,6 +475,16 @@ export async function prepareStoredRun(
     }
   }
 
+  // Past messages between this run's agents: weights the risk paths and, with commBias, the prompts.
+  const commEdges = (await getCommGraph().catch(() => ({ edges: [] as CommEdge[] }))).edges.filter(
+    (e) => e.from !== e.to && agentIds.includes(e.from) && agentIds.includes(e.to),
+  );
+  const commCounts: CommCount[] = commEdges.map((e) => ({ from: e.from, to: e.to, messages: e.messages }));
+  const habitsFor = (agentId: string) =>
+    commEdges
+      .filter((e) => e.from === agentId && e.to !== agentId && agentIds.includes(e.to))
+      .map((e) => ({ toAgentId: e.to, share: e.share, messages: e.messages, runs: e.runs }));
+
   const agents: AgentSpec[] = [];
   const roster: RunRosterEntry[] = [];
   for (const id of agentIds) {
@@ -473,6 +504,7 @@ export async function prepareStoredRun(
       goal: stored.goalTemplate,
       financeTools: financeIds.has(stored.id),
       mockDbTools,
+      ...(body.commBias ? { commHabits: habitsFor(stored.id) } : {}),
     });
     roster.push({
       id: stored.id,
@@ -505,7 +537,15 @@ export async function prepareStoredRun(
   return {
     agents,
     maxTurns: clampTurns(body.maxTurnsPerAgent),
-    opts: { seedAgentId, scenarioHint, email, peerMessage, roster },
+    opts: {
+      seedAgentId,
+      scenarioHint,
+      email,
+      peerMessage,
+      roster,
+      commCounts,
+      ...(body.skipCommRecording ? { skipCommRecording: true } : {}),
+    },
   };
 }
 
@@ -613,4 +653,11 @@ async function executeRun(
     traceBus.emit(run.id, "run.failed", { error: message });
   }
   await saveRun(run, traceBus.history(run.id));
+  // Communication weights (who messaged whom). Never fails the run.
+  if (run.skipCommRecording) return;
+  try {
+    await recordRunComms(run.id, traceBus.history(run.id));
+  } catch (err) {
+    console.error("No se pudieron registrar las comunicaciones de la ejecución", redactSecrets(String(err)));
+  }
 }

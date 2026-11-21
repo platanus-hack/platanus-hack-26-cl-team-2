@@ -14,6 +14,19 @@ export type AgentSpec = {
    * Others who call them get a deny recorded in the trace.
    */
   mockDbTools?: string[];
+  /**
+   * Communication bias (roadmap step 1): who this agent messaged in past runs, among the peers
+   * of this run. Only set when the run asked for it (commBias); saved with the run.
+   */
+  commHabits?: CommHabit[];
+};
+
+/** One usual contact, from the communication weights. share = part of this agent's past messages. */
+export type CommHabit = {
+  toAgentId: AgentId;
+  share: number;
+  messages: number;
+  runs: number;
 };
 
 export type CreateRunRequest = {
@@ -57,6 +70,16 @@ export type CreateStoredRunRequest = {
   peerMessage?: PeerMessageScenario;
   /** Subset of agentIds that get the sandboxed finance tools. */
   financeAgentIds?: string[];
+  /**
+   * Tell each agent who it usually talks to (from past runs) as a soft hint in its prompt.
+   * Off by default, so batches and evals stay comparable with earlier runs.
+   */
+  commBias?: boolean;
+  /**
+   * Leave this run out of the communication weights. For experiments (e.g. bias on vs off), so
+   * one run's messages cannot change the next run's prompts. Not settable over HTTP.
+   */
+  skipCommRecording?: boolean;
 };
 
 /** Points at one email in email-harness/scenarios/<file>. */
@@ -97,6 +120,13 @@ export type RiskHop = {
   provenanceVisible: boolean;
   /** The sender-check verdict is visible to the receiver at this hop. */
   verdictVisible: boolean;
+  /**
+   * Weighted analyses only: chance (0-1) that a message from `from` goes to `to`, from past runs
+   * (smoothed, so pairs that never talked stay possible). Always 1 on the email hop.
+   */
+  likelihood?: number;
+  /** Weighted analyses only: messages from -> to counted in past runs. */
+  messages?: number;
 };
 
 /** A path predicted from the run setup alone (no model call). */
@@ -116,6 +146,10 @@ export type RiskPath = {
   verdictLostAtHop: number | null;
   severity: "high" | "medium" | "low";
   finding: string;
+  /** Weighted analyses only: product of the hop likelihoods (0-1). */
+  likelihood?: number;
+  /** Weighted analyses only: likelihood x severity weight, what the paths are ranked by. */
+  score?: number;
 };
 
 /** The "component by component" view MESH is compared against. */
@@ -133,6 +167,11 @@ export type RiskPathAnalysis = {
   /** Agents ids -> display names, for rendering. */
   names: Record<string, string>;
   fixes: string[];
+  /**
+   * Set when past communication weighted the paths: they are ranked by likely, not only possible.
+   * `messages` is how many messages between these agents the weights come from.
+   */
+  weighted?: { messages: number };
   summary: {
     total: number;
     high: number;
@@ -345,3 +384,4 @@ export * from "./prototypes/index.js";
 export * from "./vuln.js";
 export * from "./agent-origin.js";
 export * from "./demo-pipeline.js";
+export * from "./comm-graph.js";

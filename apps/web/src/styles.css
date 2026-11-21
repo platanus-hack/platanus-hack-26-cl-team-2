@@ -993,3 +993,20 @@ button {
 .table-scroll {
   overflow-x: auto;
 }
+
+/* Weighted risk paths: how likely the route is, from past messages. */
+.likelihood-bar {
+  display: inline-block;
+  width: 64px;
+  height: 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+  border-radius: 3px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+.likelihood-bar > span {
+  display: block;
+  height: 100%;
+  background: #fbbf24;
+}

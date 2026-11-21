@@ -136,6 +136,25 @@ export const agentVulnAssessments = pgTable(
   (t) => [index("agent_vuln_assessments_agent_idx").on(t.agentId)],
 );
 
+/**
+ * Messages one agent sent another in one run (counted from the trace, injected messages left out).
+ * One row per (run, from, to), so re-counting a run replaces its rows instead of adding twice.
+ */
+export const commObservations = pgTable(
+  "comm_observations",
+  {
+    runId: text("run_id").notNull(),
+    fromAgentId: text("from_agent_id").notNull(),
+    toAgentId: text("to_agent_id").notNull(),
+    messageCount: integer("message_count").notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("comm_observations_run_pair_idx").on(t.runId, t.fromAgentId, t.toAgentId),
+    index("comm_observations_pair_idx").on(t.fromAgentId, t.toAgentId),
+  ],
+);
+
 /** One "evaluate every agent" batch (append-only history, unlike agent_vuln_assessments). */
 export const vulnEvalBatches = pgTable("vuln_eval_batches", {
   id: text("id").primaryKey(),

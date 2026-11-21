@@ -10,6 +10,10 @@
  * the demo: every component can pass while a path still fails, because the validation
  * (sender check) happens at hop 1 and is gone by the time the request reaches finance.
  *
+ * With past communication counts (`setup.comm`), each path also gets a likelihood: the product of
+ * "how often does A message B" over its hops. Paths are then ranked by likelihood x severity, so
+ * the panel puts the routes the agents actually use first, not just every route that exists.
+ *
  * observeRiskPaths() rebuilds, from the trace, the routes a run actually took, so a
  * predicted path can be confirmed (or not) by the simulation.
  */
@@ -40,7 +44,41 @@ export type RiskSetup = {
     /** approval_gate: the sandbox holds big refunds and bank changes for a human. */
     approvalGate?: boolean;
   };
+  /**
+   * Messages counted between these agents in past runs (comm graph). Omitted or empty: paths are
+   * not weighted and keep the severity-only order.
+   */
+  comm?: CommCount[];
 };
+
+export type CommCount = { from: string; to: string; messages: number };
+
+/**
+ * Add-k smoothing for hop likelihoods: a pair that never talked counts as half a message, so a
+ * possible route never drops to zero, and an agent with no history spreads evenly over its peers.
+ */
+export const COMM_SMOOTHING = 0.5;
+
+/** How much each severity counts when ranking weighted paths. */
+export const SEVERITY_WEIGHT = { high: 1, medium: 0.5, low: 0.1 } as const;
+
+/**
+ * Pure: chance that a message from `from` goes to `to`, among the other agents of this run.
+ * Exported for tests.
+ */
+export function hopLikelihood(
+  from: string,
+  to: string,
+  agentIds: string[],
+  counts: Map<string, number>,
+): number {
+  const peers = agentIds.filter((id) => id !== from);
+  if (!peers.includes(to)) return 0;
+  const sent = peers.reduce((total, id) => total + (counts.get(`${from}>${id}`) ?? 0), 0);
+  return ((counts.get(`${from}>${to}`) ?? 0) + COMM_SMOOTHING) / (sent + COMM_SMOOTHING * peers.length);
+}
+
+const round4 = (n: number) => Math.round(n * 10000) / 10000;
 
 const SINKS: RiskSink[] = [DANGEROUS_TOOL, "issue_refund"];
 const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 } as const;
@@ -174,6 +212,15 @@ export function analyzeRiskPaths(setup: RiskSetup): RiskPathAnalysis {
   const name = (id: string) => names[id] ?? id;
   const components = componentChecks(setup);
   const paths: RiskPath[] = [];
+  const agentIds = setup.agents.map((a) => a.id);
+  const counts = new Map<string, number>();
+  for (const c of setup.comm ?? []) {
+    if (c.messages > 0 && agentIds.includes(c.from) && agentIds.includes(c.to)) {
+      counts.set(`${c.from}>${c.to}`, (counts.get(`${c.from}>${c.to}`) ?? 0) + c.messages);
+    }
+  }
+  const commMessages = [...counts.values()].reduce((a, b) => a + b, 0);
+  const weighted = commMessages > 0;
 
   if (setup.email) {
     const seed = setup.seedAgentId;
@@ -195,6 +242,16 @@ export function analyzeRiskPaths(setup: RiskSetup): RiskPathAnalysis {
 
     for (const chain of chains) {
       const hops = hopsFor(chain, setup);
+      if (weighted) {
+        for (const hop of hops) {
+          if (hop.channel === "email") {
+            hop.likelihood = 1;
+            continue;
+          }
+          hop.likelihood = round4(hopLikelihood(hop.from, hop.to, agentIds, counts));
+          hop.messages = counts.get(`${hop.from}>${hop.to}`) ?? 0;
+        }
+      }
       const last = hops[hops.length - 1];
       const lost = setup.fixes.senderCheck
         ? hops.findIndex((h) => !h.verdictVisible)
@@ -219,11 +276,18 @@ export function analyzeRiskPaths(setup: RiskSetup): RiskPathAnalysis {
       const gate = setup.fixes.approvalGate
         ? ` La aprobación humana por procedencia retiene en ${name(partial.financeAgentId)} los reembolsos sobre ${approvalRefundLimit()} y los cambios bancarios.`
         : "";
-      paths.push({ ...partial, finding: describe(partial, setup, name) + gate });
+      const weights = weighted
+        ? (() => {
+            const likelihood = hops.reduce((p, h) => p * (h.likelihood ?? 1), 1);
+            return { likelihood: round4(likelihood), score: round4(likelihood * SEVERITY_WEIGHT[severity]) };
+          })()
+        : {};
+      paths.push({ ...partial, ...weights, finding: describe(partial, setup, name) + gate });
     }
 
     paths.sort(
       (a, b) =>
+        (weighted ? (b.score ?? 0) - (a.score ?? 0) : 0) ||
         SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
         LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level] ||
         a.nodes.join(">").localeCompare(b.nodes.join(">")),
@@ -237,6 +301,7 @@ export function analyzeRiskPaths(setup: RiskSetup): RiskPathAnalysis {
     paths,
     names,
     fixes: activeFixes(setup.fixes),
+    ...(weighted && paths.length ? { weighted: { messages: commMessages } } : {}),
     summary: {
       total: paths.length,
       high: paths.filter((p) => p.severity === "high").length,

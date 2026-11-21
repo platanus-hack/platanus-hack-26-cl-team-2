@@ -27,6 +27,7 @@ import { isRealMailFile, listEmailScenarios } from "./email/scenarios.js";
 import { enterpriseRoutes } from "./enterprise/routes.js";
 import { profileRoutes } from "./profiles/routes.js";
 import { vulnBatchRoutes } from "./vuln-batches/routes.js";
+import { commGraphRoutes } from "./comm-graph/routes.js";
 import { refineModelId } from "./profiles/refine.js";
 import { MOCK_DB_CATALOG } from "./harness/mock-db.js";
 import { listDemoFileCatalog } from "./harness/demo-files.js";
@@ -73,6 +74,7 @@ const createStoredRunSchema = z.object({
   scenarioHint: z.string().max(2000).optional(),
   emailScenario: emailScenarioSchema.optional(),
   financeAgentIds: z.array(id).max(8).optional(),
+  commBias: z.boolean().optional(),
   peerMessage: z.object({
     fromAgentId: id,
     toAgentId: id,
@@ -186,6 +188,7 @@ app.route("/api/enterprise", enterpriseRoutes);
 app.route("/api/vuln-batches", vulnBatchRoutes);
 app.route("/api/demo-orgs", demoOrgRoutes);
 app.route("/api/demo-pipeline", demoPipelineRoutes);
+app.route("/api/comm-graph", commGraphRoutes);
 
 app.get("/api/runs", async (c) => c.json({ runs: await listRuns() }));
 
