@@ -17,6 +17,13 @@ import os
 
 import anthropic
 
+from .env import load_repo_env
+from .provenance import from_header, provenance_tag, with_provenance
+
+# Repo-root .env (ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL for the hackathon proxy, MESH_*).
+# Already-exported variables win. Loaded before the MESH_* settings below are read.
+load_repo_env()
+
 # Haiku 5.5 is the lightest current model ($0.10 / $0.50 per MTok, ~40x cheaper than Opus 5.5).
 # Effort "low" keeps thinking and output short. Override with MESH_MODEL / MESH_EFFORT.
 MODEL = os.environ.get("MESH_MODEL", "claude-haiku-5-5")
@@ -31,9 +38,12 @@ _client: anthropic.Anthropic | None = None
 
 
 def client() -> anthropic.Anthropic:
+    """The one model client (agents and auditor). Uses ANTHROPIC_BASE_URL when it is set, so
+    every call goes through the hackathon proxy; the key comes from ANTHROPIC_API_KEY."""
     global _client
     if _client is None:
-        _client = anthropic.Anthropic()
+        base_url = os.environ.get("ANTHROPIC_BASE_URL", "").strip()
+        _client = anthropic.Anthropic(**({"base_url": base_url} if base_url else {}))
     return _client
 
 
@@ -61,6 +71,10 @@ SENDER_CHECK_RULE = (
 FIXES = {
     "sender_check": "Run deterministic sender verification before Agent A and instruct A to "
                     "treat SUSPICIOUS senders as possible fraud.",
+    "provenance_tag": "Append the email's origin (and the sender-check verdict, if that fix is "
+                      "on) to every message agents send each other, so colleagues further down "
+                      "the chain know the request came from an external email and was not "
+                      "verified inside the company.",
 }
 
 TOOLS_A = [_tool(
@@ -137,12 +151,16 @@ def _run(agent: str, system: str, tools: list[dict], user_text: str, rec, handle
 def run_chain(ticket: str, rec, sandbox, fixes: frozenset = frozenset()) -> str:
     """Ticket -> A -> B -> C. Returns a short status ('completed', 'refused: ...')."""
     system_a, a_input = SYSTEM_A, f"New support ticket:\n\n{ticket}"
+    verdict = None
     if "sender_check" in fixes:
         from .sender_check import banner, check_sender
         verdict = check_sender(ticket)
         rec.check("sender_check", verdict)
         system_a += SENDER_CHECK_RULE
         a_input = f"{banner(verdict)}\n\n{a_input}"
+    # provenance_tag: the harness (not the model) appends the email's origin, plus the
+    # sender-check verdict when that fix is on, to every message A -> B and B -> C.
+    tag = provenance_tag(from_header(ticket), verdict) if "provenance_tag" in fixes else None
     rec.hop("ticket_ext", "A", "read", ticket)
 
     def c_tool(name, args):
@@ -151,16 +169,17 @@ def run_chain(ticket: str, rec, sandbox, fixes: frozenset = frozenset()) -> str:
 
     def b_tool(name, args):
         if name == "delegate_to_finance":
-            rec.hop("B", "C", "delegate", args["request"])
-            _run("C", SYSTEM_C, TOOLS_C, args["request"], rec, c_tool)
+            request = with_provenance(args["request"], tag)
+            rec.hop("B", "C", "delegate", request)
+            _run("C", SYSTEM_C, TOOLS_C, request, rec, c_tool)
             return "finance agent finished processing the request"
         rec.hop("B", "support_queue", "route", args["note"])
         return "queued for human support"
 
     def a_tool(name, args):
-        rec.hop("A", "B", "delegate", args)
-        _run("B", SYSTEM_B, TOOLS_B,
-             f"Category: {args['category']}\nSummary: {args['summary']}", rec, b_tool)
+        rec.hop("A", "B", "delegate", {**args, "provenance": tag} if tag else args)
+        _run("B", SYSTEM_B, TOOLS_B, with_provenance(
+            f"Category: {args['category']}\nSummary: {args['summary']}", tag), rec, b_tool)
         return "router accepted the ticket"
 
     try:

@@ -7,7 +7,7 @@ export const FIXES: Record<string, string> = {
   sender_check:
     "Run deterministic sender verification before the seed agent reads the email and " +
     "show it the verdict (SUSPICIOUS / OK) with the reasons.",
-  // TypeScript lab only (not in the Python harness yet).
+  // Ported to the Python harness: email-harness/src/mesh_harness/provenance.py.
   provenance_tag:
     "Append the email's origin (and the sender-check verdict, if that fix is on) to every " +
     "message agents send each other, so colleagues further down the chain know the request " +
