@@ -18,6 +18,7 @@ import {
 } from "../api";
 import { KnobsForm } from "./KnobsForm";
 import { ProfileEditor } from "./ProfileEditor";
+import { AREA_LABELS, AREA_TEXT, SENIORITY_LABELS, areaLabel } from "./labels";
 import { EXTERNAL_PERSONAS, composeExternalProfile, type ExternalPersona } from "@sandbox/shared";
 
 const DEFAULT_KNOBS: AgentKnobs = {
@@ -223,9 +224,10 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
 
       {!hasDatabase ? (
         <p className="error">
-          Database unreachable. Local default is SQLite under `apps/api/data/`.
-          For Postgres set `DATABASE_URL=postgresql://…` and run `pnpm --filter
-          @sandbox/api db:push`.
+          Base de datos no disponible: no se pueden guardar agentes. Por defecto se usa
+          SQLite en <code>apps/api/data/</code>; para Postgres define{" "}
+          <code>DATABASE_URL</code> y ejecuta{" "}
+          <code>pnpm --filter @sandbox/api db:push</code>.
         </p>
       ) : null}
 
@@ -247,17 +249,17 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
             onClick={() => setAreaId(area.id)}
             disabled={busy}
           >
-            <strong>{area.label}</strong>
-            <span>{area.purpose}</span>
+            <strong>{AREA_LABELS[area.id] ?? area.label}</strong>
+            <span>{AREA_TEXT[area.id]?.purpose ?? area.purpose}</span>
           </button>
         ))}
       </div>
 
       {selectedArea ? (
         <p className="area-detail">
-          <strong>Cómo:</strong> {selectedArea.how}
+          <strong>Cómo:</strong> {AREA_TEXT[selectedArea.id]?.how ?? selectedArea.how}
           <br />
-          <strong>Por qué:</strong> {selectedArea.why}
+          <strong>Por qué:</strong> {AREA_TEXT[selectedArea.id]?.why ?? selectedArea.why}
         </p>
       ) : null}
 
@@ -398,7 +400,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
                     setCompanyName(a.orgHints?.companyName ?? "");
                   }}
                 >
-                  {a.name} · {a.areaId} · {a.knobs.seniority} ·{" "}
+                  {a.name} · {areaLabel(a.areaId)} · {SENIORITY_LABELS[a.knobs.seniority] ?? a.knobs.seniority} ·{" "}
                   {a.contextFiles.length} archivos
                 </button>
                 <button

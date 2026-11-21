@@ -1,4 +1,5 @@
 import type { AgentProfile } from "@sandbox/shared";
+import { MOTIVATION_LABELS, PROACTIVITY_LABELS, SENIORITY_LABELS, areaLabel } from "./labels";
 
 type Props = {
   profile: AgentProfile;
@@ -10,14 +11,15 @@ export function ProfileEditor({ profile, onChange }: Props) {
     <div className="profile-editor">
       <div className="profile-meta">
         <span>
-          {profile.title} · {profile.areaId}
+          {profile.title} · {areaLabel(profile.areaId)}
         </span>
         <span>
-          {profile.knobs.seniority} / {profile.knobs.motivation} /{" "}
-          {profile.knobs.proactivity}
+          {SENIORITY_LABELS[profile.knobs.seniority] ?? profile.knobs.seniority} ·{" "}
+          {MOTIVATION_LABELS[profile.knobs.motivation] ?? profile.knobs.motivation} ·{" "}
+          {PROACTIVITY_LABELS[profile.knobs.proactivity] ?? profile.knobs.proactivity}
         </span>
         <span>
-          {profile.refinedByModel ? "haiku refined" : "deterministic only"}
+          {profile.refinedByModel ? "Refinado con Haiku" : "Solo plantillas (sin IA)"}
         </span>
       </div>
 

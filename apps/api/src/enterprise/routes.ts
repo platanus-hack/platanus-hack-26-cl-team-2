@@ -10,17 +10,22 @@ import {
 import { z } from "zod";
 import { upsertAgent } from "../db/agents-repo.js";
 
-const areaCountSchema = z.object({
-  gtm: z.number().int().min(0).max(200).optional(),
-  csm: z.number().int().min(0).max(200).optional(),
-  cs: z.number().int().min(0).max(200).optional(),
-  engineering: z.number().int().min(0).max(200).optional(),
-  product_design: z.number().int().min(0).max(200).optional(),
-  data: z.number().int().min(0).max(200).optional(),
-  it: z.number().int().min(0).max(200).optional(),
-});
+const areaCount = z.number().int().min(0).max(200).optional();
 
-const generateSchema = z.object({
+/**
+ * One optional count per area, derived from AREA_IDS so a new area (e.g. finance)
+ * can never be silently dropped. Strict: an unknown area key is a 400, not a no-op.
+ */
+export const areaCountSchema = z
+  .object(
+    Object.fromEntries(AREA_IDS.map((id) => [id, areaCount])) as Record<
+      AreaId,
+      typeof areaCount
+    >,
+  )
+  .strict();
+
+export const generateSchema = z.object({
   companyName: z.string().max(120).optional(),
   orgSizePreset: z.union([z.literal(100), z.literal(200), z.literal(400)]).optional(),
   counts: areaCountSchema.default({}),
@@ -50,7 +55,7 @@ enterpriseRoutes.post("/generate", async (c) => {
   const json = await c.req.json().catch(() => null);
   const parsed = generateSchema.safeParse(json);
   if (!parsed.success) {
-    return c.json({ error: "Invalid body", details: parsed.error.flatten() }, 400);
+    return c.json({ error: "Solicitud inválida", details: parsed.error.flatten() }, 400);
   }
 
   const { companyName, orgSizePreset, counts, seniorityMix, persist } =
@@ -64,12 +69,12 @@ enterpriseRoutes.post("/generate", async (c) => {
   });
 
   if (totalAgents(result.counts) === 0) {
-    return c.json({ error: "All area counts are zero." }, 400);
+    return c.json({ error: "Todas las cantidades por área están en cero." }, 400);
   }
 
   if (totalAgents(result.counts) > 500) {
     return c.json(
-      { error: "Cap is 500 agents per generate call for the MVP." },
+      { error: "El máximo es 500 agentes por generación." },
       400,
     );
   }
