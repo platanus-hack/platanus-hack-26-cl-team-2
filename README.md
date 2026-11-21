@@ -37,18 +37,20 @@ Needs Node 20+ and an Anthropic API key.
 ```bash
 cp .env.example .env              # then put your ANTHROPIC_API_KEY in .env
 npx -y pnpm@9.15.0 install
+npx -y pnpm@9.15.0 --filter @sandbox/api db:seed   # 7 senior agents (one per area)
 npx -y pnpm@9.15.0 run dev        # web http://localhost:5173 · API http://localhost:8787
 npx -y pnpm@9.15.0 test           # 36 tests, no AI calls
 ```
 
-1. **Enterprise generator** tab: create a few agents (no AI, free).
-2. **Multi-agent lab** tab: Scenario source → *Incoming email*, pick an email, choose the seed
-   agent, click **+ finance** on the agent that can pay, then **Launch conversation**.
+1. **Multi-agent lab** tab: use the seeded roster (or Enterprise generator to add more).
+2. Scenario source → *Incoming email*, pick an email, choose the seed agent, click **+ finance**
+   on the agent that can pay, then **Launch conversation**.
 3. After the run: read the **Outcome** and **Post-run judgment**, then try
    **Re-run with sender_check fix** to get the **Before vs after** table.
 
-`.env` and the local SQLite database are git-ignored. Any email you run is sent to the
-Anthropic API as part of the agents' prompts, so use anonymised mail.
+`.env` and the local SQLite database are git-ignored — run `db:seed` so everyone starts with the
+same seven senior agents (GTM, CSM, CS, Engineering, Product+Design, Data, IT). Any email you
+run is sent to the Anthropic API as part of the agents' prompts, so use anonymised mail.
 
 The original Python harness still works on its own: see [email-harness/README.md](email-harness/README.md).
 More detail on the lab: [SANDBOX.md](SANDBOX.md).
@@ -70,8 +72,7 @@ All on 2026-11-21 (Platanus Hack 26). Newest first.
 | `edec714` | Vicente | Empty test commit. |
 | `0c70213` … `cebd1f5` | Rafael | Hackathon template: README, project metadata, description, logo. |
 
-Branches: this work is on `luciano/tool_to_improve_the_lecture_and_the_handling_of_the_emails`
-(not yet merged into `main`).
+Branches: Luciano's email-harness fusion is merged into `main`.
 
 ## What's in the code
 
