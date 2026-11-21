@@ -16,6 +16,7 @@ import { refineModelId, refineProfileWithHaiku } from "./refine.js";
 import { requireAdmin } from "../security/admin.js";
 import { demoGuard, denyIfOverBudget, requestIp } from "../security/budget.js";
 import { errorMessage } from "../security/redact.js";
+import { modelErrorStatus } from "../security/spend.js";
 
 const knobsSchema = z.object({
   seniority: z.enum(["junior", "mid", "senior", "staff"]),
@@ -162,7 +163,7 @@ profileRoutes.post("/refine", async (c) => {
     });
   } catch (err) {
     const message = errorMessage(err);
-    const status = message.includes("ANTHROPIC_API_KEY") ? 503 : 502;
+    const status = modelErrorStatus(err, message);
     return c.json({ error: message }, status);
   }
 });

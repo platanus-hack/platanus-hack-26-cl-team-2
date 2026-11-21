@@ -4,6 +4,11 @@ import type { Context } from "hono";
 import { config } from "../config.js";
 import { activeRunCount } from "../harness/orchestrator.js";
 import { clientIp, DemoGuard, type GuardResult } from "./demo-guard.js";
+import { spendMeter } from "./spend.js";
+
+// Only the HTTP server loads this module, so only it enforces the daily US$ cap
+// (CLI scripts like batch and the MCP quick test are deliberate spend).
+spendMeter.setLimit(config.maxSpendUsdPerDay);
 
 export const demoGuard = new DemoGuard(
   {
@@ -11,9 +16,12 @@ export const demoGuard = new DemoGuard(
     maxRunsPerDay: config.maxRunsPerDay,
     maxConcurrentRuns: config.maxConcurrentRuns,
     maxJudgeCallsPerDay: config.maxJudgeCallsPerDay,
+    spendGate: () => spendMeter.check(),
   },
   activeRunCount,
 );
+
+let warnedMissingIpHeader = false;
 
 export function requestIp(c: Context): string {
   let remote: string | undefined;
@@ -22,8 +30,17 @@ export function requestIp(c: Context): string {
   } catch {
     remote = undefined; // app.request() in tests has no socket
   }
+  const trusted = config.clientIpHeader ? c.req.header(config.clientIpHeader) : undefined;
+  if (config.clientIpHeader && !trusted && !config.trustProxyHops && !warnedMissingIpHeader) {
+    // Without it every visitor falls back to the proxy's socket address: one shared bucket.
+    warnedMissingIpHeader = true;
+    console.warn(
+      `[api] request without ${config.clientIpHeader}: per-IP limit falls back to the socket ` +
+        "address (shared by everyone behind the proxy). Set CLIENT_IP_HEADER or TRUST_PROXY_HOPS.",
+    );
+  }
   return clientIp({
-    trustedHeaderValue: config.clientIpHeader ? c.req.header(config.clientIpHeader) : undefined,
+    trustedHeaderValue: trusted,
     forwardedFor: c.req.header("x-forwarded-for"),
     remoteAddress: remote,
     trustedHops: config.trustProxyHops,

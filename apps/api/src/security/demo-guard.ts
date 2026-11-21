@@ -21,6 +21,11 @@ export type GuardOptions = {
   maxConcurrentRuns: number;
   /** Judge + profile refine calls (Haiku), shared by everyone. */
   maxJudgeCallsPerDay: number;
+  /**
+   * Money ceiling checked before anything else (security/spend.ts): when the day's US$ budget
+   * is spent, no request may start a model call, whatever the counters say.
+   */
+  spendGate?: () => { ok: true } | { ok: false; message: string; retryAfterSec: number };
   /** Bound on remembered IPs, so spoofed/rotating addresses cannot grow memory forever. */
   maxTrackedIps?: number;
   now?: () => number;
@@ -28,7 +33,7 @@ export type GuardOptions = {
 
 export type GuardDenial = {
   ok: false;
-  reason: "rate" | "daily" | "concurrent";
+  reason: "rate" | "daily" | "concurrent" | "budget";
   message: string;
   retryAfterSec: number;
 };
@@ -65,6 +70,8 @@ export class DemoGuard {
   checkRun(ip: string): GuardResult {
     const t = this.now();
     this.rollDay(t);
+    const spend = this.checkSpend();
+    if (!spend.ok) return spend;
     const { maxConcurrentRuns, maxRunsPerDay } = this.opts;
     if (maxConcurrentRuns > 0 && this.activeRuns() >= maxConcurrentRuns) {
       return { ok: false, reason: "concurrent", message: RATE_LIMIT_MESSAGE, retryAfterSec: 60 };
@@ -83,6 +90,8 @@ export class DemoGuard {
   checkModelCall(ip: string): GuardResult {
     const t = this.now();
     this.rollDay(t);
+    const spend = this.checkSpend();
+    if (!spend.ok) return spend;
     const { maxJudgeCallsPerDay } = this.opts;
     if (maxJudgeCallsPerDay > 0 && this.judgeCallsToday >= maxJudgeCallsPerDay) {
       return { ok: false, reason: "daily", message: DAILY_LIMIT_MESSAGE, retryAfterSec: secondsToUtcMidnight(t) };
@@ -103,6 +112,12 @@ export class DemoGuard {
       trackedIps: this.hits.size,
       activeRuns: this.activeRuns(),
     };
+  }
+
+  private checkSpend(): GuardResult {
+    const r = this.opts.spendGate?.();
+    if (!r || r.ok) return { ok: true };
+    return { ok: false, reason: "budget", message: r.message, retryAfterSec: r.retryAfterSec };
   }
 
   private rollDay(t: number): void {
@@ -169,11 +184,12 @@ function cleanIp(raw: string | undefined | null): string | null {
  *
  * - trustedHeader (e.g. "true-client-ip" on Render, set by its Cloudflare edge, which
  *   overwrites any value the client sends) wins when present and well formed.
- * - Otherwise X-Forwarded-For: with trustedHops = N > 0, take the Nth entry from the right
- *   (the address our N trusted proxies saw), never the client-controlled left side.
- *   With 0 (local dev / unknown proxy), take the first well-formed entry: spoofable, so the
- *   global caps are what actually protect the budget.
- * - Fallback: the socket address.
+ * - Otherwise, with trustedHops = N > 0, X-Forwarded-For's Nth entry from the right (the
+ *   address our N trusted proxies saw), never the client-controlled left side.
+ * - With 0 (local dev / unknown proxy) X-Forwarded-For is ignored: any client can write it,
+ *   and rotating it would give every request a fresh per-IP bucket. The socket address is
+ *   used instead (behind an undeclared proxy that is the proxy itself: one shared bucket,
+ *   which fails safe).
  */
 export function clientIp(input: {
   trustedHeaderValue?: string | null;
@@ -183,15 +199,14 @@ export function clientIp(input: {
 }): string {
   const trusted = cleanIp(input.trustedHeaderValue);
   if (trusted) return trusted;
-  const entries = (input.forwardedFor ?? "")
-    .split(",")
-    .slice(0, 50)
-    .map((e) => cleanIp(e))
-    .filter((e): e is string => e !== null);
-  if (entries.length) {
-    const hops = Math.max(0, Math.floor(input.trustedHops ?? 0));
-    if (hops > 0) return entries[Math.max(0, entries.length - hops)];
-    return entries[0];
+  const hops = Math.max(0, Math.floor(input.trustedHops ?? 0));
+  if (hops > 0) {
+    const entries = (input.forwardedFor ?? "")
+      .split(",")
+      .slice(0, 50)
+      .map((e) => cleanIp(e))
+      .filter((e): e is string => e !== null);
+    if (entries.length) return entries[Math.max(0, entries.length - hops)];
   }
   return cleanIp(input.remoteAddress) ?? "unknown";
 }

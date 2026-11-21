@@ -130,9 +130,17 @@ describe("client IP", () => {
     assert.equal(clientIp({ forwardedFor: "203.0.113.7", trustedHops: 3 }), "203.0.113.7");
   });
 
-  it("without hops takes the first well-formed entry and ignores garbage", () => {
-    assert.equal(clientIp({ forwardedFor: " 203.0.113.7 , 10.0.0.1" }), "203.0.113.7");
-    assert.equal(clientIp({ forwardedFor: "<script>, 2001:DB8::1" }), "2001:db8::1");
+  it("with hops ignores garbage entries", () => {
+    assert.equal(clientIp({ forwardedFor: "<script>, 2001:DB8::1", trustedHops: 1 }), "2001:db8::1");
+  });
+
+  it("without hops ignores X-Forwarded-For (client-written) and uses the socket", () => {
+    assert.equal(clientIp({ forwardedFor: "203.0.113.7", remoteAddress: "10.0.0.5" }), "10.0.0.5");
+    // Rotating the header does not give a fresh bucket.
+    assert.equal(
+      clientIp({ forwardedFor: "198.51.100.1", remoteAddress: "10.0.0.5" }),
+      clientIp({ forwardedFor: "198.51.100.2", remoteAddress: "10.0.0.5" }),
+    );
   });
 
   it("falls back to the socket address, then 'unknown'", () => {
@@ -147,6 +155,12 @@ describe("admin token, redaction, real-mail files", () => {
     assert.equal(isAdmin(undefined, "s3cret-token"), false);
     assert.equal(isAdmin("wrong", "s3cret-token"), false);
     assert.equal(isAdmin("s3cret-token", "s3cret-token"), true);
+  });
+
+  it("deployed (failClosed) without ADMIN_TOKEN, writes are blocked instead of open", () => {
+    assert.equal(isAdmin(undefined, undefined, true), false);
+    assert.equal(isAdmin("anything", undefined, true), false);
+    assert.equal(isAdmin("s3cret-token", "s3cret-token", true), true);
   });
 
   it("redacts the API key, proxy URL and DB credentials from error text", () => {

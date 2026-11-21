@@ -9,17 +9,22 @@ function digest(v: string): Buffer {
 }
 
 /**
- * Pure: with no token configured (local dev) every write is allowed; otherwise the request
- * must carry exactly that token. Hash-then-compare keeps the check constant-time.
+ * Pure: with no token configured every write is allowed locally, and denied when failClosed
+ * (deployed); otherwise the request must carry exactly that token. Hash-then-compare keeps
+ * the check constant-time.
  */
-export function isAdmin(provided: string | undefined | null, expected: string | undefined): boolean {
-  if (!expected) return true;
+export function isAdmin(
+  provided: string | undefined | null,
+  expected: string | undefined,
+  failClosed = false,
+): boolean {
+  if (!expected) return !failClosed;
   if (!provided) return false;
   return timingSafeEqual(digest(provided), digest(expected));
 }
 
 export function isAdminRequest(c: Context): boolean {
-  return isAdmin(c.req.header(ADMIN_HEADER), config.adminToken);
+  return isAdmin(c.req.header(ADMIN_HEADER), config.adminToken, config.adminFailClosed);
 }
 
 export function adminDenied(c: Context) {
