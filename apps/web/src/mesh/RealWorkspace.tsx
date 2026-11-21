@@ -214,7 +214,7 @@ export function RealWorkspace({ simulation, hasApiKey }: { simulation: boolean; 
   );
 
   return <>
-    <div className="mesh-callout">DATOS REALES · Flecha DB→agente = READ; agente→DB = WRITE (ambas = R/W). Teal = traza observada. Las ejecuciones viven en memoria y se pierden al reiniciar la API.</div>
+    <div className="mesh-callout">DATOS REALES · Flecha DB→agente = READ; agente→DB = WRITE (ambas = R/W). Teal = traza observada. Las ejecuciones y trazas se conservan en la base de datos.</div>
     <div className="mesh-source"><label>Ejecución observada <select value={runId} onChange={event => { selectObservedRun(event.target.value); setSelectedId(""); }}><option value="">Agentes + permisos mock-DB (sin traza)</option>{runs.map(run => <option key={run.id} value={run.id}>{new Date(run.createdAt).toLocaleString("es-CL")} · {statusLabels[run.status] ?? run.status} · {run.id}</option>)}</select></label><button className="btn ghost" onClick={() => setRefreshKey(value => value + 1)}>↻ Actualizar</button></div>
     {snapshot && connections.length === 0 && <p className="mesh-callout" role="status">Esta ejecución tiene {events.length} eventos, pero aún no registra mensajes enviados ni llamadas a herramientas. Los participantes por sí solos no generan conexiones.</p>}
     {!runId && runs.length > 0 && <p className="mesh-callout">Estás viendo solo la configuración (ACL mock-DB). Selecciona una ejecución para ver trazas o <button className="btn ghost" onClick={() => selectObservedRun(null)}>Ver la más reciente</button></p>}

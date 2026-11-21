@@ -229,6 +229,7 @@ export async function runOneTurn(
   session: AgentSession,
   client: Anthropic,
   maxTurns: number,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (session.done) return;
 
@@ -249,7 +250,7 @@ export async function runOneTurn(
     system: systemPrompt(session.agent, session.peers),
     tools: toolsForAgent(session.agent),
     messages: session.messages,
-  });
+  }, { signal });
 
   const thought = asText(response.content);
   if (thought) {

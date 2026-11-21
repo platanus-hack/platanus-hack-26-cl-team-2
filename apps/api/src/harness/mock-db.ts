@@ -11,7 +11,9 @@
  * - it, engineering → user_keys_db
  */
 import type Anthropic from "@anthropic-ai/sdk";
-import { readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { traceBus } from "../events.js";
@@ -135,7 +137,14 @@ export function accessMockDb(
     };
   }
 
-  const path = resolve(MOCK_DB_DIR, meta.file);
+  let path = resolve(MOCK_DB_DIR, meta.file);
+  if (process.env.VERCEL) {
+    const directory = resolve(tmpdir(), "mesh-mock-db", createHash("sha256").update(runId).digest("hex"));
+    mkdirSync(directory, { recursive: true });
+    const temporaryPath = resolve(directory, meta.file);
+    if (!existsSync(temporaryPath)) copyFileSync(path, temporaryPath);
+    path = temporaryPath;
+  }
 
   if (action === "read") {
     let content: string;

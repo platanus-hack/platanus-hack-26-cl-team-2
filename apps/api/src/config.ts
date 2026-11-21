@@ -20,7 +20,9 @@ function defaultSqliteUrl(): string {
 
 function resolveDatabaseUrl(): string {
   const raw = (process.env.DATABASE_URL ?? "").trim();
+  if (!raw && process.env.VERCEL) throw new Error("DATABASE_URL debe configurarse con Postgres en Vercel.");
   if (!raw) return defaultSqliteUrl();
+  if (process.env.VERCEL && !/^postgres(ql)?:\/\//.test(raw)) throw new Error("Vercel requiere una conexión Postgres, no SQLite.");
   return raw;
 }
 
