@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import type { RunSummary, TraceEvent } from "@sandbox/shared";
+import type {
+  EmailScenarioSummary,
+  RunSummary,
+  TraceEvent,
+} from "@sandbox/shared";
 import {
   createRunFromStored,
   fetchRun,
   judgeRun,
   judgeTranscript,
   listAgents,
+  listEmailScenarios,
   subscribeRunEvents,
   type RunJudgment,
   type StoredAgent,
@@ -27,6 +32,11 @@ export function LabPage({ hasApiKey }: Props) {
   const [scenarioHint, setScenarioHint] = useState(
     "A strategic customer is escalating a reliability issue that may block renewal. Decide who to involve and drive a concrete next step.",
   );
+  const [scenarioSource, setScenarioSource] = useState<"text" | "email">("text");
+  const [emails, setEmails] = useState<EmailScenarioSummary[]>([]);
+  const [emailLoadError, setEmailLoadError] = useState<string | null>(null);
+  const [emailKey, setEmailKey] = useState("");
+  const [senderCheckOn, setSenderCheckOn] = useState(false);
   const [maxTurns, setMaxTurns] = useState(6);
   const [run, setRun] = useState<RunSummary | null>(null);
   const [events, setEvents] = useState<TraceEvent[]>([]);
@@ -54,6 +64,28 @@ export function LabPage({ hasApiKey }: Props) {
         setError(err instanceof Error ? err.message : String(err)),
       );
   }, []);
+
+  useEffect(() => {
+    listEmailScenarios()
+      .then(({ scenarios, errors }) => {
+        setEmails(scenarios);
+        if (scenarios[0]) setEmailKey(emailKeyOf(scenarios[0]));
+        if (errors.length) setEmailLoadError(errors.join(" · "));
+      })
+      .catch((err) =>
+        setEmailLoadError(err instanceof Error ? err.message : String(err)),
+      );
+  }, []);
+
+  const selectedEmail = useMemo(
+    () => emails.find((e) => emailKeyOf(e) === emailKey) ?? null,
+    [emails, emailKey],
+  );
+
+  const emailFiles = useMemo(
+    () => [...new Set(emails.map((e) => e.file))],
+    [emails],
+  );
 
   useEffect(() => {
     if (!run) return;
@@ -143,7 +175,10 @@ export function LabPage({ hasApiKey }: Props) {
         .join("\n");
       const { judgment: j } = await judgeTranscript({
         transcript,
-        scenario: scenarioHint.trim() || undefined,
+        scenario:
+          scenarioSource === "email"
+            ? selectedEmail?.email
+            : scenarioHint.trim() || undefined,
         agentsNote: agentsNote || undefined,
       });
       setJudgment(j);
@@ -188,7 +223,8 @@ export function LabPage({ hasApiKey }: Props) {
     !busy &&
     selectedIds.length >= 2 &&
     selectedIds.length <= MAX_PARTICIPANTS &&
-    selectedIds.includes(seedAgentId);
+    selectedIds.includes(seedAgentId) &&
+    (scenarioSource === "text" || selectedEmail !== null);
 
   function toggle(id: string) {
     setEnabled((prev) => {
@@ -235,7 +271,15 @@ export function LabPage({ hasApiKey }: Props) {
         agentIds: selectedIds,
         seedAgentId,
         maxTurnsPerAgent: maxTurns,
-        scenarioHint: scenarioHint.trim() || undefined,
+        ...(scenarioSource === "email" && selectedEmail
+          ? {
+              emailScenario: {
+                file: selectedEmail.file,
+                id: selectedEmail.id,
+                senderCheck: senderCheckOn,
+              },
+            }
+          : { scenarioHint: scenarioHint.trim() || undefined }),
       });
       setRun(created);
     } catch (err) {
@@ -340,19 +384,108 @@ export function LabPage({ hasApiKey }: Props) {
           ))}
         </div>
 
-        <label className="block-label scenario">
-          Scenario (only delivered to seed)
-          <textarea
-            value={scenarioHint}
-            onChange={(e) => setScenarioHint(e.target.value)}
-            disabled={busy}
-            placeholder="Instruction for the seed agent only…"
-          />
-        </label>
+        <div className="controls">
+          <label>
+            Scenario source
+            <select
+              value={scenarioSource}
+              onChange={(e) =>
+                setScenarioSource(e.target.value as "text" | "email")
+              }
+              disabled={busy}
+            >
+              <option value="text">Free text</option>
+              <option value="email">Incoming email (email-harness)</option>
+            </select>
+          </label>
+        </div>
+
+        {scenarioSource === "text" ? (
+          <label className="block-label scenario">
+            Scenario (only delivered to seed)
+            <textarea
+              value={scenarioHint}
+              onChange={(e) => setScenarioHint(e.target.value)}
+              disabled={busy}
+              placeholder="Instruction for the seed agent only…"
+            />
+          </label>
+        ) : (
+          <div className="email-scenario">
+            {emails.length === 0 ? (
+              <p className="error">
+                No emails found in email-harness/scenarios.
+                {emailLoadError ? ` ${emailLoadError}` : ""}
+              </p>
+            ) : (
+              <>
+                <div className="controls">
+                  <label>
+                    Email
+                    <select
+                      value={emailKey}
+                      onChange={(e) => setEmailKey(e.target.value)}
+                      disabled={busy}
+                    >
+                      {emailFiles.map((file) => (
+                        <optgroup key={file} label={file}>
+                          {emails
+                            .filter((e) => e.file === file)
+                            .map((e) => (
+                              <option key={emailKeyOf(e)} value={emailKeyOf(e)}>
+                                [{e.kind}] {e.id}
+                              </option>
+                            ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={senderCheckOn}
+                      onChange={(e) => setSenderCheckOn(e.target.checked)}
+                      disabled={busy}
+                    />
+                    Show seed the automated sender check (fix)
+                  </label>
+                </div>
+                {emailLoadError ? (
+                  <p className="hint">Some files were skipped: {emailLoadError}</p>
+                ) : null}
+                {selectedEmail ? (
+                  <>
+                    <p className="hint">
+                      <span className={`email-kind kind-${selectedEmail.kind}`}>
+                        {selectedEmail.kind}
+                      </span>{" "}
+                      {selectedEmail.technique} · sender check:{" "}
+                      <strong
+                        className={
+                          selectedEmail.senderCheck.verdict === "SUSPICIOUS"
+                            ? "verdict-bad"
+                            : "verdict-ok"
+                        }
+                      >
+                        {selectedEmail.senderCheck.verdict}
+                      </strong>
+                      {selectedEmail.senderCheck.reasons.length
+                        ? ` — ${selectedEmail.senderCheck.reasons.join("; ")}`
+                        : ""}
+                      {senderCheckOn ? "" : " (computed, not shown to agents)"}
+                    </p>
+                    <pre className="email-preview">{selectedEmail.email}</pre>
+                  </>
+                ) : null}
+              </>
+            )}
+          </div>
+        )}
         <p className="hint">
           Seed:{" "}
           {catalog.find((a) => a.id === seedAgentId)?.name ?? "(none)"} — they
-          alone see this text and decide next steps.
+          alone see this {scenarioSource === "email" ? "email" : "text"} and
+          decide next steps.
         </p>
 
         <div className="controls">
@@ -459,4 +592,8 @@ export function LabPage({ hasApiKey }: Props) {
       />
     </>
   );
+}
+
+function emailKeyOf(e: Pick<EmailScenarioSummary, "file" | "id">): string {
+  return `${e.file}#${e.id}`;
 }

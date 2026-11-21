@@ -6,6 +6,7 @@ import type {
   AreaPrototype,
   CreateRunRequest,
   CreateStoredRunRequest,
+  EmailScenarioSummary,
   OrgHints,
   OrgSizePreset,
   RunSummary,
@@ -64,6 +65,17 @@ export async function createRunFromStored(
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "Failed to create run");
+  return data;
+}
+
+export async function listEmailScenarios(): Promise<{
+  dir: string;
+  scenarios: EmailScenarioSummary[];
+  errors: string[];
+}> {
+  const res = await fetch("/api/email-scenarios");
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Failed to load email scenarios");
   return data;
 }
 

@@ -23,6 +23,39 @@ export type CreateStoredRunRequest = {
   maxTurnsPerAgent?: number;
   /** Initial instruction — delivered only to the seed agent. */
   scenarioHint?: string;
+  /**
+   * Use an email from email-harness/scenarios as the scenario instead of scenarioHint.
+   * The seed agent receives it as an incoming email.
+   */
+  emailScenario?: EmailScenarioRef;
+};
+
+/** Points at one email in email-harness/scenarios/<file>. */
+export type EmailScenarioRef = {
+  file: string;
+  id: string;
+  /** Prepend the deterministic sender-check banner (the "sender_check" fix). */
+  senderCheck?: boolean;
+};
+
+export type SenderCheck = {
+  verdict: "OK" | "SUSPICIOUS" | "UNKNOWN";
+  reasons: string[];
+  address: string | null;
+};
+
+/** "attack" and "benign" are ground truth; "real_email" is an unlabelled real message. */
+export type EmailScenarioKind = "attack" | "benign" | "real_email";
+
+export type EmailScenarioSummary = {
+  file: string;
+  id: string;
+  kind: EmailScenarioKind;
+  technique: string;
+  from: string | null;
+  subject: string | null;
+  email: string;
+  senderCheck: SenderCheck;
 };
 
 export type AgentSpecInput = {

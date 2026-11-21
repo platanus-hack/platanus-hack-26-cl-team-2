@@ -4,11 +4,14 @@ import type {
   AgentSpec,
   CreateRunRequest,
   CreateStoredRunRequest,
+  EmailScenarioKind,
   RunSummary,
+  SenderCheck,
 } from "@sandbox/shared";
 import { assertApiKeyConfigured, config } from "../config.js";
 import { getAgent } from "../db/agents-repo.js";
 import { buildInvokePayload } from "../db/invoke.js";
+import { emailScenarioHint, getEmailScenario } from "../email/scenarios.js";
 import { messageBus } from "../message-bus.js";
 import { traceBus } from "../events.js";
 import { createSession, runOneTurn } from "./agent-runner.js";
@@ -23,9 +26,21 @@ export type RunRosterEntry = {
   motivation: string;
 };
 
+/** Which email (if any) started the run; senderCheck is set only when the banner was shown. */
+export type RunEmailInfo = {
+  file: string;
+  id: string;
+  kind: EmailScenarioKind;
+  technique: string;
+  from: string | null;
+  subject: string | null;
+  senderCheck: SenderCheck | null;
+};
+
 type InternalRun = RunSummary & {
   seedAgentId?: string;
   scenarioHint?: string;
+  email?: RunEmailInfo;
   roster?: RunRosterEntry[];
   judgment?: RunJudgment;
 };
@@ -65,6 +80,7 @@ function publicRun(run: InternalRun): RunSummary {
   const {
     seedAgentId: _s,
     scenarioHint: _h,
+    email: _e,
     roster: _r,
     judgment: _j,
     ...rest
@@ -78,6 +94,7 @@ function startRun(
   opts?: {
     seedAgentId?: string;
     scenarioHint?: string;
+    email?: RunEmailInfo;
     roster?: RunRosterEntry[];
   },
 ): RunSummary {
@@ -109,6 +126,7 @@ function startRun(
     createdAt: new Date().toISOString(),
     seedAgentId,
     scenarioHint: opts?.scenarioHint,
+    email: opts?.email,
     roster:
       opts?.roster ??
       agents.map((a) => ({
@@ -128,6 +146,7 @@ function startRun(
   void executeRun(run, maxTurns, {
     seedAgentId,
     scenarioHint: opts?.scenarioHint,
+    email: opts?.email,
   });
   return getRun(runId)!;
 }
@@ -169,6 +188,25 @@ export async function createAndStartStoredRun(
     throw new Error("seedAgentId must be one of the selected agents.");
   }
 
+  // An email scenario replaces the free-text hint (resolved before loading agents
+  // so a bad file/id fails fast).
+  let scenarioHint = body.scenarioHint?.trim();
+  let email: RunEmailInfo | undefined;
+  if (body.emailScenario) {
+    const scen = getEmailScenario(body.emailScenario);
+    const banner = body.emailScenario.senderCheck ? scen.senderCheck : undefined;
+    scenarioHint = emailScenarioHint(scen.email, banner);
+    email = {
+      file: scen.file,
+      id: scen.id,
+      kind: scen.kind,
+      technique: scen.technique,
+      from: scen.from,
+      subject: scen.subject,
+      senderCheck: banner ?? null,
+    };
+  }
+
   const agents: AgentSpec[] = [];
   const roster: RunRosterEntry[] = [];
   for (const id of agentIds) {
@@ -206,7 +244,8 @@ export async function createAndStartStoredRun(
 
   return startRun(agents, body.maxTurnsPerAgent ?? config.maxTurnsPerAgent, {
     seedAgentId,
-    scenarioHint: body.scenarioHint?.trim(),
+    scenarioHint,
+    email,
     roster,
   });
 }
@@ -214,7 +253,7 @@ export async function createAndStartStoredRun(
 async function executeRun(
   run: InternalRun,
   maxTurns: number,
-  opts: { seedAgentId: string; scenarioHint?: string },
+  opts: { seedAgentId: string; scenarioHint?: string; email?: RunEmailInfo },
 ): Promise<void> {
   run.status = "running";
   traceBus.emit(run.id, "run.started", {
@@ -224,6 +263,7 @@ async function executeRun(
     scheduler: "round-robin",
     seedAgentId: opts.seedAgentId,
     scenarioHint: opts.scenarioHint ?? null,
+    email: opts.email ?? null,
     participantCount: run.agents.length,
   });
 

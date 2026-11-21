@@ -16,6 +16,7 @@ import {
 } from "./harness/orchestrator.js";
 import { agentRoutes } from "./agents/routes.js";
 import { pingDatabase } from "./db/client.js";
+import { listEmailScenarios } from "./email/scenarios.js";
 import { enterpriseRoutes } from "./enterprise/routes.js";
 import { profileRoutes } from "./profiles/routes.js";
 import { refineModelId } from "./profiles/refine.js";
@@ -42,6 +43,13 @@ const createStoredRunSchema = z.object({
   seedAgentId: z.string().min(1),
   maxTurnsPerAgent: z.number().int().min(1).max(30).optional(),
   scenarioHint: z.string().max(2000).optional(),
+  emailScenario: z
+    .object({
+      file: z.string().regex(/^[A-Za-z0-9_.-]+\.json$/),
+      id: z.string().min(1).max(200),
+      senderCheck: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 const app = new Hono();
@@ -73,6 +81,9 @@ app.route("/api/agents", agentRoutes);
 app.route("/api/enterprise", enterpriseRoutes);
 
 app.get("/api/runs", (c) => c.json({ runs: listRuns() }));
+
+/** Emails from email-harness/scenarios, with the deterministic sender check pre-computed. */
+app.get("/api/email-scenarios", (c) => c.json(listEmailScenarios()));
 
 app.get("/api/runs/:id", (c) => {
   const run = getRun(c.req.param("id"));
@@ -179,8 +190,11 @@ app.post("/api/runs/from-stored", async (c) => {
     if (message.includes("ANTHROPIC_API_KEY")) {
       return c.json({ error: message }, 503);
     }
-    if (message.includes("not found")) {
+    if (message.includes("not found") || message.includes("ENOENT")) {
       return c.json({ error: message }, 404);
+    }
+    if (message.includes("Invalid scenario file") || message.includes("JSON")) {
+      return c.json({ error: message }, 400);
     }
     if (message.includes("different")) {
       return c.json({ error: message }, 400);

@@ -22,8 +22,16 @@ function kindOf(type: TraceEvent["type"]): string {
 function summarize(event: TraceEvent): string {
   const p = event.payload;
   switch (event.type) {
-    case "run.started":
-      return `model=${String(p.model)} · seed=${String(p.seedAgentId ?? "?")} · n=${String(p.participantCount ?? "?")} · maxTurns=${String(p.maxTurnsPerAgent)}`;
+    case "run.started": {
+      const base = `model=${String(p.model)} · seed=${String(p.seedAgentId ?? "?")} · n=${String(p.participantCount ?? "?")} · maxTurns=${String(p.maxTurnsPerAgent)}`;
+      const email = p.email as
+        | { id?: string; kind?: string; from?: string | null; senderCheck?: { verdict?: string } | null }
+        | null
+        | undefined;
+      if (!email) return base;
+      const check = email.senderCheck ? ` · sender check: ${email.senderCheck.verdict}` : "";
+      return `${base} · email=${email.id} (${email.kind}) from ${email.from ?? "?"}${check}`;
+    }
     case "run.completed":
       return "All harnesses finished.";
     case "run.failed":

@@ -258,7 +258,8 @@ export async function judgeRun(input: {
 
   return callJudge(
     [
-      `Scenario (seed-only):\n${truncate(input.scenario || "(none)", 400)}`,
+      // 2500 chars: an email scenario is the whole email, 400 would keep only the preamble.
+      `Scenario (seed-only):\n${truncateMultiline(input.scenario || "(none)", 2500)}`,
       `Seed: ${seedName}`,
       `Agents:\n${rosterLines || "(unknown)"}`,
       `Trace (condensed):\n${condenseTrace(input.events, nameById)}`,
