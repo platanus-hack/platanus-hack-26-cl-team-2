@@ -1,0 +1,19 @@
+import { config as loadEnv } from "dotenv";
+import { resolve } from "node:path";
+import { defineConfig } from "drizzle-kit";
+
+loadEnv({ path: resolve(process.cwd(), "../../.env") });
+loadEnv();
+
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is required for drizzle-kit");
+}
+
+export default defineConfig({
+  schema: "./src/db/schema.pg.ts",
+  out: "./drizzle",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.DATABASE_URL,
+  },
+});
