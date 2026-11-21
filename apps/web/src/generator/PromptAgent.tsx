@@ -12,7 +12,10 @@ export function PromptAgent({ hasDatabase }: { hasDatabase: boolean }) {
   const [split, setSplit] = useState(true);
   const [saved, setSaved] = useState<number[]>([]);
   const sections = split ? splitAgentPrompt(prompt) : [{ name: "Agente por prompt", prompt }];
+  const declaredCount = Number(prompt.match(/\b(?:los|las)\s+(\d+)\s+agentes\b/i)?.[1] ?? 0);
+  const countMismatch = split && declaredCount > 1 && sections.length !== declaredCount;
   async function save() {
+    if (countMismatch) return;
     setBusy(true);
     setError("");
     setMessage("");
@@ -45,10 +48,11 @@ export function PromptAgent({ hasDatabase }: { hasDatabase: boolean }) {
     <p className="hint">El prompt se guarda literalmente, sin generar texto con IA ni añadir plantillas de área, personalidad, empresa o conversación previa. Los campos técnicos de catálogo no se añaden al prompt.</p>
     <div className="mesh-callout">Sin contexto añadido no significa sin sesgos: el modelo conserva los de su entrenamiento. Al ejecutarse, siguen vigentes las reglas del laboratorio, sus herramientas y el escenario elegido.</div>
     <div className="profile-editor"><label>Nombre (solo para un agente individual)<input maxLength={64} value={name} onChange={event => { setName(event.target.value); setMessage(""); setSaved([]); }} disabled={busy || sections.length > 1 || saved.length > 0} /></label><label>Prompt original<textarea className="tall" maxLength={12000} value={prompt} onChange={event => { setPrompt(event.target.value); setMessage(""); setSaved([]); }} disabled={busy || saved.length > 0} placeholder="Escribe un rol o varios con títulos como: #### 1. Agente de soporte" /></label></div>
-    <label><input type="checkbox" checked={split} disabled={busy || saved.length > 0} onChange={event => { setSplit(event.target.checked); setMessage(""); }} /> Separar roles con títulos Markdown numerados</label>
+    <label><input type="checkbox" checked={split} disabled={busy || saved.length > 0} onChange={event => { setSplit(event.target.checked); setMessage(""); }} /> Separar roles numerados (con o sin Markdown)</label>
+    {countMismatch && <p className="error" role="alert">El texto anuncia {declaredCount} agentes, pero se detectaron {sections.length}. Revisa los títulos: «1. Agente…», «2. Agente…». No se guardará un único agente por error.</p>}
     <div className="mesh-callout"><strong>Vista previa: {sections.length} agente(s)</strong><p>Cada agente recibe el texto anterior al primer rol como contexto compartido y únicamente su propio apartado. No se añaden instrucciones generadas.</p><ol>{sections.map((section, index) => <li key={index}>{sections.length === 1 ? name.trim() || section.name : section.name}{saved.includes(index) ? " · Guardado" : ""}</li>)}</ol></div>
     <p className="hint">{prompt.length}/12000 caracteres · Sin refinamiento · Sin consumo de IA al crear · Herramientas básicas de comunicación</p>
-    <button className="btn" disabled={busy || !hasDatabase || !prompt.trim() || saved.length === sections.length} onClick={() => void save()}>{busy ? "Guardando…" : `Crear y guardar ${sections.length - saved.length} agente(s)`}</button>
+    <button className="btn" disabled={busy || !hasDatabase || !prompt.trim() || countMismatch || saved.length === sections.length} onClick={() => void save()}>{busy ? "Guardando…" : `Crear y guardar ${sections.length - saved.length} agente(s)`}</button>
     {saved.length > 0 && !busy && <button className="btn ghost" onClick={() => { setPrompt(""); setName(""); setSaved([]); setMessage(""); setError(""); }}>Nuevo prompt</button>}
     {!hasDatabase && <p className="error">La base de datos no está disponible.</p>}
     {error && <p className="error" role="alert">{error}</p>}{message && <p className="notice" role="status">{message}</p>}

@@ -20,3 +20,18 @@ it("preserva literalmente un prompt sin múltiples roles numerados", () => {
   assert.equal(splitAgentPrompt(prompt)[0].prompt, prompt);
   assert.equal(splitAgentPrompt(prompt).length, 1);
 });
+
+it("detecta siete roles copiados sin símbolos Markdown y con saltos Windows", () => {
+  const titles = ["Agente de Prospección y Calificación Técnica (SDR AI)", "Agente Arquitecto de Soluciones (Preventa Técnica)", "Agente de Onboarding e Implementación", "Agente de Soporte Técnico Nivel 1 y 2 (Especialista en Logs SAP)", "Agente de Customer Success y Retención (CSM AI)", "Agente de Documentación y Capacitación (Knowledge Base)", "Agente de QA y Monitoreo de Versiones SAP (DevOps / Producto)"];
+  for (const bold of [false, true]) {
+    const prompt = "Contexto NexusB1\r\nLos 7 Agentes de IA para tu Empresa\r\n" + titles.map((title, index) => `  ${bold ? "**" : ""}${index + 1}. ${title}${bold ? "**" : ""}\r\n- Rol: ${title}\r\n`).join("\r\n");
+    const sections = splitAgentPrompt(prompt);
+    assert.equal(sections.length, 7);
+    assert.equal(sections[0].name, titles[0]);
+    assert.ok(sections.every(section => section.prompt.startsWith("Contexto NexusB1")));
+  }
+});
+
+it("no interpreta pasos de tareas como agentes adicionales", () => {
+  assert.equal(splitAgentPrompt("1. Lee el ticket\n2. Responde al cliente").length, 1);
+});
