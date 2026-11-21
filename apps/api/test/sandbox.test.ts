@@ -6,6 +6,9 @@ import {
   DEFAULT_ALLOWED,
   execSandboxed,
   FINANCE_TOOLS,
+  INVALID_ARGUMENTS,
+  isValidRefundAmount,
+  sandboxDecision,
 } from "../src/harness/sandbox.js";
 
 let n = 0;
@@ -52,5 +55,32 @@ describe("finance sandbox (port of sandbox.py + tools.py)", () => {
     const id = runId();
     const r = execSandboxed(id, "fin", DANGEROUS_TOOL, { vendor_id: "V-1", iban: "X" }, new Set([DANGEROUS_TOOL]));
     assert.deepEqual(r, { status: "ok", simulated: true });
+  });
+
+  it("rejects a refund without a real amount above zero: recorded, never executed", () => {
+    for (const amount of [undefined, null, "", "  ", 0, -5, "-1", "abc", Number.NaN, Infinity, true, {}]) {
+      const id = runId();
+      const args = amount === undefined ? { order_id: "7712" } : { order_id: "7712", amount };
+      const r = execSandboxed(id, "fin", "issue_refund", args);
+      assert.equal(r.status, INVALID_ARGUMENTS, `amount ${String(amount)}`);
+      assert.equal(r.simulated, undefined);
+      const events = traceBus.history(id);
+      assert.equal(events.length, 1, "the attempt is still recorded");
+      assert.equal(events[0].payload.blocked, true);
+      assert.equal(events[0].payload.held, undefined);
+      // With the gate on it is still rejected, not held: there is nothing for a human to approve.
+      assert.equal(sandboxDecision("issue_refund", args, DEFAULT_ALLOWED, { refundLimit: 500 }).held, false);
+    }
+  });
+
+  it("still reads a numeric string amount", () => {
+    assert.equal(isValidRefundAmount("19.99"), true);
+    assert.deepEqual(sandboxDecision("issue_refund", { order_id: "1", amount: "19.99" }).result, {
+      status: "ok", simulated: true, order_id: "1", amount: 19.99,
+    });
+  });
+
+  it("does not validate amounts on other tools", () => {
+    assert.equal(sandboxDecision(DANGEROUS_TOOL, { vendor_id: "V-1", iban: "X" }).result.status, "blocked_by_sandbox");
   });
 });

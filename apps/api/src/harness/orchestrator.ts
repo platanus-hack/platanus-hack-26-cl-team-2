@@ -1,17 +1,20 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropicClient } from "../anthropic-client.js";
 import { nanoid } from "nanoid";
 import type {
   AgentSpec,
   CreateRunRequest,
   CreateStoredRunRequest,
   EmailScenarioKind,
+  RiskPathAnalysis,
   PeerMessageScenario,
   RunEvaluation,
+  RunRiskPaths,
   RunSummary,
   SenderCheck,
   TraceEvent,
 } from "@sandbox/shared";
 import { assertApiKeyConfigured, config } from "../config.js";
+import { redactSecrets } from "../security/redact.js";
 import { getAgent } from "../db/agents-repo.js";
 import { buildInvokePayload } from "../db/invoke.js";
 import { emailScenarioHint, getEmailScenario } from "../email/scenarios.js";
@@ -19,6 +22,9 @@ import { messageBus } from "../message-bus.js";
 import { traceBus } from "../events.js";
 import { createSession, runOneTurn, wakeIfMailWaiting } from "./agent-runner.js";
 import { evaluateRun } from "./evaluator.js";
+import { provenanceTag } from "./provenance.js";
+import { analyzeRiskPaths, observeRiskPaths, type RiskSetup } from "./risk-paths.js";
+import { approvalRefundLimit } from "./sandbox.js";
 import type { RunJudgment } from "./judge.js";
 import { loadRun, loadRuns, saveJudgment, saveRun } from "../db/runs-repo.js";
 import { filterMockDbToolNames } from "./mock-db.js";
@@ -47,6 +53,15 @@ export type RunEmailInfo = {
   forensics: SenderCheck;
   /** The raw email, for the judge. */
   email: string;
+  /** provenance_tag fix: agent-to-agent messages carry the email's origin. */
+  provenanceTag?: boolean;
+  /**
+   * approval_gate fix: the sandbox holds refunds above approvalRefundLimit and bank changes
+   * (the run started from an external email). The agents are not told; they see the result.
+   */
+  approvalGate?: boolean;
+  /** APPROVAL_REFUND_LIMIT read when the run was prepared (only with approvalGate). */
+  approvalRefundLimit?: number;
 };
 
 export type InternalRun = RunSummary & {
@@ -70,6 +85,39 @@ function slug(name: string): string {
     .slice(0, 24);
 }
 
+/**
+ * Runs started by this process (the live objects executeRun mutates). The database is the
+ * source of truth for reads; this map only counts budget slots and bounds the in-memory
+ * trace and inbox buses.
+ */
+const runs = new Map<string, InternalRun>();
+
+/** Runs that still hold a model budget slot (for MAX_CONCURRENT_RUNS). */
+export function activeRunCount(): number {
+  let n = 0;
+  for (const r of runs.values()) if (r.status === "pending" || r.status === "running") n += 1;
+  return n;
+}
+
+/** A request may ask for fewer turns than MAX_TURNS_PER_AGENT, never more (budget ceiling). */
+export function clampTurns(requested: number | undefined): number {
+  const ceiling = config.maxTurnsPerAgent;
+  if (!requested || !Number.isFinite(requested)) return ceiling;
+  return Math.max(1, Math.min(Math.floor(requested), ceiling));
+}
+
+/** Keep memory bounded: drop the oldest finished runs (and their traces) past MAX_STORED_RUNS. */
+function evictOldRuns(): void {
+  if (runs.size <= config.maxStoredRuns) return;
+  for (const [id, r] of runs) {
+    if (runs.size <= config.maxStoredRuns) break;
+    if (r.status === "pending" || r.status === "running") continue;
+    runs.delete(id);
+    traceBus.drop(id);
+    messageBus.dropRun(id);
+  }
+}
+
 export async function listRuns(): Promise<RunSummary[]> {
   return (await loadRuns()).map(publicRun);
 }
@@ -89,6 +137,64 @@ export function evaluateInternalRun(run: InternalRun, events: TraceEvent[] = tra
     email: run.email,
     financeAgentIds: run.agents.filter((a) => a.financeTools).map((a) => a.id),
     seedAgentId: run.seedAgentId,
+  });
+}
+
+function riskSetupFor(run: InternalRun): RiskSetup {
+  return {
+    agents: run.agents.map((a) => ({ id: a.id, name: a.name, finance: Boolean(a.financeTools) })),
+    seedAgentId: run.seedAgentId ?? run.agents[0]?.id ?? "",
+    email: run.email ? { from: run.email.from, senderCheck: run.email.forensics } : null,
+    fixes: {
+      senderCheck: Boolean(run.email?.senderCheck),
+      provenanceTag: Boolean(run.email?.provenanceTag),
+      approvalGate: Boolean(run.email?.approvalGate),
+    },
+  };
+}
+
+/** Predicted paths from the run setup, and the ones the trace shows were actually taken. */
+export function riskPathsForRun(run: InternalRun, events: TraceEvent[] = traceBus.history(run.id)): RunRiskPaths {
+  const setup = riskSetupFor(run);
+  const predicted = analyzeRiskPaths(setup);
+  return {
+    predicted,
+    observed: observeRiskPaths(events, setup, predicted.paths),
+  };
+}
+
+/**
+ * Same analysis before launching (no run, no model call): what MESH predicts for this setup.
+ * Validates like createAndStartStoredRun so the preview matches what would run.
+ */
+export async function previewRiskPaths(body: {
+  agentIds: string[];
+  seedAgentId: string;
+  financeAgentIds?: string[];
+  emailScenario?: CreateStoredRunRequest["emailScenario"];
+}): Promise<RiskPathAnalysis> {
+  const agentIds = [...new Set(body.agentIds.map((id) => id.trim()).filter(Boolean))];
+  const seedAgentId = body.seedAgentId.trim();
+  if (!agentIds.includes(seedAgentId)) {
+    throw new Error("seedAgentId must be one of the selected agents.");
+  }
+  const financeIds = new Set((body.financeAgentIds ?? []).map((id) => id.trim()));
+  const agents: RiskSetup["agents"] = [];
+  for (const id of agentIds) {
+    const stored = await getAgent(id);
+    if (!stored) throw new Error(`Agent not found: ${id}`);
+    agents.push({ id, name: stored.name, finance: financeIds.has(id) });
+  }
+  const scen = body.emailScenario ? getEmailScenario(body.emailScenario) : null;
+  return analyzeRiskPaths({
+    agents,
+    seedAgentId,
+    email: scen ? { from: scen.from, senderCheck: scen.senderCheck } : null,
+    fixes: {
+      senderCheck: Boolean(body.emailScenario?.senderCheck),
+      provenanceTag: Boolean(body.emailScenario?.provenanceTag),
+      approvalGate: Boolean(body.emailScenario?.approvalGate),
+    },
   });
 }
 
@@ -179,7 +285,16 @@ async function startRun(
         motivation: "impact",
       })),
   };
-  await saveRun(run, []);
+  // Registered before the first await, so a budget check right before this call cannot race
+  // with another start (activeRunCount already sees this run).
+  runs.set(runId, run);
+  evictOldRuns();
+  try {
+    await saveRun(run, []);
+  } catch (err) {
+    runs.delete(runId);
+    throw err;
+  }
   messageBus.ensureAgents(
     runId,
     agents.map((a) => a.id),
@@ -215,15 +330,45 @@ export function createAndStartRun(body: CreateRunRequest): Promise<RunSummary> {
   const [a, b] = agents;
   if (a.id === b.id) b.id = `${b.id}-b`;
 
-  return startRun(agents, body.maxTurnsPerAgent ?? config.maxTurnsPerAgent, {
+  return startRun(agents, clampTurns(body.maxTurnsPerAgent), {
     seedAgentId: a.id,
   });
 }
+
+export type PreparedStoredRun = {
+  agents: AgentSpec[];
+  maxTurns: number;
+  opts: {
+    seedAgentId: string;
+    scenarioHint?: string;
+    email?: RunEmailInfo;
+    peerMessage?: PeerMessageScenario;
+    roster: RunRosterEntry[];
+  };
+};
 
 /** Load N DB agents; only seedAgent receives the scenario instruction. */
 export async function createAndStartStoredRun(
   body: CreateStoredRunRequest,
 ): Promise<RunSummary> {
+  return startPreparedRun(await prepareStoredRun(body));
+}
+
+/**
+ * The run takes its budget slot synchronously (before the first await inside startRun), so a
+ * budget check right before this call cannot race with another start.
+ */
+export function startPreparedRun(p: PreparedStoredRun): Promise<RunSummary> {
+  return startRun(p.agents, p.maxTurns, p.opts);
+}
+
+/**
+ * Everything that can fail for a bad request (agents, email, finance ids, API key), with no
+ * model call: the HTTP route checks the demo budget only after this succeeds.
+ */
+export async function prepareStoredRun(
+  body: CreateStoredRunRequest,
+): Promise<PreparedStoredRun> {
   const agentIds = [
     ...new Set(body.agentIds.map((id) => id.trim()).filter(Boolean)),
   ];
@@ -288,6 +433,10 @@ export async function createAndStartStoredRun(
       senderCheck: banner ?? null,
       forensics: scen.senderCheck,
       email: scen.email,
+      provenanceTag: Boolean(body.emailScenario.provenanceTag),
+      ...(body.emailScenario.approvalGate
+        ? { approvalGate: true, approvalRefundLimit: approvalRefundLimit() }
+        : {}),
     };
   }
 
@@ -340,13 +489,16 @@ export async function createAndStartStoredRun(
     return 0;
   });
 
-  return startRun(agents, body.maxTurnsPerAgent ?? config.maxTurnsPerAgent, {
-    seedAgentId,
-    scenarioHint,
-    email,
-    peerMessage,
-    roster,
-  });
+  if (agents.length > MAX_PARTICIPANTS) {
+    throw new Error(`Max ${MAX_PARTICIPANTS} agents per run (token safety). Turn some off.`);
+  }
+  assertApiKeyConfigured();
+
+  return {
+    agents,
+    maxTurns: clampTurns(body.maxTurnsPerAgent),
+    opts: { seedAgentId, scenarioHint, email, peerMessage, roster },
+  };
 }
 
 async function executeRun(
@@ -381,7 +533,15 @@ async function executeRun(
     participantCount: run.agents.length,
   });
 
-  const client = new Anthropic({ apiKey: config.anthropicApiKey, maxRetries: 0 });
+  // No SDK retries on Vercel: the function has a hard time limit (see signal below).
+  const client = anthropicClient(process.env.VERCEL ? { maxRetries: 0 } : undefined);
+  const tag = opts.email?.provenanceTag
+    ? provenanceTag({ from: opts.email.from, senderCheck: opts.email.senderCheck })
+    : undefined;
+  // Only email runs: the gate is about work that came from an external email.
+  const gate = opts.email?.approvalGate
+    ? { refundLimit: opts.email.approvalRefundLimit ?? approvalRefundLimit() }
+    : undefined;
   const signal = AbortSignal.timeout(process.env.VERCEL ? 240_000 : 600_000);
   const peerKickoffId = opts.peerMessage?.toAgentId;
   const sessions = run.agents.map((agent) => {
@@ -392,6 +552,8 @@ async function executeRun(
       scenarioHint:
         isKickoff && !peerKickoffId ? opts.scenarioHint : undefined,
       peerInboxKickoff: Boolean(peerKickoffId && agent.id === peerKickoffId),
+      provenanceTag: tag,
+      approvalGate: gate,
     });
   });
 
@@ -435,7 +597,8 @@ async function executeRun(
     run.finishedAt = new Date().toISOString();
     traceBus.emit(run.id, "run.completed", { status: run.status });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // Trace events are public (GET /api/runs/:id, SSE): never leak key or proxy URL.
+    const message = redactSecrets(err instanceof Error ? err.message : String(err));
     run.status = "failed";
     run.error = message;
     run.finishedAt = new Date().toISOString();

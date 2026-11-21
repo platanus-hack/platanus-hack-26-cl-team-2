@@ -60,9 +60,13 @@ describe("sender check (port of sender_check.py)", () => {
       "        out[os.path.basename(f) + '#' + s['id']] = [r['verdict'], sorted(r['reasons'])]",
       "sys.stdout.write(json.dumps(out))",
     ].join("\n");
-    const py = spawnSync("python", ["-I", "-c", script], { cwd: REPO, encoding: "utf-8" });
+    // Many systems ship only `python3` (no `python`), others (Windows) only `python`.
+    const run = (bin: string) =>
+      spawnSync(bin, ["-I", "-c", script], { cwd: REPO, encoding: "utf-8" });
+    let py = run("python3");
+    if (py.error || py.status !== 0) py = run("python");
     if (py.error || py.status !== 0) {
-      t.skip(`python not available (${py.error?.message ?? py.stderr.trim()})`);
+      t.skip(`python3/python not available (${py.error?.message ?? py.stderr.trim()})`);
       return;
     }
     const expected = JSON.parse(py.stdout) as Record<string, [string, string[]]>;

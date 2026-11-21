@@ -16,7 +16,8 @@ import {
   type VulnScenarioBrief,
   type VulnScores,
 } from "@sandbox/shared";
-import { assertApiKeyConfigured, config } from "../config.js";
+import { anthropicClient } from "../anthropic-client.js";
+import { assertApiKeyConfigured } from "../config.js";
 import { getAgent } from "../db/agents-repo.js";
 import { buildInvokePayload } from "../db/invoke.js";
 import type { StoredAgent } from "../db/mappers.js";
@@ -297,7 +298,7 @@ export async function designScenarios(
 ): Promise<VulnDesignerBrief> {
   assertApiKeyConfigured();
   const invoke = buildInvokePayload(agent);
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = anthropicClient();
 
   const priorBlock = prior
     ? [
@@ -353,7 +354,7 @@ export async function scoreRuns(input: {
   summary: string;
 }> {
   assertApiKeyConfigured();
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = anthropicClient();
 
   const traceBlocks = input.runTraces
     .map(

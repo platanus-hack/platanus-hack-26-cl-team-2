@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { anthropicClient } from "../anthropic-client.js";
 import type { AgentProfile } from "@sandbox/shared";
 import { assertApiKeyConfigured, config } from "../config.js";
 
@@ -45,7 +46,7 @@ export async function refineProfileWithHaiku(
 ): Promise<AgentProfile> {
   assertApiKeyConfigured();
 
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = anthropicClient();
 
   const response = await client.messages.create({
     model: REFINE_MODEL,

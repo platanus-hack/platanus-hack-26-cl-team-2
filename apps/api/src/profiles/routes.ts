@@ -13,6 +13,10 @@ import {
 import { z } from "zod";
 import { listAgents, getAgent, upsertAgent } from "../db/agents-repo.js";
 import { refineModelId, refineProfileWithHaiku } from "./refine.js";
+import { requireAdmin } from "../security/admin.js";
+import { demoGuard, denyIfOverBudget, requestIp } from "../security/budget.js";
+import { errorMessage } from "../security/redact.js";
+import { modelErrorStatus } from "../security/spend.js";
 
 const knobsSchema = z.object({
   seniority: z.enum(["junior", "mid", "senior", "staff"]),
@@ -51,9 +55,9 @@ const composeSchema = z.object({
 
 const refineSchema = z.object({
   profile: z.object({
-    id: z.string(),
-    name: z.string(),
-    title: z.string(),
+    id: z.string().min(1).max(128),
+    name: z.string().min(1).max(64),
+    title: z.string().min(1).max(120),
     areaId: z.enum([
       "gtm",
       "csm",
@@ -65,14 +69,15 @@ const refineSchema = z.object({
       "finance",
     ]),
     knobs: knobsSchema,
-    systemContext: z.string().min(1),
-    operatingStyle: z.array(z.string()),
-    goalTemplate: z.string(),
+    // 12000: a direct-prompt agent keeps its whole prompt here (PromptAgent's limit).
+    systemContext: z.string().min(1).max(12000),
+    operatingStyle: z.array(z.string().max(600)).max(12),
+    goalTemplate: z.string().max(2000),
     rawCompose: z
       .object({
-        systemContext: z.string(),
-        operatingStyle: z.array(z.string()),
-        goalTemplate: z.string(),
+        systemContext: z.string().max(8000),
+        operatingStyle: z.array(z.string().max(600)).max(12),
+        goalTemplate: z.string().max(2000),
       })
       .optional(),
     refinedByModel: z.boolean().optional(),
@@ -83,7 +88,7 @@ const refineSchema = z.object({
         notes: z.string().max(400).optional(),
       })
       .optional(),
-    createdAt: z.string(),
+    createdAt: z.string().max(64),
   }),
 });
 
@@ -112,11 +117,16 @@ profileRoutes.post("/compose", async (c) => {
   if (orgHints) profile = { ...profile, orgHints };
 
   let refineError: string | undefined;
-  if (refine) {
+  // refine=true calls the model: same per-IP and daily budget as the judge. When over budget
+  // the deterministic profile is still returned, with the limit message as refineError.
+  const budget = refine ? demoGuard.checkModelCall(requestIp(c)) : null;
+  if (budget && !budget.ok) {
+    refineError = budget.message;
+  } else if (refine) {
     try {
       profile = await refineProfileWithHaiku(profile);
     } catch (err) {
-      refineError = err instanceof Error ? err.message : String(err);
+      refineError = errorMessage(err);
     }
   }
 
@@ -138,10 +148,12 @@ profileRoutes.post("/refine", async (c) => {
     return c.json({ error: "Invalid body", details: parsed.error.flatten() }, 400);
   }
 
+  if (parsed.data.profile.orgHints?.notes === "mesh:prompt-only") {
+    return c.json({ error: "Los perfiles de prompt directo no se refinan con plantillas. Edita su prompt original." }, 400);
+  }
+  const denied = denyIfOverBudget(c, demoGuard.checkModelCall(requestIp(c)));
+  if (denied) return denied;
   try {
-    if (parsed.data.profile.orgHints?.notes === "mesh:prompt-only") {
-      return c.json({ error: "Los perfiles de prompt directo no se refinan con plantillas. Edita su prompt original." }, 400);
-    }
     const profile = await refineProfileWithHaiku(
       parsed.data.profile as AgentProfile,
     );
@@ -154,14 +166,14 @@ profileRoutes.post("/refine", async (c) => {
       refineModel: refineModelId(),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const status = message.includes("ANTHROPIC_API_KEY") ? 503 : 502;
+    const message = errorMessage(err);
+    const status = modelErrorStatus(err, message);
     return c.json({ error: message }, status);
   }
 });
 
 /** Persist profile (SQLite local / Postgres prod). */
-profileRoutes.post("/save", async (c) => {
+profileRoutes.post("/save", requireAdmin, async (c) => {
   const json = await c.req.json().catch(() => null);
   const parsed = refineSchema.safeParse(json);
   if (!parsed.success) {
@@ -177,7 +189,7 @@ profileRoutes.post("/save", async (c) => {
     return c.json({ ok: true, profile: agent, agent });
   } catch (err) {
     return c.json(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: errorMessage(err) },
       500,
     );
   }
@@ -189,7 +201,7 @@ profileRoutes.get("/saved", async (c) => {
     return c.json({ profiles: agentsList, agents: agentsList });
   } catch (err) {
     return c.json(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: errorMessage(err) },
       500,
     );
   }
@@ -209,7 +221,7 @@ profileRoutes.get("/saved/:id", async (c) => {
     });
   } catch (err) {
     return c.json(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: errorMessage(err) },
       500,
     );
   }

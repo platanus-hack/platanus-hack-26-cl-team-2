@@ -6,17 +6,8 @@ import type {
   SeniorityMix,
 } from "@sandbox/shared";
 import { fetchEnterprisePresets, generateEnterprise } from "../api";
+import { AREA_LABELS } from "./labels";
 
-const AREA_LABELS: Record<AreaId, string> = {
-  gtm: "Comercial (Ventas)",
-  csm: "CSM",
-  cs: "Soporte al cliente",
-  engineering: "Ingeniería",
-  product_design: "Producto y diseño",
-  data: "Datos",
-  it: "IT",
-  finance: "Finance",
-};
 
 const EMPTY: AreaHeadcount = {
   gtm: 0,
@@ -39,7 +30,9 @@ export function EnterprisePage({ hasDatabase }: Props) {
     AreaHeadcount
   > | null>(null);
   const [areas, setAreas] = useState<AreaId[]>([]);
-  const [preset, setPreset] = useState<OrgSizePreset | "custom">(100);
+  // Default to the smallest useful company (1 per area = 8 agents) so one click
+  // doesn't flood the org graph and the lab with 100 agents.
+  const [preset, setPreset] = useState<OrgSizePreset | "custom">("custom");
   const [companyName, setCompanyName] = useState("Acme Corp");
   const [counts, setCounts] = useState<AreaHeadcount>({ ...EMPTY });
   const [mix, setMix] = useState<SeniorityMix>({
@@ -64,7 +57,9 @@ export function EnterprisePage({ hasDatabase }: Props) {
       .then((data) => {
         setPresets(data.presets);
         setAreas(data.areas);
-        setCounts({ ...data.presets[100] });
+        const ones = { ...EMPTY };
+        for (const id of data.areas) ones[id] = 1;
+        setCounts(ones);
       })
       .catch((err) =>
         setError(err instanceof Error ? err.message : String(err)),
@@ -75,6 +70,11 @@ export function EnterprisePage({ hasDatabase }: Props) {
     () => areas.reduce((sum, id) => sum + (counts[id] ?? 0), 0),
     [areas, counts],
   );
+
+  const isOnes =
+    preset === "custom" &&
+    areas.length > 0 &&
+    areas.every((id) => counts[id] === 1);
 
   function applyPreset(size: OrgSizePreset) {
     if (!presets) return;
@@ -155,8 +155,16 @@ export function EnterprisePage({ hasDatabase }: Props) {
 
       <div className="controls" style={{ marginTop: "1rem" }}>
         <span className="hint" style={{ margin: 0 }}>
-          Configuraciones con cantidad exacta de agentes, distribuidos por área:
+          Tamaño de la empresa:
         </span>
+        <button
+          type="button"
+          className={isOnes ? "btn" : "btn ghost"}
+          onClick={applyOnes}
+          disabled={busy}
+        >
+          1 por área ({areas.length || 8} agentes)
+        </button>
         {([100, 200, 400] as const).map((size) => (
           <button
             key={size}
@@ -170,25 +178,19 @@ export function EnterprisePage({ hasDatabase }: Props) {
         ))}
         <button
           type="button"
-          className={preset === "custom" ? "btn" : "btn ghost"}
+          className={preset === "custom" && !isOnes ? "btn" : "btn ghost"}
           onClick={applyCustomBlank}
           disabled={busy}
         >
           Personalizado
         </button>
-        <button
-          type="button"
-          className="btn ghost"
-          onClick={applyOnes}
-          disabled={busy}
-        >
-          1 por área
-        </button>
       </div>
       <p className="hint">
         {preset === "custom"
-          ? "Personalizado: edita las cantidades; el total se actualiza automáticamente."
-          : `Preset ${preset}: totals ${total} agentes across areas. Edit any field to switch to Custom.`}
+          ? isOnes
+            ? "1 por área: una empresa pequeña con un agente en cada área. Puedes editar las cantidades."
+            : "Personalizado: edita las cantidades; el total se actualiza automáticamente."
+          : `Configuración de ${preset} agentes: ${total} agentes repartidos entre las áreas. Si editas una cantidad, pasa a Personalizado.`}
       </p>
 
       <div className="enterprise-grid">
