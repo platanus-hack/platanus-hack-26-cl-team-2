@@ -113,7 +113,7 @@ app.get("/api/batch-results", (c) => {
 
 app.get("/api/runs/:id", (c) => {
   const run = getRun(c.req.param("id"));
-  if (!run) return c.json({ error: "Run not found" }, 404);
+  if (!run) return c.json({ error: "Ejecución no encontrada" }, 404);
   const internal = getInternalRun(run.id);
   return c.json({
     run,
@@ -147,9 +147,9 @@ app.post("/api/risk-paths", async (c) => {
 
 app.post("/api/runs/:id/judge", async (c) => {
   const internal = getInternalRun(c.req.param("id"));
-  if (!internal) return c.json({ error: "Run not found" }, 404);
+  if (!internal) return c.json({ error: "Ejecución no encontrada" }, 404);
   if (internal.status !== "completed" && internal.status !== "failed") {
-    return c.json({ error: "Run still in progress" }, 409);
+    return c.json({ error: "La ejecución todavía está en curso" }, 409);
   }
   const evaluation = evaluateInternalRun(internal);
   if (internal.judgment) {
@@ -262,7 +262,7 @@ app.post("/api/runs/from-stored", async (c) => {
 app.get("/api/runs/:id/events", (c) => {
   const runId = c.req.param("id");
   const run = getRun(runId);
-  if (!run) return c.json({ error: "Run not found" }, 404);
+  if (!run) return c.json({ error: "Ejecución no encontrada" }, 404);
 
   return streamSSE(c, async (stream) => {
     const history = traceBus.history(runId);

@@ -1,5 +1,5 @@
 import type { RunJudgment } from "./api";
-import { AuditBlock } from "./RunOutcome";
+import { AuditBlock, SEVERITY_LABEL } from "./RunOutcome";
 
 type Props = {
   judgment: RunJudgment | null;
@@ -7,6 +7,8 @@ type Props = {
   error: string | null;
   canRetry?: boolean;
   onRetry?: () => void;
+  /** false: the server has no API key, so the retry (a model call) is disabled. */
+  hasApiKey?: boolean;
 };
 
 export function RunJudgmentPanel({
@@ -15,6 +17,7 @@ export function RunJudgmentPanel({
   error,
   canRetry,
   onRetry,
+  hasApiKey = true,
 }: Props) {
   if (loading) {
     return (
@@ -31,7 +34,13 @@ export function RunJudgmentPanel({
         <h2>Evaluación posterior a la ejecución</h2>
         <p className="error">{error}</p>
         {canRetry && onRetry ? (
-          <button type="button" className="btn" onClick={onRetry}>
+          <button
+            type="button"
+            className="btn"
+            onClick={onRetry}
+            disabled={!hasApiKey}
+            title={hasApiKey ? undefined : "Falta la ANTHROPIC_API_KEY en el servidor"}
+          >
             Reintentar evaluación (sin repetir ejecución)
           </button>
         ) : null}
@@ -70,7 +79,7 @@ export function RunJudgmentPanel({
           {judgment.risks.map((r) => (
             <li key={`${r.severity}-${r.title}`} data-severity={r.severity}>
               <strong>
-                [{r.severity}] {r.title}
+                [{SEVERITY_LABEL[r.severity] ?? r.severity}] {r.title}
               </strong>
               <span>{r.why}</span>
             </li>

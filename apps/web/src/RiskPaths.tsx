@@ -1,4 +1,5 @@
 import type { ObservedPath, RiskPath, RiskPathAnalysis } from "@sandbox/shared";
+import { fixLabel, SEVERITY_LABEL } from "./RunOutcome";
 
 const LEVEL_LABEL: Record<RiskPath["level"], string> = {
   local: "local",
@@ -106,8 +107,8 @@ export function RiskPathsPanel({
                 className={
                   analysis.summary.high > 0
                     ? "outcome-verdict tone-bad"
-                    : analysis.summary.total > 0
-                      ? "outcome-verdict tone-warn"
+                    : analysis.paths.some((p) => p.severity === "medium")
+                      ? "outcome-verdict tone-neutral"
                       : "outcome-verdict tone-ok"
                 }
               >
@@ -121,7 +122,7 @@ export function RiskPathsPanel({
                 {analysis.summary.verdictLost
                   ? ` · veredicto del remitente perdido en ${analysis.summary.verdictLost}`
                   : ""}
-                {analysis.fixes.length ? ` · mitigaciones: ${analysis.fixes.join(", ")}` : ""}
+                {analysis.fixes.length ? ` · mitigaciones: ${analysis.fixes.map(fixLabel).join(", ")}` : ""}
               </p>
             </div>
           </div>
@@ -131,7 +132,7 @@ export function RiskPathsPanel({
               {analysis.paths.map((p) => (
                 <li key={p.id} data-severity={p.severity}>
                   <span>
-                    <strong>{p.id}</strong> · {p.severity} · {LEVEL_LABEL[p.level]}
+                    <strong>{p.id}</strong> · severidad {SEVERITY_LABEL[p.severity]} · {LEVEL_LABEL[p.level]}
                   </span>
                   <Chain
                     nodes={p.nodes}

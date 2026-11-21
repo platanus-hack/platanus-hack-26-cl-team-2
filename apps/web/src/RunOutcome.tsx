@@ -1,5 +1,38 @@
-import type { RunAudit, RunEvaluation } from "@sandbox/shared";
+import type { EmailScenarioKind, RunAudit, RunEvaluation, SenderCheck } from "@sandbox/shared";
 import type { RunJudgment } from "./api";
+
+/** Display labels only: ids and enum values sent to the API stay as they are. */
+export const FIX_LABEL_ES: Record<string, string> = {
+  sender_check: "verificación del remitente",
+  provenance_tag: "etiqueta de procedencia",
+  none: "ninguna",
+};
+
+export function fixLabel(fix: string): string {
+  return FIX_LABEL_ES[fix] ?? fix;
+}
+
+export const EMAIL_KIND_LABEL: Record<EmailScenarioKind, string> = {
+  attack: "ataque",
+  benign: "legítimo",
+  real_email: "correo real",
+};
+
+export function emailKindLabel(kind: string): string {
+  return EMAIL_KIND_LABEL[kind as EmailScenarioKind] ?? kind;
+}
+
+export const SENDER_VERDICT_LABEL: Record<SenderCheck["verdict"], string> = {
+  OK: "OK",
+  SUSPICIOUS: "SOSPECHOSO",
+  UNKNOWN: "DESCONOCIDO",
+};
+
+export const SEVERITY_LABEL: Record<"high" | "medium" | "low", string> = {
+  high: "alta",
+  medium: "media",
+  low: "baja",
+};
 
 const VERDICT_LABEL: Record<RunEvaluation["verdict"], string> = {
   attack_succeeded: "Ataque exitoso: un agente intentó cambiar la cuenta bancaria del proveedor",
@@ -26,15 +59,15 @@ export function RunOutcomePanel({ evaluation }: { evaluation: RunEvaluation | nu
       <p className={`outcome-verdict tone-${tone}`}>{VERDICT_LABEL[evaluation.verdict]}</p>
       <ul className="outcome-facts">
         <li>
-          Email:{" "}
+          Correo:{" "}
           {evaluation.email
-            ? `${evaluation.email.id} (${evaluation.email.kind}, ${evaluation.email.technique})`
+            ? `${evaluation.email.id} (${emailKindLabel(evaluation.email.kind)}, ${evaluation.email.technique})`
             : "ninguno (escenario de texto libre)"}
         </li>
-        <li>Mitigaciones activas: {evaluation.fixes.length ? evaluation.fixes.join(", ") : "ninguna"}</li>
+        <li>Mitigaciones activas: {evaluation.fixes.length ? evaluation.fixes.map(fixLabel).join(", ") : "ninguna"}</li>
         <li>
           Intento de cambio bancario: {evaluation.dangerousAttempted ? "SÍ" : "no"}
-          {evaluation.blockedBySandbox ? "(bloqueado por el entorno de pruebas)" : ""}
+          {evaluation.blockedBySandbox ? " (bloqueado por el entorno de pruebas)" : ""}
         </li>
         <li>Reembolsos simulados: {evaluation.refundsExecuted}</li>
         <li>Llegó a un agente con herramientas financieras: {evaluation.reachedFinance ? "sí" : "no"}</li>
@@ -64,7 +97,7 @@ export function AuditBlock({ audit }: { audit?: RunAudit }) {
         </li>
         {audit.missedRisk ? <li>Riesgo omitido: {audit.missedRisk}</li> : null}
         <li>
-          Mitigación recomendada: <strong>{audit.recommendedFix}</strong>
+          Mitigación recomendada: <strong>{fixLabel(audit.recommendedFix)}</strong>
         </li>
       </ul>
     </>

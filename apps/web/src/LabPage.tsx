@@ -23,7 +23,9 @@ import {
 import { RunJudgmentPanel } from "./RunJudgment";
 import {
   BeforeAfterPanel,
+  emailKindLabel,
   RunOutcomePanel,
+  SENDER_VERDICT_LABEL,
   type RunSnapshot,
 } from "./RunOutcome";
 import { RiskPathsPanel } from "./RiskPaths";
@@ -36,6 +38,57 @@ type Props = {
 };
 
 const MAX_PARTICIPANTS = 8;
+
+const NO_API_KEY_HINT =
+  "Falta la ANTHROPIC_API_KEY en el servidor: no se pueden lanzar agentes.";
+
+/** Display labels only: the ids stored on the agents are unchanged. */
+const AREA_LABELS: Record<string, string> = {
+  all: "todas",
+  gtm: "Comercial (Ventas)",
+  csm: "CSM",
+  cs: "Soporte al cliente",
+  engineering: "Ingeniería",
+  product_design: "Producto y diseño",
+  data: "Datos",
+  it: "IT",
+  finance: "Finanzas",
+};
+
+const SENIORITY_LABELS: Record<string, string> = {
+  junior: "inicial",
+  mid: "intermedio",
+  senior: "avanzado",
+  staff: "especialista",
+};
+
+const MOTIVATION_LABELS: Record<string, string> = {
+  quality: "calidad",
+  speed: "rapidez",
+  compliance: "cumplimiento",
+  impact: "impacto",
+  recognition: "reconocimiento",
+};
+
+const RUN_STATUS_LABELS: Record<RunSummary["status"], string> = {
+  pending: "pendiente",
+  running: "en curso",
+  completed: "completada",
+  failed: "fallida",
+  stopped: "detenida",
+};
+
+/** Default email for the demo: the spoofed-Microsoft bank change, else the first suspicious attack. */
+function defaultEmail(scenarios: EmailScenarioSummary[]): EmailScenarioSummary | undefined {
+  return (
+    scenarios.find(
+      (e) => e.file === "spoof_eval_demo.json" && e.id === "spoof_02_fake_microsoft_bank",
+    ) ??
+    scenarios.find((e) => e.kind === "attack" && e.senderCheck.verdict === "SUSPICIOUS") ??
+    scenarios.find((e) => e.kind === "attack") ??
+    scenarios[0]
+  );
+}
 
 type FixName = "sender_check" | "provenance_tag";
 
@@ -129,7 +182,8 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
     listEmailScenarios()
       .then(({ scenarios, errors }) => {
         setEmails(scenarios);
-        if (scenarios[0]) setEmailKey(emailKeyOf(scenarios[0]));
+        const first = defaultEmail(scenarios);
+        if (first) setEmailKey(emailKeyOf(first));
         if (errors.length) setEmailLoadError(errors.join(" · "));
       })
       .catch((err) =>
@@ -229,7 +283,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
         !data.judgment &&
         (data.run.status === "completed" || data.run.status === "failed")
       ) {
-        await requestJudge(id);
+        if (hasApiKey) await requestJudge(id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -239,7 +293,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
   async function judgePasted() {
     const transcript = pastedTranscript.trim();
     if (transcript.length < 40) {
-      setJudgeError("Paste the live-trace / conversation text first.");
+      setJudgeError("Primero pega el texto de la traza o de la conversación.");
       return;
     }
     setJudging(true);
@@ -291,9 +345,12 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
     return map;
   }, [run]);
 
-  // Keep seed valid when toggling
+  // Keep seed valid when toggling; with nothing selected there is no seed.
   useEffect(() => {
-    if (selectedIds.length === 0) return;
+    if (selectedIds.length === 0) {
+      if (seedAgentId) setSeedAgentId("");
+      return;
+    }
     if (!selectedIds.includes(seedAgentId)) {
       setSeedAgentId(selectedIds[0]);
     }
@@ -309,7 +366,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
     provenanceTagOn,
   });
   useEffect(() => {
-    if (selectedIds.length === 0 || !selectedIds.includes(seedAgentId)) {
+    if (selectedIds.length < 2 || !selectedIds.includes(seedAgentId)) {
       setPreview(null);
       setPreviewLoading(false);
       setPreviewError(null);
@@ -369,7 +426,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
       if (turningOn) {
         const currentlyOn = Object.values(prev).filter(Boolean).length;
         if (currentlyOn >= MAX_PARTICIPANTS) {
-          setError(`Max ${MAX_PARTICIPANTS} agentes per run (token safety).`);
+          setError(`Máximo ${MAX_PARTICIPANTS} agentes por ejecución (para cuidar tokens).`);
           return prev;
         }
       }
@@ -494,7 +551,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
             >
               {areas.map((a) => (
                 <option key={a} value={a}>
-                  {a}
+                  {AREA_LABELS[a] ?? a}
                 </option>
               ))}
             </select>
@@ -547,7 +604,9 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
               <span className="fleet-main">
                 <strong>{a.name}</strong>
                 <span className="muted">
-                  {a.areaId} · {a.knobs.seniority} · {a.knobs.motivation}
+                  {AREA_LABELS[a.areaId] ?? a.areaId} ·{" "}
+                  {SENIORITY_LABELS[a.knobs.seniority] ?? a.knobs.seniority} ·{" "}
+                  {MOTIVATION_LABELS[a.knobs.motivation] ?? a.knobs.motivation}
                 </span>
               </span>
               <button
@@ -628,7 +687,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
                             .filter((e) => e.file === file)
                             .map((e) => (
                               <option key={emailKeyOf(e)} value={emailKeyOf(e)}>
-                                [{e.kind}] {e.id}
+                                [{emailKindLabel(e.kind)}] {e.id}
                               </option>
                             ))}
                         </optgroup>
@@ -664,7 +723,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
                   <>
                     <p className="hint">
                       <span className={`email-kind kind-${selectedEmail.kind}`}>
-                        {selectedEmail.kind}
+                        {emailKindLabel(selectedEmail.kind)}
                       </span>{" "}
                       {selectedEmail.technique} · verificación del remitente:{" "}
                       <strong
@@ -674,12 +733,12 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
                             : "verdict-ok"
                         }
                       >
-                        {selectedEmail.senderCheck.verdict}
+                        {SENDER_VERDICT_LABEL[selectedEmail.senderCheck.verdict]}
                       </strong>
                       {selectedEmail.senderCheck.reasons.length
                         ? ` — ${selectedEmail.senderCheck.reasons.join("; ")}`
                         : ""}
-                      {senderCheckOn ? "" : "(calculado, no mostrado a los agentes)"}
+                      {senderCheckOn ? "" : " (calculado, no mostrado a los agentes)"}
                     </p>
                     <pre className="email-preview">{selectedEmail.email}</pre>
                   </>
@@ -690,7 +749,10 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
         )}
         <p className="hint">
           Agente inicial:{" "}
-          {catalog.find((a) => a.id === seedAgentId)?.name ?? "(ninguno)"} — es el único que recibe este {scenarioSource === "email" ? "correo" : "texto"} y decide los siguientes pasos.
+          {(selectedIds.includes(seedAgentId)
+            ? catalog.find((a) => a.id === seedAgentId)?.name
+            : undefined) ?? "(ninguno)"}{" "}
+          — es el único que recibe este {scenarioSource === "email" ? "correo" : "texto"} y decide los siguientes pasos.
         </p>
 
         <div className="controls">
@@ -714,6 +776,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
             {busy ? "Ejecutando…" : "Iniciar conversación"}
           </button>
         </div>
+        {!hasApiKey ? <p className="error">{NO_API_KEY_HINT}</p> : null}
         {rerunFixes.length ? (
           <div className="controls">
             {rerunFixes.map((fix) => (
@@ -721,6 +784,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
                 key={fix}
                 type="button"
                 className="btn"
+                disabled={!hasApiKey}
                 onClick={() => void rerunWithFix(fix)}
                 title={FIX_BUTTON[fix].title}
               >
@@ -738,7 +802,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
         {error ? <p className="error">{error}</p> : null}
         {run ? (
           <p className="hint">
-            Ejecución: {run.id} · {run.status} · {run.agents.length} agentes · agente inicial primero
+            Ejecución: {run.id} · {RUN_STATUS_LABELS[run.status] ?? run.status} · {run.agents.length} agentes · agente inicial primero
           </p>
         ) : null}
 
@@ -758,7 +822,8 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
           <button
             type="button"
             className="btn"
-            disabled={judging || pastedTranscript.trim().length < 40}
+            disabled={!hasApiKey || judging || pastedTranscript.trim().length < 40}
+            title={hasApiKey ? undefined : NO_API_KEY_HINT}
             onClick={() => void judgePasted()}
           >
             {judging ? "Evaluando…" : "Evaluar texto"}
@@ -790,7 +855,8 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
             <button
               type="button"
               className="btn ghost"
-              disabled={judging || !manualRunId.trim()}
+              disabled={!hasApiKey || judging || !manualRunId.trim()}
+              title={hasApiKey ? undefined : NO_API_KEY_HINT}
               onClick={() => void requestJudge(manualRunId)}
             >
               Evaluar ID
@@ -799,12 +865,19 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
         </label>
       </section>
 
-      <RiskPathsPanel
-        title="Rutas de riesgo (MESH) — previstas para esta configuración"
-        analysis={preview}
-        loading={previewLoading}
-        error={previewError}
-      />
+      {selectedIds.length < 2 ? (
+        <section className="panel risk-paths">
+          <h2>Rutas de riesgo (MESH) — previstas para esta configuración</h2>
+          <p className="hint">Elige al menos dos agentes para ver las rutas de riesgo.</p>
+        </section>
+      ) : (
+        <RiskPathsPanel
+          title="Rutas de riesgo (MESH) — previstas para esta configuración"
+          analysis={preview}
+          loading={previewLoading}
+          error={previewError}
+        />
+      )}
       {runRiskPaths ? (
         <RiskPathsPanel
           title="Rutas de riesgo (MESH) — esta ejecución"
@@ -835,6 +908,7 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
         loading={judging}
         error={judgeError}
         canRetry={Boolean(run && (run.status === "completed" || run.status === "failed"))}
+        hasApiKey={hasApiKey}
         onRetry={() => run && void requestJudge(run.id)}
       />
     </>

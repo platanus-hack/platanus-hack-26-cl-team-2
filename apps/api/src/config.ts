@@ -62,7 +62,7 @@ export const config = {
 export function assertApiKeyConfigured(): void {
   if (!config.anthropicApiKey) {
     throw new Error(
-      "ANTHROPIC_API_KEY missing. Copy .env.example to .env and paste your key.",
+      "Falta ANTHROPIC_API_KEY. Copia .env.example a .env y pega tu key.",
     );
   }
 }

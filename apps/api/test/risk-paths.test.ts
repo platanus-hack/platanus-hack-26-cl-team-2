@@ -52,7 +52,7 @@ describe("risk paths: predicted from the setup (no model)", () => {
     assert.equal(direct.severity, "high");
     assert.equal(direct.provenanceAtSink, false);
     assert.equal(direct.verdictLostAtHop, 1);
-    assert.match(direct.finding, /dropped at hop 1/);
+    assert.match(direct.finding, /se pierde en el salto 1/);
 
     const relay = a.paths.find((p) => p.nodes.join(">") === "email>seed>ops>fin");
     assert.ok(relay);
