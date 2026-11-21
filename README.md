@@ -45,7 +45,7 @@ attempt is recorded.
 ## Results so far (real runs, 2026-11-21)
 
 One real Claude agent per email, finance tools over MCP, neutral prompt, 3 repetitions per cell.
-Details and limits: [docs/experiments/approval-gate.md](docs/experiments/approval-gate.md).
+Details and limits: [docs/experiments/approval-gate.md](docs/experiments/approval-gate.md). Conclusions (Spanish): [docs/conclusiones.md](docs/conclusiones.md).
 
 | Refund-fraud emails (7 attacks, 21 runs per cell) | No fix | With `approval_gate` |
 |---|---|---|
