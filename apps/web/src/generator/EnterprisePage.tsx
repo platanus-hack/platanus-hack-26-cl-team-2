@@ -8,12 +8,12 @@ import type {
 import { fetchEnterprisePresets, generateEnterprise } from "../api";
 
 const AREA_LABELS: Record<AreaId, string> = {
-  gtm: "GTM (Sales)",
+  gtm: "Comercial (Ventas)",
   csm: "CSM",
-  cs: "Customer Support",
-  engineering: "Engineering",
-  product_design: "Product + Design",
-  data: "Data",
+  cs: "Soporte al cliente",
+  engineering: "Ingeniería",
+  product_design: "Producto y diseño",
+  data: "Datos",
   it: "IT",
 };
 
@@ -132,19 +132,18 @@ export function EnterprisePage({ hasDatabase }: Props) {
 
   return (
     <section className="panel generator">
-      <h2>Enterprise generator</h2>
+      <h2>Generador de empresas</h2>
       <p className="hint">
-        Bulk-create harness profiles from area templates.{" "}
-        <strong>No AI / no tokens</strong> — deterministic compose only. Default
-        seniority mix ≈ 25% junior · 50% mid · 25% senior.
+        Crea múltiples perfiles de agentes a partir de plantillas por área.{" "}
+        <strong>Sin IA ni consumo de tokens</strong> — generación determinista. Distribución predeterminada: 25% inicial · 50% intermedio · 25% avanzado.
       </p>
 
       {!hasDatabase ? (
-        <p className="error">Database offline — cannot persist the fleet.</p>
+        <p className="error">Base de datos desconectada: no se pueden guardar los agentes.</p>
       ) : null}
 
       <label className="block-label">
-        Company name
+        Nombre de empresa
         <input
           value={companyName}
           onChange={(e) => setCompanyName(e.target.value)}
@@ -154,7 +153,7 @@ export function EnterprisePage({ hasDatabase }: Props) {
 
       <div className="controls" style={{ marginTop: "1rem" }}>
         <span className="hint" style={{ margin: 0 }}>
-          Presets = exact agent count, split by area:
+          Configuraciones con cantidad exacta de agentes, distribuidos por área:
         </span>
         {([100, 200, 400] as const).map((size) => (
           <button
@@ -164,7 +163,7 @@ export function EnterprisePage({ hasDatabase }: Props) {
             onClick={() => applyPreset(size)}
             disabled={busy || !presets}
           >
-            {size} agents
+            {size} agentes
           </button>
         ))}
         <button
@@ -173,7 +172,7 @@ export function EnterprisePage({ hasDatabase }: Props) {
           onClick={applyCustomBlank}
           disabled={busy}
         >
-          Custom
+          Personalizado
         </button>
         <button
           type="button"
@@ -181,13 +180,13 @@ export function EnterprisePage({ hasDatabase }: Props) {
           onClick={applyOnes}
           disabled={busy}
         >
-          1 per area
+          1 por área
         </button>
       </div>
       <p className="hint">
         {preset === "custom"
-          ? "Custom: edit the numbers below (total updates live)."
-          : `Preset ${preset}: totals ${total} agents across areas. Edit any field to switch to Custom.`}
+          ? "Personalizado: edita las cantidades; el total se actualiza automáticamente."
+          : `Preset ${preset}: totals ${total} agentes across areas. Edit any field to switch to Custom.`}
       </p>
 
       <div className="enterprise-grid">
@@ -206,11 +205,11 @@ export function EnterprisePage({ hasDatabase }: Props) {
         ))}
       </div>
 
-      <p className="hint">Total agents: {total}</p>
+      <p className="hint">Total de agentes: {total}</p>
 
       <div className="enterprise-grid mix">
         <label>
-          Junior %
+          Inicial %
           <input
             type="number"
             min={0}
@@ -223,7 +222,7 @@ export function EnterprisePage({ hasDatabase }: Props) {
           />
         </label>
         <label>
-          Mid %
+          Intermedio %
           <input
             type="number"
             min={0}
@@ -236,7 +235,7 @@ export function EnterprisePage({ hasDatabase }: Props) {
           />
         </label>
         <label>
-          Senior %
+          Avanzado %
           <input
             type="number"
             min={0}
@@ -257,7 +256,7 @@ export function EnterprisePage({ hasDatabase }: Props) {
           onClick={onGenerate}
           disabled={busy || !hasDatabase || total === 0}
         >
-          {busy ? "Generating…" : "Generate fleet (no AI)"}
+          {busy ? "Generando…" : "Generar agentes (sin IA)"}
         </button>
       </div>
 
@@ -265,16 +264,16 @@ export function EnterprisePage({ hasDatabase }: Props) {
       {result ? (
         <div className="notice enterprise-result">
           <p>
-            Created {result.total} profiles · saved {result.saved} · AI used:{" "}
-            {result.usedAi ? "yes" : "no"}
+            Creados: {result.total} perfiles · guardados: {result.saved} · IA utilizada:{" "}
+            {result.usedAi ? "sí" : "no"}
           </p>
           <p>
-            Seniority — junior {result.summary.bySeniority.junior ?? 0}, mid{" "}
-            {result.summary.bySeniority.mid ?? 0}, senior{" "}
+            Experiencia — inicial {result.summary.bySeniority.junior ?? 0}, intermedio{" "}
+            {result.summary.bySeniority.mid ?? 0}, avanzado{" "}
             {result.summary.bySeniority.senior ?? 0}
           </p>
           <p className="hint">
-            Open Multi-agent lab to pick any two and run a conversation.
+            Abre Evaluaciones para seleccionar agentes e iniciar una conversación.
           </p>
         </div>
       ) : null}

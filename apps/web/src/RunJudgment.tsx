@@ -19,8 +19,8 @@ export function RunJudgmentPanel({
   if (loading) {
     return (
       <section className="panel">
-        <h2>Post-run judgment</h2>
-        <p className="hint">Haiku is judging the interaction (cheap pass)…</p>
+        <h2>Evaluación posterior a la ejecución</h2>
+        <p className="hint">Haiku está evaluando la interacción…</p>
       </section>
     );
   }
@@ -28,11 +28,11 @@ export function RunJudgmentPanel({
   if (error) {
     return (
       <section className="panel">
-        <h2>Post-run judgment</h2>
+        <h2>Evaluación posterior a la ejecución</h2>
         <p className="error">{error}</p>
         {canRetry && onRetry ? (
           <button type="button" className="btn" onClick={onRetry}>
-            Retry judge (no re-run)
+            Reintentar evaluación (sin repetir ejecución)
           </button>
         ) : null}
       </section>
@@ -43,18 +43,17 @@ export function RunJudgmentPanel({
 
   return (
     <section className="panel judgment">
-      <h2>Post-run judgment</h2>
+      <h2>Evaluación posterior a la ejecución</h2>
       <p className="hint">
-        LLM-as-judge · {judgment.model} · interaction risks that single-agent
-        evals miss
+        Evaluación con IA · {judgment.model} · riesgos de interacción que las evaluaciones individuales no detectan
       </p>
 
-      <h3>Summary</h3>
+      <h3>Resumen</h3>
       <p className="judgment-body">{judgment.summary}</p>
 
       {judgment.decisions.length > 0 ? (
         <>
-          <h3>Decisions</h3>
+          <h3>Decisiones</h3>
           <ul className="judgment-list">
             {judgment.decisions.map((d) => (
               <li key={d}>{d}</li>
@@ -63,9 +62,9 @@ export function RunJudgmentPanel({
         </>
       ) : null}
 
-      <h3>Risks & governance insights</h3>
+      <h3>Riesgos y observaciones de gobernanza</h3>
       {judgment.risks.length === 0 ? (
-        <p className="hint">No interaction-emergent risks flagged.</p>
+        <p className="hint">No se detectaron riesgos derivados de las interacciones.</p>
       ) : (
         <ul className="risk-list">
           {judgment.risks.map((r) => (
@@ -81,14 +80,14 @@ export function RunJudgmentPanel({
 
       {judgment.governanceNotes ? (
         <>
-          <h3>Governance notes</h3>
+          <h3>Notas de gobernanza</h3>
           <p className="judgment-body">{judgment.governanceNotes}</p>
         </>
       ) : null}
 
       <AuditBlock audit={judgment.audit} />
 
-      <h3>Handling score</h3>
+      <h3>Puntaje de manejo</h3>
       <div className="score-row">
         <span className="score-num">{judgment.score}</span>
         <span className="score-label">/ 10</span>

@@ -22,7 +22,7 @@ export function ProfileEditor({ profile, onChange }: Props) {
       </div>
 
       <label>
-        Name
+        Nombre
         <input
           value={profile.name}
           onChange={(e) => onChange({ ...profile, name: e.target.value })}
@@ -30,7 +30,7 @@ export function ProfileEditor({ profile, onChange }: Props) {
       </label>
 
       <label>
-        System context (harness)
+        Contexto del sistema (entorno del agente)
         <textarea
           className="tall"
           value={profile.systemContext}
@@ -41,7 +41,7 @@ export function ProfileEditor({ profile, onChange }: Props) {
       </label>
 
       <label>
-        Operating style (one bullet per line)
+        Estilo de trabajo (un punto por línea)
         <textarea
           value={profile.operatingStyle.join("\n")}
           onChange={(e) =>
@@ -57,7 +57,7 @@ export function ProfileEditor({ profile, onChange }: Props) {
       </label>
 
       <label>
-        Goal / scenario template
+        Plantilla de objetivo o escenario
         <textarea
           value={profile.goalTemplate}
           onChange={(e) =>

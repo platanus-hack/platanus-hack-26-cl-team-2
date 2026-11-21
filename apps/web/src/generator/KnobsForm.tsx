@@ -27,25 +27,25 @@ export function KnobsForm({
   return (
     <div className="knobs-form">
       <label>
-        Agent name (optional)
+        Nombre del agente (opcional)
         <input
           value={name}
-          placeholder="Leave blank for auto title"
+          placeholder="Dejar vacío para generar un título"
           onChange={(e) => onNameChange(e.target.value)}
           disabled={disabled}
         />
       </label>
       <label>
-        Company hint (optional)
+        Empresa de referencia (opcional)
         <input
           value={companyName}
-          placeholder="e.g. Buk / Acme LatAm"
+          placeholder="Por ejemplo: Buk / Acme LatAm"
           onChange={(e) => onCompanyChange(e.target.value)}
           disabled={disabled}
         />
       </label>
       <label>
-        Seniority
+        Nivel de experiencia
         <select
           value={knobs.seniority}
           onChange={(e) =>
@@ -56,14 +56,14 @@ export function KnobsForm({
           }
           disabled={disabled}
         >
-          <option value="junior">Junior</option>
-          <option value="mid">Mid</option>
-          <option value="senior">Senior</option>
-          <option value="staff">Staff</option>
+          <option value="junior">Inicial</option>
+          <option value="mid">Intermedio</option>
+          <option value="senior">Avanzado</option>
+          <option value="staff">Especialista</option>
         </select>
       </label>
       <label>
-        Motivation
+        Motivación
         <select
           value={knobs.motivation}
           onChange={(e) =>
@@ -74,15 +74,15 @@ export function KnobsForm({
           }
           disabled={disabled}
         >
-          <option value="quality">Quality</option>
-          <option value="speed">Speed</option>
-          <option value="compliance">Compliance</option>
-          <option value="impact">Impact</option>
-          <option value="recognition">Recognition</option>
+          <option value="quality">Calidad</option>
+          <option value="speed">Rapidez</option>
+          <option value="compliance">Cumplimiento</option>
+          <option value="impact">Impacto</option>
+          <option value="recognition">Reconocimiento</option>
         </select>
       </label>
       <label>
-        Proactivity
+        Proactividad
         <select
           value={knobs.proactivity}
           onChange={(e) =>
@@ -93,9 +93,9 @@ export function KnobsForm({
           }
           disabled={disabled}
         >
-          <option value="low">Low — wait for asks</option>
-          <option value="medium">Medium — propose next step</option>
-          <option value="high">High — drive to closure</option>
+          <option value="low">Baja — espera instrucciones</option>
+          <option value="medium">Media — propone el siguiente paso</option>
+          <option value="high">Alta — impulsa la resolución</option>
         </select>
       </label>
     </div>

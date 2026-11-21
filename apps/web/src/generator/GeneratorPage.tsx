@@ -90,12 +90,12 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
       setProfile(result.profile);
       if (result.refineError) {
         setNotice(
-          `Deterministic profile ready. Haiku refine skipped: ${result.refineError}`,
+          `Perfil determinista listo. Se omitió el refinamiento con Haiku: ${result.refineError}`,
         );
       } else if (result.profile.refinedByModel) {
-        setNotice("Profile composed + Haiku refined. Save to Postgres to persist.");
+        setNotice("Perfil generado y refinado con Haiku. Guárdalo para conservarlo.");
       } else {
-        setNotice("Deterministic profile ready. Save to Postgres to persist.");
+        setNotice("Perfil determinista listo. Guárdalo para conservarlo.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -112,7 +112,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
     try {
       const result = await refineProfile(profile);
       setProfile(result.profile);
-      setNotice("Haiku refine applied.");
+      setNotice("Refinamiento con Haiku aplicado.");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -134,7 +134,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
       setProfile(agent);
       setStored(agent);
       await refreshAgents();
-      setNotice("Agent saved. Stable across reloads and ready to invoke.");
+      setNotice("Agente guardado y disponible para ejecutar, incluso después de recargar.");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -152,7 +152,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
         setStored(null);
       }
       await refreshAgents();
-      setNotice("Agent deleted.");
+      setNotice("Agente eliminado.");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -177,7 +177,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
         setProfile(updated);
       }
       setCtxContent("");
-      setNotice("Context file attached to harness.");
+      setNotice("Archivo de contexto adjuntado al agente.");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -207,10 +207,9 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
 
   return (
     <section className="panel generator">
-      <h2>Harness profile generator</h2>
+      <h2>Generador de perfiles de agentes</h2>
       <p className="hint">
-        Area templates + knobs → editable harness profile → Postgres. Context
-        files attach to the agent for later invoke.
+        Plantillas de área y parámetros → perfil editable → base de datos. Los archivos de contexto se adjuntan al agente para futuras ejecuciones.
       </p>
 
       {!hasDatabase ? (
@@ -238,9 +237,9 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
 
       {selectedArea ? (
         <p className="area-detail">
-          <strong>How:</strong> {selectedArea.how}
+          <strong>Cómo:</strong> {selectedArea.how}
           <br />
-          <strong>Why:</strong> {selectedArea.why}
+          <strong>Por qué:</strong> {selectedArea.why}
         </p>
       ) : null}
 
@@ -262,7 +261,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
             onChange={(e) => setUseRefine(e.target.checked)}
             disabled={busy || !hasApiKey}
           />
-          Refine with Haiku {hasApiKey ? "" : "(needs API key)"}
+          Refinar con Haiku {hasApiKey ? "" : "(requiere clave API)"}
         </label>
         <button
           className="btn"
@@ -270,7 +269,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
           onClick={onGenerate}
           disabled={busy || areas.length === 0}
         >
-          {busy ? "Working…" : "Generate profile"}
+          {busy ? "Procesando…" : "Generar perfil"}
         </button>
         <button
           className="btn ghost"
@@ -278,7 +277,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
           onClick={onRefineAgain}
           disabled={busy || !profile || !hasApiKey}
         >
-          Refine again
+          Refinar nuevamente
         </button>
         <button
           className="btn ghost"
@@ -286,15 +285,15 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
           onClick={onSave}
           disabled={busy || !profile || !hasDatabase}
         >
-          Save agent
+          Guardar agente
         </button>
         <button
           className="btn ghost"
           type="button"
           disabled
-          title="Iteration 2 — solo sandbox"
+          title="Etapa 2 — entorno de pruebas individual"
         >
-          Use in solo sandbox (soon)
+          Prueba individual (próximamente)
         </button>
       </div>
 
@@ -304,14 +303,14 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
       {profile ? (
         <ProfileEditor profile={profile} onChange={setProfile} />
       ) : (
-        <p className="empty">No profile yet — generate one from an area + knobs.</p>
+        <p className="empty">Aún no hay perfil: selecciona un área y ajusta los parámetros para generarlo.</p>
       )}
 
       {stored ? (
         <div className="context-panel">
-          <h3>Context files</h3>
+          <h3>Archivos de contexto</h3>
           <p className="hint">
-            Policies / playbooks attached to this harness. Included on{" "}
+            Políticas y guías adjuntas a este agente. Se incluyen en{" "}
             <code>GET /api/agents/{stored.id}/invoke</code>.
           </p>
           <ul className="ctx-list">
@@ -326,14 +325,14 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
                   onClick={() => onRemoveContext(f.id)}
                   disabled={busy}
                 >
-                  remove
+                  quitar
                 </button>
               </li>
             ))}
           </ul>
           <div className="knobs-form">
             <label>
-              Filename
+              Nombre de archivo
               <input
                 value={ctxName}
                 onChange={(e) => setCtxName(e.target.value)}
@@ -342,13 +341,13 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
             </label>
           </div>
           <label className="block-label">
-            Content
+            Contenido
             <textarea
               className="tall"
               value={ctxContent}
               onChange={(e) => setCtxContent(e.target.value)}
               disabled={busy}
-              placeholder="Paste policy / playbook markdown…"
+              placeholder="Pega una política o guía en Markdown…"
             />
           </label>
           <button
@@ -357,14 +356,14 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
             onClick={onAddContext}
             disabled={busy || !ctxContent.trim()}
           >
-            Attach context file
+            Adjuntar archivo de contexto
           </button>
         </div>
       ) : null}
 
       {agents.length > 0 ? (
         <div className="saved-list">
-          <h3>Saved agents</h3>
+          <h3>Agentes guardados</h3>
           <ul>
             {agents.map((a) => (
               <li key={a.id} className="saved-row">
@@ -381,7 +380,7 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
                   }}
                 >
                   {a.name} · {a.areaId} · {a.knobs.seniority} ·{" "}
-                  {a.contextFiles.length} files
+                  {a.contextFiles.length} archivos
                 </button>
                 <button
                   type="button"
@@ -389,14 +388,14 @@ export function GeneratorPage({ hasApiKey, hasDatabase }: Props) {
                   onClick={() => onDelete(a.id)}
                   disabled={busy}
                 >
-                  delete
+                  eliminar
                 </button>
               </li>
             ))}
           </ul>
         </div>
       ) : hasDatabase ? (
-        <p className="empty">No agents saved yet.</p>
+        <p className="empty">Aún no hay agentes guardados.</p>
       ) : null}
     </section>
   );
