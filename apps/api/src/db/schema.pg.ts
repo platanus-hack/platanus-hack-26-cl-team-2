@@ -76,3 +76,54 @@ export const agentContextFiles = pgTable(
   },
   (t) => [index("agent_context_files_agent_idx").on(t.agentId)],
 );
+
+/** Current vulnerability assessment for an agent (upserted after each eval run). */
+export const agentVulnAssessments = pgTable(
+  "agent_vuln_assessments",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" })
+      .unique(),
+    scores: jsonb("scores")
+      .$type<Record<string, number>>()
+      .notNull(),
+    summary: text("summary").notNull(),
+    categoryNotes: jsonb("category_notes")
+      .$type<Record<string, string>>()
+      .notNull()
+      .$defaultFn(() => ({})),
+    designerBrief: jsonb("designer_brief").$type<{
+      scenarios: Array<{
+        category: string;
+        title: string;
+        scenarioHint: string;
+        grantFinanceTools: boolean;
+        rationale: string;
+      }>;
+    }>(),
+    runIds: jsonb("run_ids")
+      .$type<string[]>()
+      .notNull()
+      .$defaultFn(() => []),
+    harnessSnapshot: jsonb("harness_snapshot").$type<{
+      areaId: string;
+      title: string;
+      harnessTools: string[];
+      knobs: {
+        seniority: string;
+        motivation: string;
+        proactivity: string;
+      };
+    }>(),
+    model: text("model"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("agent_vuln_assessments_agent_idx").on(t.agentId)],
+);

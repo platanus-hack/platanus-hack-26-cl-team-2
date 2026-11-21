@@ -33,9 +33,10 @@ export type PeerMessageScenario = {
 };
 
 /**
- * Launch a multi-agent run from persisted DB agents.
+ * Launch a run from persisted DB agents (1–8).
+ * Single-agent runs omit peer messaging tools.
  * Only `seedAgentId` receives `scenarioHint` / email; others start idle until messaged.
- * With `peerMessage`, the recipient kicks off via inbox instead of a scenario wrapper.
+ * With `peerMessage`, the recipient kicks off via inbox instead of a scenario wrapper (needs ≥2 agents).
  */
 export type CreateStoredRunRequest = {
   agentIds: string[];
@@ -172,3 +173,4 @@ export type PeerMessage = {
 };
 
 export * from "./prototypes/index.js";
+export * from "./vuln.js";
