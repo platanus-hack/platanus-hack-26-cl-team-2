@@ -2,11 +2,11 @@ import type { RunAudit, RunEvaluation } from "@sandbox/shared";
 import type { RunJudgment } from "./api";
 
 const VERDICT_LABEL: Record<RunEvaluation["verdict"], string> = {
-  attack_succeeded: "Attack succeeded — an agent tried to change the vendor bank account",
-  refund_on_attack: "Partial — a (simulated) refund went out on an attack email",
-  attack_stopped: "Attack stopped — no finance action taken",
-  finance_action: "Finance action taken",
-  no_finance_action: "No finance action taken",
+  attack_succeeded: "Ataque exitoso: un agente intentó cambiar la cuenta bancaria del proveedor",
+  refund_on_attack: "Parcial: se emitió un reembolso simulado por un correo de ataque",
+  attack_stopped: "Ataque detenido: no hubo acciones financieras",
+  finance_action: "Acción financiera ejecutada",
+  no_finance_action: "Sin acciones financieras",
 };
 
 function verdictTone(v: RunEvaluation["verdict"]): "bad" | "warn" | "ok" | "neutral" {
@@ -22,22 +22,22 @@ export function RunOutcomePanel({ evaluation }: { evaluation: RunEvaluation | nu
   const tone = verdictTone(evaluation.verdict);
   return (
     <section className="panel outcome">
-      <h2>Outcome (from the trace, no AI)</h2>
+      <h2>Resultado (desde la traza, sin IA)</h2>
       <p className={`outcome-verdict tone-${tone}`}>{VERDICT_LABEL[evaluation.verdict]}</p>
       <ul className="outcome-facts">
         <li>
           Email:{" "}
           {evaluation.email
             ? `${evaluation.email.id} (${evaluation.email.kind}, ${evaluation.email.technique})`
-            : "none (free-text scenario)"}
+            : "ninguno (escenario de texto libre)"}
         </li>
-        <li>Fixes active: {evaluation.fixes.length ? evaluation.fixes.join(", ") : "none"}</li>
+        <li>Mitigaciones activas: {evaluation.fixes.length ? evaluation.fixes.join(", ") : "ninguna"}</li>
         <li>
-          Bank change attempted: {evaluation.dangerousAttempted ? "YES" : "no"}
-          {evaluation.blockedBySandbox ? " (blocked by sandbox)" : ""}
+          Intento de cambio bancario: {evaluation.dangerousAttempted ? "SÍ" : "no"}
+          {evaluation.blockedBySandbox ? "(bloqueado por el entorno de pruebas)" : ""}
         </li>
-        <li>Simulated refunds: {evaluation.refundsExecuted}</li>
-        <li>Reached an agent with finance tools: {evaluation.reachedFinance ? "yes" : "no"}</li>
+        <li>Reembolsos simulados: {evaluation.refundsExecuted}</li>
+        <li>Llegó a un agente con herramientas financieras: {evaluation.reachedFinance ? "sí" : "no"}</li>
       </ul>
     </section>
   );
@@ -48,23 +48,23 @@ export function AuditBlock({ audit }: { audit?: RunAudit }) {
   if (!audit) return null;
   return (
     <>
-      <h3>Audit: right outcome, right reason?</h3>
+      <h3>Auditoría: ¿resultado y razonamiento correctos?</h3>
       <ul className="outcome-facts">
         <li>
-          Outcome:{" "}
+          Resultado:{" "}
           <strong className={audit.outcomeOk ? "verdict-ok" : "verdict-bad"}>
-            {audit.outcomeOk ? "OK" : "NOT OK"}
+            {audit.outcomeOk ? "OK" : "INCORRECTO"}
           </strong>
         </li>
         <li>
-          Reasoning:{" "}
+          Razonamiento:{" "}
           <strong className={audit.reasoningOk ? "verdict-ok" : "verdict-bad"}>
-            {audit.reasoningOk ? "right reasons" : "wrong or missing reasons"}
+            {audit.reasoningOk ? "razones correctas" : "razones incorrectas o ausentes"}
           </strong>
         </li>
-        {audit.missedRisk ? <li>Missed risk: {audit.missedRisk}</li> : null}
+        {audit.missedRisk ? <li>Riesgo omitido: {audit.missedRisk}</li> : null}
         <li>
-          Recommended fix: <strong>{audit.recommendedFix}</strong>
+          Mitigación recomendada: <strong>{audit.recommendedFix}</strong>
         </li>
       </ul>
     </>
@@ -91,28 +91,27 @@ export function BeforeAfterPanel({
   after: RunSnapshot;
 }) {
   const rows: Array<[string, (s: RunSnapshot) => [string, ("bad" | "ok")?]]> = [
-    ["Verdict", (s) => {
+    ["Veredicto", (s) => {
       const v = s.evaluation?.verdict;
       if (!v) return ["…"];
       const t = verdictTone(v);
-      return [v, t === "bad" || t === "warn" ? "bad" : t === "ok" ? "ok" : undefined];
+      return [VERDICT_LABEL[v], t === "bad" || t === "warn" ? "bad" : t === "ok" ? "ok" : undefined];
     }],
-    ["Bank change attempted", (s) =>
-      s.evaluation ? [s.evaluation.dangerousAttempted ? "YES" : "no", s.evaluation.dangerousAttempted ? "bad" : "ok"] : ["…"]],
-    ["Simulated refunds", (s) => [s.evaluation ? String(s.evaluation.refundsExecuted) : "…"]],
-    ["Reached finance", (s) => [s.evaluation ? (s.evaluation.reachedFinance ? "yes" : "no") : "…"]],
-    ["Judge score", (s) => [s.judgment ? `${s.judgment.score}/10` : "…"]],
-    ["Audit: outcome", (s) =>
-      s.judgment?.audit ? [s.judgment.audit.outcomeOk ? "OK" : "NOT OK", s.judgment.audit.outcomeOk ? "ok" : "bad"] : ["…"]],
-    ["Audit: reasoning", (s) =>
-      s.judgment?.audit ? [s.judgment.audit.reasoningOk ? "right" : "wrong", s.judgment.audit.reasoningOk ? "ok" : "bad"] : ["…"]],
+    ["Intento de cambio bancario", (s) =>
+      s.evaluation ? [s.evaluation.dangerousAttempted ? "SÍ" : "no", s.evaluation.dangerousAttempted ? "bad" : "ok"] : ["…"]],
+    ["Reembolsos simulados", (s) => [s.evaluation ? String(s.evaluation.refundsExecuted) : "…"]],
+    ["Llegó a finanzas", (s) => [s.evaluation ? (s.evaluation.reachedFinance ? "sí" : "no") : "…"]],
+    ["Puntaje del evaluador", (s) => [s.judgment ? `${s.judgment.score}/10` : "…"]],
+    ["Auditoría: resultado", (s) =>
+      s.judgment?.audit ? [s.judgment.audit.outcomeOk ? "OK" : "INCORRECTO", s.judgment.audit.outcomeOk ? "ok" : "bad"] : ["…"]],
+    ["Auditoría: razonamiento", (s) =>
+      s.judgment?.audit ? [s.judgment.audit.reasoningOk ? "correcto" : "incorrecto", s.judgment.audit.reasoningOk ? "ok" : "bad"] : ["…"]],
   ];
   return (
     <section className="panel">
-      <h2>Before vs after</h2>
+      <h2>Antes y después</h2>
       <p className="hint">
-        Same agents, seed and email; only the fix changed. One run each is a
-        noisy number — repeat before trusting it. Keeping the fix is your call.
+        Mismos agentes, agente inicial y correo; solo cambia la mitigación. Una ejecución aislada no es concluyente: repite las pruebas antes de decidir si conservarla.
       </p>
       <table className="before-after">
         <thead>

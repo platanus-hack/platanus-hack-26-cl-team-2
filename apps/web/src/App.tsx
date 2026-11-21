@@ -77,14 +77,14 @@ export function App() {
             className={tab === "enterprise" ? "tab active" : "tab"}
             onClick={() => setTab("enterprise")}
           >
-            Enterprise generator
+            Generador de empresas
           </button>
           <button
             type="button"
             className={tab === "lab" ? "tab active" : "tab"}
             onClick={() => setTab("lab")}
           >
-            Multi-agent lab
+            Laboratorio multiagente
           </button>
         </nav>
       </header>

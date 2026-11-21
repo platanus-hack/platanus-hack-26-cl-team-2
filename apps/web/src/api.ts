@@ -40,7 +40,7 @@ export async function fetchHealth(): Promise<{
   refineModel?: string;
 }> {
   const res = await fetch("/health");
-  if (!res.ok) throw new Error("API unreachable");
+  if (!res.ok) throw new Error("No se puede acceder a la API");
   return res.json();
 }
 
@@ -53,7 +53,7 @@ export async function createRun(
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to create run");
+  if (!res.ok) throw new Error(data.error ?? "No se pudo crear la ejecución");
   return data;
 }
 
@@ -66,7 +66,7 @@ export async function createRunFromStored(
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to create run");
+  if (!res.ok) throw new Error(data.error ?? "No se pudo crear la ejecución");
   return data;
 }
 
@@ -103,7 +103,7 @@ export async function judgeRun(
     method: "POST",
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Judge failed");
+  if (!res.ok) throw new Error(data.error ?? "Falló la evaluación");
   return data;
 }
 
@@ -127,7 +127,7 @@ export async function judgeTranscript(body: {
       typeof data.details === "object"
         ? ` ${JSON.stringify(data.details.fieldErrors ?? data.details)}`
         : "";
-    throw new Error((data.error ?? "Judge failed") + detail);
+    throw new Error((data.error ?? "Falló la evaluación") + detail);
   }
   return data;
 }
@@ -140,8 +140,15 @@ export async function fetchRun(runId: string): Promise<{
 }> {
   const res = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Run not found");
+  if (!res.ok) throw new Error(data.error ?? "Ejecución no encontrada");
   return data;
+}
+
+export async function listRuns(): Promise<RunSummary[]> {
+  const response = await fetch("/api/runs");
+  if (!response.ok) throw new Error("No se pudieron cargar las ejecuciones");
+  const data = await response.json();
+  return data.runs;
 }
 
 export function subscribeRunEvents(
@@ -170,7 +177,7 @@ export function subscribeRunEvents(
 export async function fetchAreas(): Promise<AreaPrototype[]> {
   const res = await fetch("/api/profiles/areas");
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to load areas");
+  if (!res.ok) throw new Error(data.error ?? "No se pudieron cargar las áreas");
   return data.areas as AreaPrototype[];
 }
 
@@ -191,7 +198,7 @@ export async function composeProfile(body: {
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Compose failed");
+  if (!res.ok) throw new Error(data.error ?? "Falló la generación del perfil");
   return data;
 }
 
@@ -204,7 +211,7 @@ export async function refineProfile(
     body: JSON.stringify({ profile }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Refine failed");
+  if (!res.ok) throw new Error(data.error ?? "Falló el refinamiento");
   return data;
 }
 
@@ -217,21 +224,21 @@ export async function saveProfile(
     body: JSON.stringify({ profile }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Save failed");
+  if (!res.ok) throw new Error(data.error ?? "No se pudo guardar");
   return data;
 }
 
 export async function listAgents(): Promise<StoredAgent[]> {
   const res = await fetch("/api/agents");
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to list agents");
+  if (!res.ok) throw new Error(data.error ?? "No se pudieron listar los agentes");
   return data.agents as StoredAgent[];
 }
 
 export async function deleteAgent(id: string): Promise<void> {
   const res = await fetch(`/api/agents/${id}`, { method: "DELETE" });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? "Delete failed");
+  if (!res.ok) throw new Error(data.error ?? "No se pudo eliminar");
 }
 
 export async function addContextFile(
@@ -244,7 +251,7 @@ export async function addContextFile(
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to add context file");
+  if (!res.ok) throw new Error(data.error ?? "No se pudo adjuntar el archivo de contexto");
   return data.file;
 }
 
@@ -256,7 +263,7 @@ export async function removeContextFile(
     method: "DELETE",
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? "Failed to delete context file");
+  if (!res.ok) throw new Error(data.error ?? "No se pudo eliminar el archivo de contexto");
 }
 
 export async function invokeAgent(id: string): Promise<{
@@ -270,7 +277,7 @@ export async function invokeAgent(id: string): Promise<{
 }> {
   const res = await fetch(`/api/agents/${id}/invoke`);
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Invoke failed");
+  if (!res.ok) throw new Error(data.error ?? "Falló la ejecución del agente");
   return data;
 }
 
@@ -281,7 +288,7 @@ export async function fetchEnterprisePresets(): Promise<{
 }> {
   const res = await fetch("/api/enterprise/presets");
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to load presets");
+  if (!res.ok) throw new Error(data.error ?? "No se pudieron cargar las configuraciones");
   return data;
 }
 
@@ -310,6 +317,6 @@ export async function generateEnterprise(body: {
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Enterprise generate failed");
+  if (!res.ok) throw new Error(data.error ?? "Falló la generación de la empresa");
   return data;
 }
