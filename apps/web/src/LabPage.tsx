@@ -11,6 +11,7 @@ import {
   fetchRun,
   judgeRun,
   judgeTranscript,
+  isDemoStoredAgent,
   listAgents,
   listEmailScenarios,
   subscribeRunEvents,
@@ -30,11 +31,13 @@ import { selectObservedRun } from "./mesh/runSelection";
 type Props = {
   hasApiKey: boolean;
   onRunCreated?: (run: RunSummary) => void;
+  /** `demo` = solo agentes de la empresa DEMO. */
+  scope?: "all" | "demo";
 };
 
 const MAX_PARTICIPANTS = 8;
 
-export function LabPage({ hasApiKey, onRunCreated }: Props) {
+export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
   const [catalog, setCatalog] = useState<StoredAgent[]>([]);
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
   const [seedAgentId, setSeedAgentId] = useState("");
@@ -74,19 +77,21 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
   useEffect(() => {
     listAgents()
       .then((agents) => {
-        setCatalog(agents);
+        const scoped =
+          scope === "demo" ? agents.filter(isDemoStoredAgent) : agents;
+        setCatalog(scoped);
         const next: Record<string, boolean> = {};
-        for (const a of agents) next[a.id] = false;
+        for (const a of scoped) next[a.id] = false;
         // Enable first two by default for a quick start
-        if (agents[0]) next[agents[0].id] = true;
-        if (agents[1]) next[agents[1].id] = true;
+        if (scoped[0]) next[scoped[0].id] = true;
+        if (scoped[1]) next[scoped[1].id] = true;
         setEnabled(next);
-        if (agents[0]) setSeedAgentId(agents[0].id);
+        if (scoped[0]) setSeedAgentId(scoped[0].id);
       })
       .catch((err) =>
         setError(err instanceof Error ? err.message : String(err)),
       );
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     listEmailScenarios()
@@ -398,7 +403,9 @@ export function LabPage({ hasApiKey, onRunCreated }: Props) {
 
         {catalog.length < 2 ? (
           <p className="error">
-            Necesitas al menos 2 agentes guardados. Usa primero el creador de empresas o de agentes.
+            {scope === "demo"
+              ? "Necesitas al menos 2 agentes en tu empresa DEMO. Guárdalos en DEMO mode."
+              : "Necesitas al menos 2 agentes guardados. Usa primero el creador de empresas o de agentes."}
           </p>
         ) : null}
 

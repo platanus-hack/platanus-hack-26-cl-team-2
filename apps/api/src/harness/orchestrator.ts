@@ -21,7 +21,9 @@ import { createSession, runOneTurn, wakeIfMailWaiting } from "./agent-runner.js"
 import { evaluateRun } from "./evaluator.js";
 import type { RunJudgment } from "./judge.js";
 import { loadRun, loadRuns, saveJudgment, saveRun } from "../db/runs-repo.js";
+import { getCurrentDemoOrg } from "../db/demo-orgs-repo.js";
 import { filterMockDbToolNames } from "./mock-db.js";
+import { filterDemoFileToolNames } from "./demo-files.js";
 
 export type RunRosterEntry = {
   id: string;
@@ -224,6 +226,9 @@ export function createAndStartRun(body: CreateRunRequest): Promise<RunSummary> {
 export async function createAndStartStoredRun(
   body: CreateStoredRunRequest,
 ): Promise<RunSummary> {
+  // Ensure DEMO .txt tools are registered before tool filtering.
+  await getCurrentDemoOrg().catch(() => null);
+
   const agentIds = [
     ...new Set(body.agentIds.map((id) => id.trim()).filter(Boolean)),
   ];
@@ -308,7 +313,10 @@ export async function createAndStartStoredRun(
       throw new Error(`Agent not found: ${id}`);
     }
     const inv = buildInvokePayload(stored);
-    const mockDbTools = filterMockDbToolNames(stored.harnessTools);
+    const mockDbTools = [
+      ...filterMockDbToolNames(stored.harnessTools),
+      ...filterDemoFileToolNames(stored.harnessTools),
+    ];
     agents.push({
       id: stored.id,
       name: stored.name,

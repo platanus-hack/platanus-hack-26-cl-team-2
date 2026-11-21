@@ -3,4 +3,5 @@ export {
   agents,
   agentContextFiles,
   agentVulnAssessments,
+  demoOrgs,
 } from "./schema.pg.js";

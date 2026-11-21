@@ -116,7 +116,24 @@ function ensureSqliteTables(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS agent_vuln_assessments_agent_idx
       ON agent_vuln_assessments (agent_id);
+
+    CREATE TABLE IF NOT EXISTS demo_orgs (
+      id TEXT PRIMARY KEY NOT NULL,
+      company_name TEXT NOT NULL,
+      context TEXT NOT NULL,
+      agent_ids TEXT NOT NULL DEFAULT '[]',
+      files TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `);
+  try {
+    db.exec(
+      `ALTER TABLE demo_orgs ADD COLUMN files TEXT NOT NULL DEFAULT '[]'`,
+    );
+  } catch {
+    // column already exists
+  }
 }
 
 export async function pingDatabase(): Promise<{

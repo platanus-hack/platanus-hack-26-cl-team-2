@@ -5,6 +5,9 @@ export type MockDbInfo = {
   file: string;
   label: string;
   sensitivity: string;
+  /** DEMO files expose separate read/write tools. */
+  readTool?: string;
+  writeTool?: string;
 };
 
 export type MockDbNode = MockDbInfo & {
@@ -69,10 +72,25 @@ export function layoutMockDbNodes(
   }));
 }
 
+function indexToolAccess(
+  databases: MockDbInfo[],
+): Map<string, { db: MockDbInfo; access: AclAccess | "both" }> {
+  const map = new Map<string, { db: MockDbInfo; access: AclAccess | "both" }>();
+  for (const db of databases) {
+    if (db.readTool || db.writeTool) {
+      if (db.readTool) map.set(db.readTool, { db, access: "read" });
+      if (db.writeTool) map.set(db.writeTool, { db, access: "write" });
+      continue;
+    }
+    map.set(db.tool, { db, access: "both" });
+  }
+  return map;
+}
+
 /**
- * Current mock-DB tools grant read+write, so we emit both directions:
- * - read:  database → agent
- * - write: agent → database
+ * Emit ACL edges from harness tools.
+ * Static mock-DBs grant read+write with one tool.
+ * DEMO files use separate `_txt_read` / `_txt_write` tools.
  */
 export function aclEdgesFromAgents(
   agents: Array<{ id: string; harnessTools?: string[] }>,
@@ -81,27 +99,30 @@ export function aclEdgesFromAgents(
 ): AclEdge[] {
   const canRead = opts?.canRead ?? true;
   const canWrite = opts?.canWrite ?? true;
-  const byTool = new Map(databases.map((db) => [db.tool, db]));
+  const byTool = indexToolAccess(databases);
   const edges: AclEdge[] = [];
+
   for (const agent of agents) {
     for (const tool of agent.harnessTools ?? []) {
-      const db = byTool.get(tool);
-      if (!db) continue;
-      const dbId = mockDbNodeId(tool);
-      if (canRead) {
+      const hit = byTool.get(tool);
+      if (!hit) continue;
+      const dbId = mockDbNodeId(hit.db.tool);
+      const wantRead = hit.access === "read" || hit.access === "both";
+      const wantWrite = hit.access === "write" || hit.access === "both";
+      if (canRead && wantRead) {
         edges.push({
           from: dbId,
           to: agent.id,
-          label: `READ · ${db.file} → agente`,
+          label: `READ · ${hit.db.file} → agente`,
           tool,
           access: "read",
         });
       }
-      if (canWrite) {
+      if (canWrite && wantWrite) {
         edges.push({
           from: agent.id,
           to: dbId,
-          label: `WRITE · agente → ${db.file}`,
+          label: `WRITE · agente → ${hit.db.file}`,
           tool,
           access: "write",
         });

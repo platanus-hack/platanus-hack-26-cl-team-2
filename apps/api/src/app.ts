@@ -15,11 +15,15 @@ import {
 } from "./harness/orchestrator.js";
 import { agentRoutes } from "./agents/routes.js";
 import { pingDatabase } from "./db/client.js";
+import { demoOrgRoutes } from "./demo-orgs/routes.js";
+import { demoPipelineRoutes } from "./demo-pipeline/routes.js";
 import { listEmailScenarios } from "./email/scenarios.js";
 import { enterpriseRoutes } from "./enterprise/routes.js";
 import { profileRoutes } from "./profiles/routes.js";
 import { refineModelId } from "./profiles/refine.js";
 import { MOCK_DB_CATALOG } from "./harness/mock-db.js";
+import { listDemoFileCatalog } from "./harness/demo-files.js";
+import { getCurrentDemoOrg } from "./db/demo-orgs-repo.js";
 
 const createRunSchema = z.object({
   agents: z
@@ -90,14 +94,33 @@ app.get("/health", async (c) => {
 app.route("/api/profiles", profileRoutes);
 app.route("/api/agents", agentRoutes);
 app.route("/api/enterprise", enterpriseRoutes);
+app.route("/api/demo-orgs", demoOrgRoutes);
+app.route("/api/demo-pipeline", demoPipelineRoutes);
 
 app.get("/api/runs", async (c) => c.json({ runs: await listRuns() }));
 
 /** Emails from email-harness/scenarios, with the deterministic sender check pre-computed. */
 app.get("/api/email-scenarios", (c) => c.json(listEmailScenarios()));
-app.get("/api/mock-db", (c) => c.json({
-  databases: Object.entries(MOCK_DB_CATALOG).map(([tool, meta]) => ({ tool, file: meta.file, label: meta.label, sensitivity: meta.sensitivity, kind: "tool" })),
-}));
+app.get("/api/mock-db", async (c) => {
+  await getCurrentDemoOrg().catch(() => null);
+  const staticDbs = Object.entries(MOCK_DB_CATALOG).map(([tool, meta]) => ({
+    tool,
+    file: meta.file,
+    label: meta.label,
+    sensitivity: meta.sensitivity,
+    kind: "tool" as const,
+  }));
+  const demoDbs = listDemoFileCatalog().map((meta) => ({
+    tool: meta.readTool,
+    file: meta.file,
+    label: meta.label,
+    sensitivity: meta.sensitivity,
+    kind: "tool" as const,
+    readTool: meta.readTool,
+    writeTool: meta.writeTool,
+  }));
+  return c.json({ databases: [...staticDbs, ...demoDbs] });
+});
 
 app.get("/api/runs/:id", async (c) => {
   const stored = await loadRun(c.req.param("id"));

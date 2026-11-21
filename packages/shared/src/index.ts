@@ -176,3 +176,4 @@ export type PeerMessage = {
 
 export * from "./prototypes/index.js";
 export * from "./vuln.js";
+export * from "./demo-pipeline.js";
