@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TraceEvent } from "@sandbox/shared";
+import { profileToAgentSpecInput, profileToSystemPrompt, type AgentProfile } from "@sandbox/shared";
 import type { InternalRun } from "../src/harness/orchestrator.js";
 import type { RunJudgment } from "../src/harness/judge.js";
 
@@ -19,6 +20,20 @@ const run: InternalRun = { id: "persisted", status: "completed", createdAt: "202
 const event: TraceEvent = { id: "final-event", runId: run.id, ts: run.finishedAt!, type: "run.completed", payload: { status: "completed" } };
 
 describe("Ejecuciones persistidas y rutas serverless", () => {
+  it("guarda un agente de prompt literal sin inyectar plantilla, estilo ni objetivo", async () => {
+    const prompt = "Actúa como cliente.\nPregunta por el estado de tu pedido.";
+    const profile: AgentProfile = { id: "prompt-test", name: "Cliente", title: "Agente de prompt directo", areaId: "cs", knobs: { seniority: "mid", motivation: "quality", proactivity: "medium" }, systemContext: prompt, operatingStyle: [], goalTemplate: "", orgHints: { notes: "mesh:prompt-only" }, createdAt: new Date().toISOString() };
+    const response = await app.request("/api/profiles/save", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profile }) });
+    assert.equal(response.status, 200);
+    const { agent } = await response.json();
+    assert.equal(profileToSystemPrompt(agent), prompt);
+    assert.equal(profileToAgentSpecInput(agent).role, prompt);
+    assert.equal(profileToAgentSpecInput(agent).goal, "");
+    assert.deepEqual(agent.operatingStyle, []);
+    assert.deepEqual(agent.harnessTools, ["done", "send_message", "read_inbox"]);
+    const refined = await app.request("/api/profiles/refine", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profile: agent }) });
+    assert.equal(refined.status, 400);
+  });
   it("recupera la ejecución y sus trazas desde el repositorio", async () => {
     await saveRun(run, [event]);
     const stored = await loadRun(run.id);
