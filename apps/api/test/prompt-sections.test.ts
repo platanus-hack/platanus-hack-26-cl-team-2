@@ -35,3 +35,18 @@ it("detecta siete roles copiados sin símbolos Markdown y con saltos Windows", (
 it("no interpreta pasos de tareas como agentes adicionales", () => {
   assert.equal(splitAgentPrompt("1. Lee el ticket\n2. Responde al cliente").length, 1);
 });
+
+it("separa roles concatenados al copiar desde texto con formato", () => {
+  const context = "NexusB1 conecta SAP. Los 7 Agentes de IA para tu Empresa.";
+  const titles = ["Agente de Prospección", "Agente Arquitecto", "Agente de Onboarding", "Agente de Soporte", "Agente de Customer Success", "Agente de Documentación", "Agente de QA"];
+  for (const separator of ["", "\n"]) {
+    const prompt = context + titles.map((title, index) => `${index + 1}. ${title}Área: SoporteRol: Rol ${index + 1}.Tareas clave: Tarea ${index + 1}.`).join(separator);
+    const sections = splitAgentPrompt(prompt);
+    assert.equal(sections.length, 7);
+    sections.forEach((section, index) => {
+      assert.equal(section.name, titles[index]);
+      assert.equal((section.prompt.match(/Tareas clave/g) ?? []).length, 1);
+      assert.ok(section.prompt.startsWith(context));
+    });
+  }
+});
