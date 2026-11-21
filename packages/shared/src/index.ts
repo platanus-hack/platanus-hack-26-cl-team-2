@@ -1,3 +1,5 @@
+export { summarizeMonitoring, type MonitoringRun } from "./monitoring.js";
+
 export type AgentId = string;
 
 export type AgentSpec = {

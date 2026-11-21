@@ -1,5 +1,22 @@
 # MESH: interacciones reales
 
+## Dashboard de monitoreo
+
+Dashboard consulta las ejecuciones cada 10 segundos (se puede pausar), permite
+filtrar 24 horas, 7 días o todo el historial disponible y enlaza cada ejecución
+con su grafo. Usa lotes de cuatro solicitudes para no cargar todo en paralelo.
+Si una ejecución no puede leerse, advierte que los totales son parciales.
+
+Interacciones significa mensajes enviados más llamadas a herramientas, con
+eventos deduplicados por ID. No incluye la recepción del mismo mensaje ni vuelve
+a contar el registro de sandbox como otra llamada. El riesgo observado cuenta
+intentos de herramientas marcados como peligrosos o bloqueados. Los hallazgos
+de IA son un indicador independiente: no se presentan como mensajes peligrosos.
+El promedio de puntajes usa solo ejecuciones evaluadas y muestra su cobertura.
+Los datos proceden de simulaciones; no implican monitoreo de producción.
+
+## Explorar ejecuciones
+
 La interfaz inicia con datos reales. Organización consulta los agentes guardados
 en `/api/agents` y las ejecuciones disponibles en `/api/runs`. No crea agentes
 ni ejecuta llamadas a modelos automáticamente.
