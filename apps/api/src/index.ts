@@ -50,9 +50,11 @@ const createStoredRunSchema = z.object({
       file: z.string().regex(/^[A-Za-z0-9_.-]+\.json$/),
       id: z.string().min(1).max(200),
       senderCheck: z.boolean().optional(),
+      delivery: z.enum(["direct", "buried"]).optional(),
     })
     .optional(),
   financeAgentIds: z.array(z.string().min(1)).max(8).optional(),
+  mockDbGrants: z.record(z.string().min(1), z.array(z.string().min(1)).max(8)).optional(),
   peerMessage: z
     .object({
       fromAgentId: z.string().min(1),

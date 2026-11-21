@@ -34,7 +34,7 @@ const DANGEROUS_TOOL = "update_vendor_bank_account";
 /** In "Mensajes" mode only sent messages are steps; everything else is debugging detail. */
 const isMessage = (s: Step) => s.event.type === "agent.message_sent";
 /** Events that count towards a node's badge (what a reviewer cares about). */
-const BADGE_TYPES = new Set<TraceEvent["type"]>(["run.started", "agent.message_sent", "sandbox.tool_attempt"]);
+const BADGE_TYPES = new Set<TraceEvent["type"]>(["run.started", "agent.message_sent", "sandbox.tool_attempt", "sandbox.egress_attempt"]);
 const RISK_RANK = { crit: 2, warn: 1 } as const;
 const worst = (risks: Risk[]): Risk =>
   risks.reduce<Risk>((a, r) => (r && (!a || RISK_RANK[r] > RISK_RANK[a]) ? r : a), null);
@@ -54,6 +54,7 @@ const TYPE_COLOR: Record<string, string> = {
   "agent.tool_call": "#c4b5fd",
   "agent.tool_result": "#a78bfa",
   "sandbox.tool_attempt": "#fb7185",
+  "sandbox.egress_attempt": "#f97316",
   "agent.done": "#86efac",
   "agent.error": "#fb7185",
 };
@@ -69,6 +70,7 @@ const TYPE_NAME: Record<string, string> = {
   "agent.tool_call": "Llamada a herramienta",
   "agent.tool_result": "Resultado de herramienta",
   "sandbox.tool_attempt": "Intento en sandbox",
+  "sandbox.egress_attempt": "Enlace/imagen en la salida",
 };
 const KIND_COLOR: Record<NodeKind, string> = { external: "#fbbf24", agent: "#5eead4", tool: "#c4b5fd" };
 
@@ -141,6 +143,13 @@ export function buildSteps(events: TraceEvent[], agents: AgentSpec[]): Step[] {
         label = p.blocked ? "Bloqueado" : "Simulado";
         title = `${p.blocked ? "El sandbox bloquea" : "El sandbox simula"} ${tool}`;
         risk = p.dangerous ? "crit" : p.blocked ? "warn" : null;
+        break;
+      case "sandbox.egress_attempt":
+        // Data leaving toward the outside world: draw it back to the external source node.
+        edge = event.agentId && p.external ? [event.agentId, SOURCE] : null;
+        label = p.leaked ? (p.autoLoaded ? "Fuga sin clics" : "Fuga con clic") : p.autoLoaded ? "Imagen" : "Enlace";
+        title = `${who} ${p.autoLoaded ? "incluye una imagen" : "incluye un enlace"} hacia ${String(p.finalHost ?? "")}`;
+        risk = p.leaked ? "crit" : p.external ? "warn" : null;
         break;
       case "agent.thought":
         title = `${who} razona`;
@@ -261,9 +270,27 @@ function MainContent({ step, name }: { step: Step; name: (id?: string) => string
       </div>
     );
   }
+  if (e.type === "sandbox.egress_attempt") {
+    return (
+      <div className={`dbg-msg ${p.leaked ? "blocked" : ""}`}>
+        <div className="dbg-msg-h"><span><b>{name(e.agentId)}</b> {egressText(p)}</span><span className="dbg-verdict">{p.leaked ? "FUGA" : p.external ? "EXTERNO" : "PERMITIDO"}</span></div>
+        <pre className="dbg-json">{String(p.url ?? "")}</pre>
+      </div>
+    );
+  }
   if (e.type === "agent.done") return <p className="dbg-quote">{String(p.summary ?? "")}</p>;
   if (e.type === "agent.thought") return <p className="dbg-quote thought">{String(p.text ?? "")}</p>;
   return <p className="dbg-quote">{summarize(e)}</p>;
+}
+
+function egressText(p: Record<string, unknown>): string {
+  const what = p.autoLoaded ? "imagen (se carga sola, sin clics)" : "enlace (requiere clic)";
+  const parts = [`${what} hacia ${String(p.finalHost ?? "")}`];
+  if (p.viaProxy) parts.push(`vía ${String(p.host ?? "")}`);
+  if (p.referenceStyle) parts.push("estilo referencia");
+  const from = Array.isArray(p.leakedFrom) ? p.leakedFrom.map(String) : [];
+  if (from.length) parts.push(`con datos de ${from.join(", ")}`);
+  return parts.join(" · ");
 }
 
 /** Short, human-readable line for the conversation list. */
@@ -282,6 +309,8 @@ function threadText(e: TraceEvent): string {
     }
     case "sandbox.tool_attempt":
       return `${String(p.tool)} · ${p.blocked ? "bloqueado" : "simulado"}`;
+    case "sandbox.egress_attempt":
+      return egressText(p);
     case "agent.done":
       return String(p.summary ?? "");
     case "agent.thought":
@@ -299,6 +328,7 @@ function TechItem({ step, name }: { step: Step; name: (id?: string) => string })
   else if (e.type === "agent.tool_call") body = <><code>{String(p.name)}</code><pre className="dbg-json">{json(p.input)}</pre></>;
   else if (e.type === "agent.tool_result") body = <><code>{String(p.name)}</code><pre className="dbg-json">{json(p.result)}</pre></>;
   else if (e.type === "sandbox.tool_attempt") body = <><code>{String(p.tool)} · {p.blocked ? "BLOQUEADO" : "simulado"}</code><pre className="dbg-json">{json(p.args)}</pre></>;
+  else if (e.type === "sandbox.egress_attempt") body = <><code>{egressText(p)}</code><pre className="dbg-json">{String(p.url ?? "")}</pre></>;
   else if (e.type === "agent.done" || e.type === "run.started") body = <p className="dbg-tech-text">{threadText(e)}</p>;
   else body = <p className="dbg-tech-text">{summarize(e)}</p>;
   return (

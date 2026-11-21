@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { nanoid } from "nanoid";
 import type {
+  EmailDelivery,
   AgentSpec,
   CreateRunRequest,
   CreateStoredRunRequest,
@@ -13,7 +14,7 @@ import type {
 import { assertApiKeyConfigured, config } from "../config.js";
 import { getAgent } from "../db/agents-repo.js";
 import { buildInvokePayload } from "../db/invoke.js";
-import { emailScenarioHint, getEmailScenario } from "../email/scenarios.js";
+import { emailBuriedHint, emailScenarioHint, getEmailScenario } from "../email/scenarios.js";
 import { messageBus } from "../message-bus.js";
 import { traceBus } from "../events.js";
 import { createSession, runOneTurn } from "./agent-runner.js";
@@ -45,6 +46,7 @@ export type RunEmailInfo = {
   forensics: SenderCheck;
   /** The raw email, for the judge. */
   email: string;
+  delivery: EmailDelivery;
 };
 
 type InternalRun = RunSummary & {
@@ -254,7 +256,11 @@ export async function createAndStartStoredRun(
   if (!peerMessage && body.emailScenario) {
     const scen = getEmailScenario(body.emailScenario);
     const banner = body.emailScenario.senderCheck ? scen.senderCheck : undefined;
-    scenarioHint = emailScenarioHint(scen.email, banner);
+    const delivery = body.emailScenario.delivery ?? "direct";
+    scenarioHint =
+      delivery === "buried"
+        ? emailBuriedHint(scen.email, banner)
+        : emailScenarioHint(scen.email, banner);
     email = {
       file: scen.file,
       id: scen.id,
@@ -265,12 +271,18 @@ export async function createAndStartStoredRun(
       senderCheck: banner ?? null,
       forensics: scen.senderCheck,
       email: scen.email,
+      delivery,
     };
   }
 
   const financeIds = new Set(
     (body.financeAgentIds ?? []).map((id) => id.trim()).filter(Boolean),
   );
+  for (const id of Object.keys(body.mockDbGrants ?? {})) {
+    if (!agentIds.includes(id)) {
+      throw new Error(`mockDbGrants must name selected agents (got ${id}).`);
+    }
+  }
   for (const id of financeIds) {
     if (!agentIds.includes(id)) {
       throw new Error(`financeAgentIds must be selected agents (got ${id}).`);
@@ -285,7 +297,9 @@ export async function createAndStartStoredRun(
       throw new Error(`Agent not found: ${id}`);
     }
     const inv = buildInvokePayload(stored);
-    const mockDbTools = filterMockDbToolNames(stored.harnessTools);
+    const mockDbTools = filterMockDbToolNames([
+      ...new Set([...(stored.harnessTools ?? []), ...(body.mockDbGrants?.[stored.id] ?? [])]),
+    ]);
     agents.push({
       id: stored.id,
       name: stored.name,

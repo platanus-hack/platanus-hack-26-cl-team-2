@@ -9,6 +9,7 @@ import {
   isMockDbTool,
   mockDbToolsFor,
 } from "./mock-db.js";
+import { scanEgress } from "./egress.js";
 import { execSandboxed, FINANCE_TOOL_NAMES, FINANCE_TOOLS } from "./sandbox.js";
 import { AGENT_TOOLS } from "./tools.js";
 
@@ -173,6 +174,7 @@ async function handleTool(
     const msg = messageBus.send(runId, agent.id, to, body);
     traceBus.emit(runId, "agent.message_sent", { message: msg }, agent.id);
     traceBus.emit(runId, "agent.message_received", { message: msg }, to);
+    scanEgress(runId, agent.id, body, "message");
     return { ok: true, messageId: msg.id, deliveredTo: to };
   }
 
@@ -217,6 +219,7 @@ async function handleTool(
     const summary = input.summary?.trim() || "No summary provided.";
     session.done = true;
     traceBus.emit(runId, "agent.done", { summary, turn: ctx.turn }, agent.id);
+    scanEgress(runId, agent.id, summary, "summary");
     return { ok: true, finished: true, summary };
   }
 
@@ -254,6 +257,7 @@ export async function runOneTurn(
   const thought = asText(response.content);
   if (thought) {
     traceBus.emit(runId, "agent.thought", { turn, text: thought }, agent.id);
+    scanEgress(runId, agent.id, thought, "answer");
   }
 
   session.messages.push({ role: "assistant", content: response.content });

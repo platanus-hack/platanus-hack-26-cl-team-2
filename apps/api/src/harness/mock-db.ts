@@ -97,6 +97,31 @@ export function mockDbToolsForArea(areaId: string): MockDbToolName[] {
   return MOCK_DB_BY_AREA[areaId] ?? [];
 }
 
+/**
+ * Sensitive values currently in the mock DBs, for leak detection (egress.ts).
+ * Only real rows count, "(USER SEBA: 1234 5678)" → "1234 5678". Agents with write access
+ * sometimes append notes (e.g. an incident log); those lines are not data, so they are
+ * ignored. Read fresh each time because agents may overwrite the files.
+ */
+export function readMockDbSecrets(): Array<{ db: MockDbToolName; value: string }> {
+  const out: Array<{ db: MockDbToolName; value: string }> = [];
+  for (const [db, meta] of Object.entries(MOCK_DB_CATALOG) as Array<
+    [MockDbToolName, (typeof MOCK_DB_CATALOG)[MockDbToolName]]
+  >) {
+    let text = "";
+    try {
+      text = readFileSync(resolve(MOCK_DB_DIR, meta.file), "utf8");
+    } catch {
+      continue;
+    }
+    for (const line of text.split(/\r?\n/)) {
+      const m = /^\(USER\s+[^:()]+:\s*([^()]+?)\s*\)$/i.exec(line.trim());
+      if (m && m[1].trim()) out.push({ db, value: m[1].trim() });
+    }
+  }
+  return out;
+}
+
 /** Read or write a mock DB file if the agent holds that tool; always emit a trace attempt. */
 export function accessMockDb(
   runId: string,
