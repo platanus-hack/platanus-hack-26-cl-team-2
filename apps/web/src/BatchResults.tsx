@@ -3,6 +3,7 @@ import type { BatchResults, BatchRow, BatchSummary } from "@sandbox/shared";
 import { fetchBatchResults, type BatchResultSet } from "./api";
 import type { ScenarioInfo } from "./businessScenarios";
 import { AgentFlow } from "./AgentFlow";
+import "./evaluations-list.css";
 
 const FIX_ORDER = [
   "none",
@@ -100,6 +101,8 @@ export function ScenarioPlotPanel({ set, title, scenarios }: { set: BatchResultS
   const [results, setResults] = useState<BatchResults | null | undefined>(undefined);
   const [active, setActive] = useState<{ s: ScenarioInfo; fix: string; text: string } | null>(null);
   const [picked, setPicked] = useState<{ id: string; fix: string } | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState("");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -137,12 +140,11 @@ export function ScenarioPlotPanel({ set, title, scenarios }: { set: BatchResultS
   }));
   const total = cells.reduce((n, c) => n + c.dots.length, 0);
   const tally = (dots: { o: { tone: Tone } }[], tone: Tone) => dots.filter((d) => d.o.tone === tone).length;
-  // Opens on the first fraud that got through, so the step-by-step view starts on the interesting case.
-  const firstBad = cells.flatMap(({ fix, dots }) => dots.filter((d) => d.o.tone === "bad").map((d) => ({ id: d.s.id, fix })))[0];
-  const shown = picked ?? firstBad ?? (cells[0]?.dots[0] ? { id: cells[0].dots[0].s.id, fix: cells[0].fix } : null);
-  const shownScenario = shown ? scenarios.find((s) => s.id === shown.id) : undefined;
+  const shown = picked;
   const shownRows = shown ? results.rows.filter((r) => r.emailId === shown.id && r.fixes === shown.fix && r.runId) : [];
-  const shownRun = shownRows.find((r) => r.status === "completed") ?? shownRows[0];
+  const shownRun = shownRows.find(row => row.runId === selectedRunId) ?? shownRows.find(row => row.status === "completed") ?? shownRows[0];
+  const evaluations = cells.flatMap(({ fix, dots }) => dots.map(dot => ({ ...dot, fix })));
+  const filtered = evaluations.filter(({ s, fix, o }) => `${s.label} ${s.detail} ${fixLabel(fix)} ${o.text}`.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <section className="panel">
@@ -150,6 +152,31 @@ export function ScenarioPlotPanel({ set, title, scenarios }: { set: BatchResultS
       <p className="hint">
         {total} evaluaciones: {attacks.length} correos de fraude y {benign.length} legítimos, con cada mitigación.
       </p>
+      <label className="eval-search">Buscar evaluaciones<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Escenario, mitigación o resultado…" /></label>
+      <p className="hint">{filtered.length} de {total} combinaciones · {results.rows.length} ejecuciones registradas</p>
+      <div className="eval-list">
+        {filtered.map(({ s, fix, o }) => {
+          const expanded = shown?.id === s.id && shown.fix === fix;
+          const key = JSON.stringify([s.id, fix]);
+          const panelId = "eval-" + encodeURIComponent(s.id + ":" + fix);
+          const attempts = results.rows.filter(row => row.emailId === s.id && row.fixes === fix);
+          return <article className={expanded ? "eval-item expanded" : "eval-item"} key={key}>
+            <h3 className="eval-row-heading"><button type="button" className="eval-row" aria-expanded={expanded} aria-controls={panelId} onClick={() => { setPicked(expanded ? null : { id: s.id, fix }); setSelectedRunId(""); }}>
+              <span className="eval-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+              <span className="eval-row-title">{s.label}<small>{fixLabel(fix)} · {s.expect === "no_payment" ? "Fraude" : "Control legítimo"} · {attempts.length} ejecución(es)</small></span>
+              <span className={TONE_CLASS[o.tone]}>{o.text}</span>
+            </button></h3>
+            <div id={panelId} hidden={!expanded}>
+              {expanded && <div className="eval-expanded"><p>{s.detail}</p><h4>Paso a paso · {fixLabel(fix)}</h4>
+                {shownRows.length > 1 && <label className="eval-search">Ejecución<select value={shownRun?.runId ?? ""} onChange={event => setSelectedRunId(event.target.value)}>{shownRows.map((row, index) => <option key={row.runId} value={row.runId!}>Ejecución {index + 1} · {row.status === "completed" ? "Completada" : "Fallida"} · {row.runId}</option>)}</select></label>}
+                {shownRun?.runId ? <AgentFlow key={shownRun.runId} runId={shownRun.runId} attack={s.expect === "no_payment"} /> : <p className="hint">No hay traza guardada para esta combinación.</p>}
+              </div>}
+            </div>
+          </article>;
+        })}
+        {!filtered.length && <p className="empty">No hay evaluaciones que coincidan con la búsqueda.</p>}
+      </div>
+      <details className="eval-overview"><summary>Ver resumen gráfico de todas las evaluaciones</summary>
       <div className="dot-plot" style={{ ["--cols" as string]: scenarios.length, ["--split" as string]: attacks.length }}>
         <span />
         <span className="dot-plot-group" style={{ gridColumn: `2 / span ${attacks.length}` }}>Fraude</span>
@@ -198,18 +225,7 @@ export function ScenarioPlotPanel({ set, title, scenarios }: { set: BatchResultS
           </li>
         ))}
       </ul>
-      {shown && shownScenario ? (
-        <div className="flow-section">
-          <h3>
-            Paso a paso: {shownScenario.label} · {shown.fix === "approval_gate" ? "Aprobación humana" : fixLabel(shown.fix)}
-          </h3>
-          {shownRun?.runId ? (
-            <AgentFlow runId={shownRun.runId} attack={shownScenario.expect === "no_payment"} />
-          ) : (
-            <p className="hint">No hay traza guardada para esta combinación.</p>
-          )}
-        </div>
-      ) : null}
+      </details>
       <details>
         <summary>Ver como tabla</summary>
         <div className="table-scroll">

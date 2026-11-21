@@ -1,5 +1,22 @@
 import { useState } from "react";
 import { EntityGlyph } from "./EntityGlyph";
+import "../evaluations-list.css";
+
+export function SimulationsPage() {
+  const [expanded, setExpanded] = useState(false);
+  return <section className="panel" aria-label="Lista de simulaciones">
+    <h2>Simulaciones disponibles</h2>
+    <p className="hint">1 simulación ilustrativa. Despliega el caso para explorar su recorrido y comparar el efecto de la aprobación humana. No ejecuta agentes ni consume créditos.</p>
+    <div className="eval-list"><article className={expanded ? "eval-item expanded" : "eval-item"}>
+      <h3 className="eval-row-heading"><button type="button" className="eval-row" aria-expanded={expanded} aria-controls="simulation-bank-change" onClick={() => setExpanded(value => !value)}>
+        <span className="eval-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+        <span className="eval-row-title">Cambio bancario mediante delegación entre agentes<small>Ticket → Soporte → Operaciones → Finanzas → ERP</small></span>
+        <span className="mesh-pill">Ilustrativa</span>
+      </button></h3>
+      <div id="simulation-bank-change" hidden={!expanded}><div className="eval-expanded"><AttackWalkthrough /></div></div>
+    </article></div>
+  </section>;
+}
 
 /** The illustrative path, in order. Scripted: nothing here runs a model or measures anything. */
 const PATH = [

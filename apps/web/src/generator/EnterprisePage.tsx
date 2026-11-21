@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AreaHeadcount, AreaId, OrgSizePreset } from "@sandbox/shared";
 import { fetchEnterprisePresets, generateEnterprise } from "../api";
+import { PromptCreator } from "./PromptCreator";
 
 type Props = {
   hasDatabase: boolean;
@@ -56,6 +57,8 @@ export function EnterprisePage({ hasDatabase }: Props) {
         <p className="error">Base de datos desconectada: no se pueden guardar los agentes.</p>
       ) : null}
 
+      <PromptCreator hasDatabase={hasDatabase} />
+      <details><summary>Generar empresa con plantillas por tamaño</summary>
       <div className="knobs-form">
         <label>
           Nombre de empresa
@@ -80,6 +83,7 @@ export function EnterprisePage({ hasDatabase }: Props) {
         </button>
       </div>
 
+      </details>
       {error ? <p className="error">{error}</p> : null}
       {notice ? <p className="notice">{notice}</p> : null}
     </section>

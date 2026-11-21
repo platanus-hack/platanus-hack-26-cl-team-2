@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AreaId, AreaPrototype, Seniority } from "@sandbox/shared";
 import {
-  composeProfile,
   deleteAgent,
-  fetchAreas,
   listAgents,
-  saveProfile,
   type StoredAgent,
 } from "../api";
-import { AREA_LABELS, SENIORITY_LABELS, areaLabel } from "./labels";
+import { SENIORITY_LABELS, areaLabel } from "./labels";
+import { PromptCreator } from "./PromptCreator";
 
 type Props = {
   hasDatabase: boolean;
@@ -18,12 +15,8 @@ type Props = {
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-/** Minimal agent creator: area + name + seniority → deterministic profile, saved in one step. */
+/** Company context and prompt-based agents, individually or in bulk. */
 export function GeneratorPage({ hasDatabase, onOpenEvals }: Props) {
-  const [areas, setAreas] = useState<AreaPrototype[]>([]);
-  const [areaId, setAreaId] = useState<AreaId>("engineering");
-  const [name, setName] = useState("");
-  const [seniority, setSeniority] = useState<Seniority>("mid");
   const [agents, setAgents] = useState<StoredAgent[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,15 +25,6 @@ export function GeneratorPage({ hasDatabase, onOpenEvals }: Props) {
   const refreshAgents = useCallback(async () => {
     setAgents(hasDatabase ? await listAgents() : []);
   }, [hasDatabase]);
-
-  useEffect(() => {
-    fetchAreas()
-      .then((list) => {
-        setAreas(list);
-        if (list[0]) setAreaId(list[0].id);
-      })
-      .catch((err) => setError(errorText(err)));
-  }, []);
 
   useEffect(() => {
     refreshAgents().catch((err) => setError(errorText(err)));
@@ -60,19 +44,6 @@ export function GeneratorPage({ hasDatabase, onOpenEvals }: Props) {
     }
   }
 
-  const onCreate = () =>
-    run(async () => {
-      const { profile } = await composeProfile({
-        areaId,
-        knobs: { seniority, motivation: "quality", proactivity: "medium" },
-        name: name.trim() || undefined,
-        refine: false,
-      });
-      const { agent } = await saveProfile(profile);
-      setName("");
-      return `Agente "${agent.name}" creado.`;
-    });
-
   const onDelete = (id: string) =>
     run(async () => {
       await deleteAgent(id);
@@ -85,39 +56,7 @@ export function GeneratorPage({ hasDatabase, onOpenEvals }: Props) {
         <p className="error">Base de datos no disponible: no se pueden guardar agentes.</p>
       ) : null}
 
-      <div className="knobs-form">
-        <label>
-          Área
-          <select value={areaId} onChange={(e) => setAreaId(e.target.value as AreaId)} disabled={busy}>
-            {areas.map((area) => (
-              <option key={area.id} value={area.id}>
-                {AREA_LABELS[area.id] ?? area.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Nombre (opcional)
-          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={64} disabled={busy} />
-        </label>
-        <label>
-          Experiencia
-          <select value={seniority} onChange={(e) => setSeniority(e.target.value as Seniority)} disabled={busy}>
-            {Object.entries(SENIORITY_LABELS).map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <div className="controls">
-        <button className="btn" type="button" onClick={onCreate} disabled={busy || !hasDatabase || areas.length === 0}>
-          {busy ? "Creando…" : "Crear agente"}
-        </button>
-      </div>
-
+      <PromptCreator hasDatabase={hasDatabase} onSaved={refreshAgents} />
       {error ? <p className="error">{error}</p> : null}
       {notice ? <p className="notice">{notice}</p> : null}
 
