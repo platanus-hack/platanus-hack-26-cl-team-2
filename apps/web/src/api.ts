@@ -10,7 +10,9 @@ import type {
   OrgHints,
   OrgSizePreset,
   RunAudit,
+  RiskPathAnalysis,
   RunEvaluation,
+  RunRiskPaths,
   RunSummary,
   SeniorityMix,
   TraceEvent,
@@ -137,11 +139,28 @@ export async function fetchRun(runId: string): Promise<{
   events: TraceEvent[];
   judgment: RunJudgment | null;
   evaluation: RunEvaluation | null;
+  riskPaths: RunRiskPaths | null;
 }> {
   const res = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "Run not found");
   return data;
+}
+
+/** MESH risk paths for a setup, before launching (no model call). */
+export async function analyzeRiskPaths(
+  body: Pick<CreateStoredRunRequest, "agentIds" | "seedAgentId" | "financeAgentIds" | "emailScenario">,
+  signal?: AbortSignal,
+): Promise<RiskPathAnalysis> {
+  const res = await fetch("/api/risk-paths", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Risk path analysis failed");
+  return data.analysis;
 }
 
 export function subscribeRunEvents(

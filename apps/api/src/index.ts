@@ -13,6 +13,8 @@ import {
   getInternalRun,
   getRun,
   listRuns,
+  previewRiskPaths,
+  riskPathsForRun,
   setRunJudgment,
 } from "./harness/orchestrator.js";
 import { agentRoutes } from "./agents/routes.js";
@@ -39,19 +41,27 @@ const createRunSchema = z.object({
   maxTurnsPerAgent: z.number().int().min(1).max(30).optional(),
 });
 
+const emailScenarioSchema = z.object({
+  file: z.string().regex(/^[A-Za-z0-9_.-]+\.json$/),
+  id: z.string().min(1).max(200),
+  senderCheck: z.boolean().optional(),
+  provenanceTag: z.boolean().optional(),
+});
+
 const createStoredRunSchema = z.object({
   agentIds: z.array(z.string().min(1)).min(2).max(8),
   seedAgentId: z.string().min(1),
   maxTurnsPerAgent: z.number().int().min(1).max(30).optional(),
   scenarioHint: z.string().max(2000).optional(),
-  emailScenario: z
-    .object({
-      file: z.string().regex(/^[A-Za-z0-9_.-]+\.json$/),
-      id: z.string().min(1).max(200),
-      senderCheck: z.boolean().optional(),
-    })
-    .optional(),
+  emailScenario: emailScenarioSchema.optional(),
   financeAgentIds: z.array(z.string().min(1)).max(8).optional(),
+});
+
+const riskPathsSchema = z.object({
+  agentIds: z.array(z.string().min(1)).min(1).max(8),
+  seedAgentId: z.string().min(1),
+  financeAgentIds: z.array(z.string().min(1)).max(8).optional(),
+  emailScenario: emailScenarioSchema.optional(),
 });
 
 const app = new Hono();
@@ -96,7 +106,29 @@ app.get("/api/runs/:id", (c) => {
     events: traceBus.history(run.id),
     judgment: internal?.judgment ?? null,
     evaluation: internal ? evaluateInternalRun(internal) : null,
+    riskPaths: internal ? riskPathsForRun(internal) : null,
   });
+});
+
+/** MESH risk paths for a run setup, before launching it (no model call). */
+app.post("/api/risk-paths", async (c) => {
+  const json = await c.req.json().catch(() => null);
+  const parsed = riskPathsSchema.safeParse(json);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid body", details: parsed.error.flatten() }, 400);
+  }
+  try {
+    return c.json({ analysis: await previewRiskPaths(parsed.data) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const status =
+      message.includes("not found") || message.includes("ENOENT")
+        ? 404
+        : message.includes("seedAgentId") || message.includes("Invalid scenario file")
+          ? 400
+          : 500;
+    return c.json({ error: message }, status);
+  }
 });
 
 app.post("/api/runs/:id/judge", async (c) => {

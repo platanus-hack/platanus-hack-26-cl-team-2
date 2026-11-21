@@ -26,6 +26,10 @@ email, and give some of them sandboxed finance tools. Then you see what happened
 - **Outcome from the trace** (no AI): did any agent try to change a vendor's bank account?
 - **AI judge + auditor**: was it the right outcome, *and for the right reason*? Which fix would help?
 - **Before vs after**: re-run the same case with a fix (sender check) and compare.
+- **Risk paths (MESH)**: before launching, list every route from the external email to a finance
+  tool and check, hop by hop, whether the receiver can still tell the request came from outside.
+  Every component can pass while a path fails: the sender check only reaches the seed, and the
+  finance agent gets an "internal" message. The `provenance_tag` fix carries the origin along.
 
 Nothing real can happen: refunds are simulated and bank changes are always blocked, but every
 attempt is recorded.
@@ -39,14 +43,17 @@ cp .env.example .env              # then put your ANTHROPIC_API_KEY in .env
 npx -y pnpm@9.15.0 install
 npx -y pnpm@9.15.0 --filter @sandbox/api db:seed   # 7 senior agents (one per area)
 npx -y pnpm@9.15.0 run dev        # web http://localhost:5173 · API http://localhost:8787
-npx -y pnpm@9.15.0 test           # 36 tests, no AI calls
+npx -y pnpm@9.15.0 test           # 48 tests, no AI calls
 ```
 
 1. **Multi-agent lab** tab: use the seeded roster (or Enterprise generator to add more).
 2. Scenario source → *Incoming email*, pick an email, choose the seed agent, click **+ finance**
    on the agent that can pay, then **Launch conversation**.
-3. After the run: read the **Outcome** and **Post-run judgment**, then try
-   **Re-run with sender_check fix** to get the **Before vs after** table.
+   Before launching, the **Risk paths (MESH) — predicted** panel shows the component checks next
+   to the routes from the email to the finance tools (it updates as you change the setup).
+3. After the run: read the **Outcome**, **Risk paths — this run** (which predicted route the trace
+   confirms) and **Post-run judgment**, then try **Re-run with sender_check fix** or
+   **Re-run with provenance_tag fix** to get the **Before vs after** table.
 
 `.env` and the local SQLite database are git-ignored — run `db:seed` so everyone starts with the
 same seven senior agents (GTM, CSM, CS, Engineering, Product+Design, Data, IT). Any email you
@@ -61,6 +68,7 @@ All on 2026-11-21 (Platanus Hack 26). Newest first.
 
 | Commit | Author | Change |
 |---|---|---|
+| (uncommitted) | Juan | **MESH risk paths**: deterministic path analysis before a run (component checks vs routes email → agents → finance tools, local / interaction / systemic, where the sender-check verdict is lost), routes rebuilt from the trace after a run (confirms a predicted path), new `provenance_tag` fix, *Re-run with provenance_tag fix*, `POST /api/risk-paths`, 12 tests. |
 | `6b9d8d2` | Luciano | **Tests**: 36 tests with Node's test runner (sender check incl. parity with Python, scenarios, sandbox, evaluator, judge audit, smoke tests against the running API). `pnpm test`. |
 | `fa898a3` | Luciano | **Fusion step 3 + 4**: deterministic outcome from the trace; email auditor inside the judge (right outcome / right reason / missed risk / recommended fix); *Re-run with sender_check fix* and *Before vs after* table. Fixes: judge answer was cut off (token limit), and the judge was re-called every few seconds after a run (event stream reconnecting). |
 | `bb20732` | Luciano | **Fusion step 2**: sandboxed finance tools (`issue_refund` simulated, `update_vendor_bank_account` always blocked, every attempt recorded); *+ finance* toggle per agent. |
@@ -104,7 +112,9 @@ Branches: Luciano's email-harness fusion is merged into `main`.
 | `harness/sandbox.ts` | `execSandboxed`, `FINANCE_TOOLS`, `DEFAULT_ALLOWED`, `DANGEROUS_TOOL` | Deny-by-default finance sandbox. Records a `sandbox.tool_attempt` event before allowing/blocking. |
 | `harness/evaluator.ts` | `evaluateRun` | Outcome from the trace: `attack_succeeded` (bank change attempted), `refund_on_attack`, `attack_stopped`, `finance_action`, `no_finance_action`; plus refunds and "reached finance". |
 | `harness/judge.ts` | `judgeRun`, `judgeTranscript`, `condenseTrace`, `judgeTool`, `normalizeAudit`, `judgeModelId` | LLM judge (summary, decisions, risks, score). For email runs also the audit: `outcomeOk`, `reasoningOk`, `missedRisk`, `recommendedFix`. |
-| `harness/fixes.ts` | `FIXES`, `FIX_NAMES` | Catalog of fixes the judge may recommend (today: `sender_check`). |
+| `harness/fixes.ts` | `FIXES`, `FIX_NAMES` | Catalog of fixes the judge may recommend: `sender_check`, `provenance_tag`. |
+| `harness/risk-paths.ts` | `analyzeRiskPaths`, `observeRiskPaths`, `carriesWarning` | MESH: component checks and every route from the email to a finance tool, with per-hop provenance and sender-verdict visibility (no AI). From a trace: the routes actually taken, matched to the predicted ones. |
+| `harness/provenance.ts` | `provenanceTag`, `withProvenance`, `PROVENANCE_MARK` | The `provenance_tag` fix: the harness appends the email's origin (and the sender verdict, if that fix is on) to every agent-to-agent message. |
 | `events.ts`, `message-bus.ts` | `traceBus`, `messageBus` | In-memory trace events (streamed over SSE) and agent inboxes. |
 
 **Agents, profiles, database**
@@ -124,7 +134,8 @@ Branches: Luciano's email-harness fusion is merged into `main`.
 | GET | `/api/email-scenarios` | Emails from email-harness with sender check pre-computed |
 | POST | `/api/runs/from-stored` | Start a run: `agentIds`, `seedAgentId`, `maxTurnsPerAgent`, `scenarioHint` **or** `emailScenario {file, id, senderCheck}`, `financeAgentIds` |
 | POST | `/api/runs` | Start a quick 2-agent run from free-form specs |
-| GET | `/api/runs`, `/api/runs/:id` | List runs / one run with events, judgment and `evaluation` |
+| GET | `/api/runs`, `/api/runs/:id` | List runs / one run with events, judgment, `evaluation` and `riskPaths` (predicted + observed) |
+| POST | `/api/risk-paths` | MESH analysis of a setup before launching: `agentIds`, `seedAgentId`, `financeAgentIds`, `emailScenario` (no AI) |
 | GET | `/api/runs/:id/events` | Live trace (SSE) |
 | POST | `/api/runs/:id/judge` | Judge a finished run (returns `judgment` + `evaluation`) |
 | POST | `/api/judge/transcript` | Judge a pasted transcript |
@@ -138,6 +149,7 @@ Branches: Luciano's email-harness fusion is merged into `main`.
 |---|---|
 | `LabPage.tsx` | Multi-agent lab: agent selection, seed, **+ finance**, scenario source (free text / email), sender-check toggle, launch, **Re-run with sender_check fix**. |
 | `RunOutcome.tsx` | `RunOutcomePanel` (outcome from the trace), `AuditBlock` (auditor verdict), `BeforeAfterPanel` (before vs after a fix). |
+| `RiskPaths.tsx` | `RiskPathsPanel`: component checks vs risk paths, and the routes observed in a run. |
 | `RunJudgment.tsx` | Post-run judgment panel. |
 | `Timeline.tsx` | Live trace; blocked finance attempts in red. |
 | `generator/*` | Profile and enterprise generators. |
@@ -145,7 +157,7 @@ Branches: Luciano's email-harness fusion is merged into `main`.
 
 ### Tests (`apps/api/test`)
 
-`sender-check`, `scenarios`, `sandbox`, `evaluator`, `judge`, `smoke` (36 tests). The smoke
+`sender-check`, `scenarios`, `sandbox`, `evaluator`, `judge`, `risk-paths`, `smoke` (48 tests). The smoke
 tests need the app running and are skipped otherwise; none of them call the model.
 
 ### Known limits
@@ -154,6 +166,10 @@ tests need the app running and are skipped otherwise; none of them call the mode
 - The sender check only reads the `From:` line; real deployments should check SPF/DKIM/DMARC.
 - No live mailbox connection yet: emails come from JSON files in `email-harness/scenarios/`
   (`gmail_*.json` / `outlook_*.json` are git-ignored for real mail).
+- Risk paths assume everyone can message everyone (true in this harness) and list relays of up
+  to two hand-offs; longer relays exist but lose nothing more. "Warning carried" on observed hops
+  is a keyword heuristic, not a classifier.
+- `provenance_tag` exists only in the TypeScript lab, not in the Python harness yet.
 - In our test runs (Claude Haiku 5.5) the agents refused every bank change, so the "blocked
   attempt" path is covered by tests but has not been triggered by a real run yet.
 

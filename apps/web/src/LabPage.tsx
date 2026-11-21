@@ -2,11 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   CreateStoredRunRequest,
   EmailScenarioSummary,
+  RiskPathAnalysis,
   RunEvaluation,
+  RunRiskPaths,
   RunSummary,
   TraceEvent,
 } from "@sandbox/shared";
 import {
+  analyzeRiskPaths,
   createRunFromStored,
   fetchRun,
   judgeRun,
@@ -23,6 +26,7 @@ import {
   RunOutcomePanel,
   type RunSnapshot,
 } from "./RunOutcome";
+import { RiskPathsPanel } from "./RiskPaths";
 import { Timeline } from "./Timeline";
 
 type Props = {
@@ -30,6 +34,29 @@ type Props = {
 };
 
 const MAX_PARTICIPANTS = 8;
+
+type FixName = "sender_check" | "provenance_tag";
+
+const FIX_BUTTON: Record<FixName, { label: string; title: string }> = {
+  sender_check: {
+    label: "Re-run with sender_check fix",
+    title: "Same agents, seed, finance tools and email; only adds the sender check (seed only)",
+  },
+  provenance_tag: {
+    label: "Re-run with provenance_tag fix",
+    title:
+      "Same setup; the harness appends the email's origin (and sender verdict, if on) to every agent-to-agent message",
+  },
+};
+
+function fixesOf(req: CreateStoredRunRequest | null): FixName[] {
+  const e = req?.emailScenario;
+  if (!e) return [];
+  return [
+    ...(e.senderCheck ? (["sender_check"] as const) : []),
+    ...(e.provenanceTag ? (["provenance_tag"] as const) : []),
+  ];
+}
 
 export function LabPage({ hasApiKey }: Props) {
   const [catalog, setCatalog] = useState<StoredAgent[]>([]);
@@ -44,6 +71,11 @@ export function LabPage({ hasApiKey }: Props) {
   const [emailLoadError, setEmailLoadError] = useState<string | null>(null);
   const [emailKey, setEmailKey] = useState("");
   const [senderCheckOn, setSenderCheckOn] = useState(false);
+  const [provenanceTagOn, setProvenanceTagOn] = useState(false);
+  const [preview, setPreview] = useState<RiskPathAnalysis | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [runRiskPaths, setRunRiskPaths] = useState<RunRiskPaths | null>(null);
   const [finance, setFinance] = useState<Record<string, boolean>>({});
   const [maxTurns, setMaxTurns] = useState(6);
   const [run, setRun] = useState<RunSummary | null>(null);
@@ -129,7 +161,10 @@ export function LabPage({ hasApiKey }: Props) {
         );
         if (run) {
           void fetchRun(run.id)
-            .then((d) => setEvaluation(d.evaluation))
+            .then((d) => {
+              setEvaluation(d.evaluation);
+              setRunRiskPaths(d.riskPaths ?? null);
+            })
             .catch(() => undefined);
         }
         if (event.type === "run.completed" && run) {
@@ -169,6 +204,7 @@ export function LabPage({ hasApiKey }: Props) {
       setEvents(data.events ?? []);
       setJudgment(data.judgment ?? null);
       setEvaluation(data.evaluation ?? null);
+      setRunRiskPaths(data.riskPaths ?? null);
       setManualRunId(id);
       if (
         !data.judgment &&
@@ -244,6 +280,59 @@ export function LabPage({ hasApiKey }: Props) {
     }
   }, [selectedIds, seedAgentId]);
 
+  // MESH preview: re-analyze the setup whenever it changes (no model call, debounced).
+  const previewKey = JSON.stringify({
+    selectedIds,
+    seedAgentId,
+    finance: selectedIds.filter((id) => finance[id]),
+    email: scenarioSource === "email" && selectedEmail ? emailKeyOf(selectedEmail) : null,
+    senderCheckOn,
+    provenanceTagOn,
+  });
+  useEffect(() => {
+    if (selectedIds.length === 0 || !selectedIds.includes(seedAgentId)) {
+      setPreview(null);
+      return;
+    }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => {
+      setPreviewLoading(true);
+      analyzeRiskPaths(
+        {
+          agentIds: selectedIds,
+          seedAgentId,
+          financeAgentIds: selectedIds.filter((id) => finance[id]),
+          ...(scenarioSource === "email" && selectedEmail
+            ? {
+                emailScenario: {
+                  file: selectedEmail.file,
+                  id: selectedEmail.id,
+                  senderCheck: senderCheckOn,
+                  provenanceTag: provenanceTagOn,
+                },
+              }
+            : {}),
+        },
+        ctrl.signal,
+      )
+        .then((a) => {
+          setPreview(a);
+          setPreviewError(null);
+        })
+        .catch((err) => {
+          if (ctrl.signal.aborted) return;
+          setPreviewError(err instanceof Error ? err.message : String(err));
+        })
+        .finally(() => {
+          if (!ctrl.signal.aborted) setPreviewLoading(false);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [previewKey]);
+
   const canLaunch =
     hasApiKey &&
     !busy &&
@@ -292,6 +381,7 @@ export function LabPage({ hasApiKey }: Props) {
     setRun(null);
     setJudgment(null);
     setEvaluation(null);
+    setRunRiskPaths(null);
     setJudgeError(null);
     try {
       const { run: created } = await createRunFromStored(body);
@@ -303,23 +393,38 @@ export function LabPage({ hasApiKey }: Props) {
     }
   }
 
-  /** Improve loop: same request, sender_check turned on; current run becomes "before". */
-  async function rerunWithFix() {
+  /** Improve loop: same request plus one fix; the current run becomes "before". */
+  async function rerunWithFix(fix: FixName) {
     if (!run || !lastLaunch?.emailScenario) return;
-    setBaseline({ runId: run.id, label: "before (no fix)", evaluation, judgment });
-    setSenderCheckOn(true);
+    const current = fixesOf(lastLaunch);
+    setBaseline({
+      runId: run.id,
+      label: `before (${current.length ? current.join(" + ") : "no fix"})`,
+      evaluation,
+      judgment,
+    });
+    if (fix === "sender_check") setSenderCheckOn(true);
+    else setProvenanceTagOn(true);
     await launch({
       ...lastLaunch,
-      emailScenario: { ...lastLaunch.emailScenario, senderCheck: true },
+      emailScenario: {
+        ...lastLaunch.emailScenario,
+        ...(fix === "sender_check" ? { senderCheck: true } : { provenanceTag: true }),
+      },
     });
   }
 
-  const canRerunWithFix =
+  const runFinished =
     !busy &&
     run !== null &&
     (run.status === "completed" || run.status === "failed") &&
-    lastLaunch?.emailScenario !== undefined &&
-    !lastLaunch.emailScenario.senderCheck;
+    lastLaunch?.emailScenario !== undefined;
+  const rerunFixes: FixName[] = runFinished
+    ? (["sender_check", "provenance_tag"] as const).filter(
+        (f) => !fixesOf(lastLaunch).includes(f),
+      )
+    : [];
+  const afterLabel = `after (${fixesOf(lastLaunch).join(" + ") || "no fix"})`;
 
   async function onLaunch() {
     setBaseline(null);
@@ -334,6 +439,7 @@ export function LabPage({ hasApiKey }: Props) {
                 file: selectedEmail.file,
                 id: selectedEmail.id,
                 senderCheck: senderCheckOn,
+                provenanceTag: provenanceTagOn,
               },
             }
           : { scenarioHint: scenarioHint.trim() || undefined }),
@@ -518,6 +624,18 @@ export function LabPage({ hasApiKey }: Props) {
                     />
                     Show seed the automated sender check (fix)
                   </label>
+                  <label
+                    className="check"
+                    title="The harness appends the email's origin (and the sender verdict, if that fix is on) to every message agents send each other"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={provenanceTagOn}
+                      onChange={(e) => setProvenanceTagOn(e.target.checked)}
+                      disabled={busy}
+                    />
+                    Carry provenance on every agent message (fix)
+                  </label>
                 </div>
                 {emailLoadError ? (
                   <p className="hint">Some files were skipped: {emailLoadError}</p>
@@ -578,18 +696,24 @@ export function LabPage({ hasApiKey }: Props) {
             {busy ? "Running…" : "Launch conversation"}
           </button>
         </div>
-        {canRerunWithFix ? (
+        {rerunFixes.length ? (
           <div className="controls">
-            <button
-              type="button"
-              className="btn"
-              onClick={() => void rerunWithFix()}
-              title="Same agents, seed, finance tools and email; only adds the sender check"
-            >
-              Re-run with sender_check fix
-            </button>
-            {judgment?.audit?.recommendedFix === "sender_check" ? (
-              <span className="hint">The judge recommends this fix.</span>
+            {rerunFixes.map((fix) => (
+              <button
+                key={fix}
+                type="button"
+                className="btn"
+                onClick={() => void rerunWithFix(fix)}
+                title={FIX_BUTTON[fix].title}
+              >
+                {FIX_BUTTON[fix].label}
+              </button>
+            ))}
+            {judgment?.audit?.recommendedFix &&
+            rerunFixes.includes(judgment.audit.recommendedFix as FixName) ? (
+              <span className="hint">
+                The judge recommends {judgment.audit.recommendedFix}.
+              </span>
             ) : null}
           </div>
         ) : null}
@@ -659,6 +783,21 @@ export function LabPage({ hasApiKey }: Props) {
         </label>
       </section>
 
+      {runRiskPaths ? (
+        <RiskPathsPanel
+          title="Risk paths (MESH) — this run"
+          analysis={runRiskPaths.predicted}
+          observed={runRiskPaths.observed}
+        />
+      ) : (
+        <RiskPathsPanel
+          title="Risk paths (MESH) — predicted for this setup"
+          analysis={preview}
+          loading={previewLoading}
+          error={previewError}
+        />
+      )}
+
       <section className="panel">
         <h2>Live trace</h2>
         <p className="hint">
@@ -672,7 +811,7 @@ export function LabPage({ hasApiKey }: Props) {
       {baseline && run ? (
         <BeforeAfterPanel
           before={baseline}
-          after={{ runId: run.id, label: "after (sender_check)", evaluation, judgment }}
+          after={{ runId: run.id, label: afterLabel, evaluation, judgment }}
         />
       ) : null}
 

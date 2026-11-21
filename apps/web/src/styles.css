@@ -920,3 +920,72 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
+
+/* MESH risk paths */
+.mesh-compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.mesh-compare h3,
+.risk-paths h3 {
+  margin: 0.5rem 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.component-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+}
+
+.component-list .muted,
+.risk-list .muted {
+  color: var(--muted);
+}
+
+.chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.chain-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.chain-node {
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-1);
+}
+
+.chain-node.source {
+  border-color: var(--agent-b);
+  color: var(--agent-b);
+}
+
+.chain-node.sink {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.chain-arrow {
+  color: var(--muted);
+}
+
+.chain-arrow.lost {
+  color: var(--danger);
+  font-weight: 700;
+}

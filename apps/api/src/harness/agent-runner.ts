@@ -3,6 +3,7 @@ import type { AgentSpec } from "@sandbox/shared";
 import { config } from "../config.js";
 import { messageBus } from "../message-bus.js";
 import { traceBus } from "../events.js";
+import { withProvenance } from "./provenance.js";
 import { execSandboxed, FINANCE_TOOL_NAMES, FINANCE_TOOLS } from "./sandbox.js";
 import { AGENT_TOOLS } from "./tools.js";
 
@@ -13,6 +14,8 @@ export type AgentSession = {
   done: boolean;
   turnsUsed: number;
   isSeed: boolean;
+  /** provenance_tag fix: appended by the harness to every message this agent sends. */
+  provenanceTag?: string;
 };
 
 type ToolHandlerCtx = {
@@ -76,7 +79,7 @@ function asText(blocks: Anthropic.ContentBlock[]): string {
 export function createSession(
   agent: AgentSpec,
   peers: AgentSpec[],
-  opts: { isSeed: boolean; scenarioHint?: string },
+  opts: { isSeed: boolean; scenarioHint?: string; provenanceTag?: string },
 ): AgentSession {
   const scenario = opts.scenarioHint?.trim();
   const opening = opts.isSeed
@@ -102,6 +105,7 @@ export function createSession(
     done: false,
     turnsUsed: 0,
     isSeed: opts.isSeed,
+    provenanceTag: opts.provenanceTag,
   };
 }
 
@@ -126,7 +130,14 @@ async function handleTool(
         error: `Unknown peer id "${to}". Valid: ${[...peerIds].join(", ")}`,
       };
     }
-    const msg = messageBus.send(runId, agent.id, to, body);
+    // The tag is added by the harness after the model wrote the body, so the agent
+    // cannot drop it; the trace records exactly what the receiver gets.
+    const msg = messageBus.send(
+      runId,
+      agent.id,
+      to,
+      withProvenance(body, session.provenanceTag),
+    );
     traceBus.emit(runId, "agent.message_sent", { message: msg }, agent.id);
     traceBus.emit(runId, "agent.message_received", { message: msg }, to);
     return { ok: true, messageId: msg.id, deliveredTo: to };

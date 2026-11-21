@@ -5,7 +5,9 @@ import type {
   CreateRunRequest,
   CreateStoredRunRequest,
   EmailScenarioKind,
+  RiskPathAnalysis,
   RunEvaluation,
+  RunRiskPaths,
   RunSummary,
   SenderCheck,
 } from "@sandbox/shared";
@@ -17,6 +19,8 @@ import { messageBus } from "../message-bus.js";
 import { traceBus } from "../events.js";
 import { createSession, runOneTurn } from "./agent-runner.js";
 import { evaluateRun } from "./evaluator.js";
+import { provenanceTag } from "./provenance.js";
+import { analyzeRiskPaths, observeRiskPaths, type RiskSetup } from "./risk-paths.js";
 import type { RunJudgment } from "./judge.js";
 
 export type RunRosterEntry = {
@@ -42,6 +46,8 @@ export type RunEmailInfo = {
   forensics: SenderCheck;
   /** The raw email, for the judge. */
   email: string;
+  /** provenance_tag fix: agent-to-agent messages carry the email's origin. */
+  provenanceTag?: boolean;
 };
 
 type InternalRun = RunSummary & {
@@ -84,6 +90,62 @@ export function evaluateInternalRun(run: InternalRun): RunEvaluation {
     email: run.email,
     financeAgentIds: run.agents.filter((a) => a.financeTools).map((a) => a.id),
     seedAgentId: run.seedAgentId,
+  });
+}
+
+function riskSetupFor(run: InternalRun): RiskSetup {
+  return {
+    agents: run.agents.map((a) => ({ id: a.id, name: a.name, finance: Boolean(a.financeTools) })),
+    seedAgentId: run.seedAgentId ?? run.agents[0]?.id ?? "",
+    email: run.email ? { from: run.email.from, senderCheck: run.email.forensics } : null,
+    fixes: {
+      senderCheck: Boolean(run.email?.senderCheck),
+      provenanceTag: Boolean(run.email?.provenanceTag),
+    },
+  };
+}
+
+/** Predicted paths from the run setup, and the ones the trace shows were actually taken. */
+export function riskPathsForRun(run: InternalRun): RunRiskPaths {
+  const setup = riskSetupFor(run);
+  const predicted = analyzeRiskPaths(setup);
+  return {
+    predicted,
+    observed: observeRiskPaths(traceBus.history(run.id), setup, predicted.paths),
+  };
+}
+
+/**
+ * Same analysis before launching (no run, no model call): what MESH predicts for this setup.
+ * Validates like createAndStartStoredRun so the preview matches what would run.
+ */
+export async function previewRiskPaths(body: {
+  agentIds: string[];
+  seedAgentId: string;
+  financeAgentIds?: string[];
+  emailScenario?: CreateStoredRunRequest["emailScenario"];
+}): Promise<RiskPathAnalysis> {
+  const agentIds = [...new Set(body.agentIds.map((id) => id.trim()).filter(Boolean))];
+  const seedAgentId = body.seedAgentId.trim();
+  if (!agentIds.includes(seedAgentId)) {
+    throw new Error("seedAgentId must be one of the selected agents.");
+  }
+  const financeIds = new Set((body.financeAgentIds ?? []).map((id) => id.trim()));
+  const agents: RiskSetup["agents"] = [];
+  for (const id of agentIds) {
+    const stored = await getAgent(id);
+    if (!stored) throw new Error(`Agent not found: ${id}`);
+    agents.push({ id, name: stored.name, finance: financeIds.has(id) });
+  }
+  const scen = body.emailScenario ? getEmailScenario(body.emailScenario) : null;
+  return analyzeRiskPaths({
+    agents,
+    seedAgentId,
+    email: scen ? { from: scen.from, senderCheck: scen.senderCheck } : null,
+    fixes: {
+      senderCheck: Boolean(body.emailScenario?.senderCheck),
+      provenanceTag: Boolean(body.emailScenario?.provenanceTag),
+    },
   });
 }
 
@@ -222,6 +284,7 @@ export async function createAndStartStoredRun(
       senderCheck: banner ?? null,
       forensics: scen.senderCheck,
       email: scen.email,
+      provenanceTag: Boolean(body.emailScenario.provenanceTag),
     };
   }
 
@@ -300,12 +363,16 @@ async function executeRun(
   });
 
   const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const tag = opts.email?.provenanceTag
+    ? provenanceTag({ from: opts.email.from, senderCheck: opts.email.senderCheck })
+    : undefined;
   const sessions = run.agents.map((agent) => {
     const peers = run.agents.filter((a) => a.id !== agent.id);
     return createSession(agent, peers, {
       isSeed: agent.id === opts.seedAgentId,
       scenarioHint:
         agent.id === opts.seedAgentId ? opts.scenarioHint : undefined,
+      provenanceTag: tag,
     });
   });
 

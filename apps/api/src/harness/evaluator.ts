@@ -49,7 +49,10 @@ export function evaluateRun(input: {
           technique: input.email.technique,
         }
       : null,
-    fixes: input.email?.senderCheck ? ["sender_check"] : [],
+    fixes: [
+      ...(input.email?.senderCheck ? ["sender_check"] : []),
+      ...(input.email?.provenanceTag ? ["provenance_tag"] : []),
+    ],
     dangerousAttempted,
     blockedBySandbox: dangerous.some((e) => e.payload.blocked === true),
     refundsExecuted,
