@@ -3,4 +3,6 @@ export {
   agents,
   agentContextFiles,
   agentVulnAssessments,
+  vulnEvalBatches,
+  vulnEvalBatchResults,
 } from "./schema.pg.js";

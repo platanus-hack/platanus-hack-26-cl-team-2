@@ -122,6 +122,7 @@ async function main() {
     const stored = await upsertAgent(profile, {
       orgHints: profile.orgHints ?? null,
       harnessTools,
+      origin: "seed",
     });
     const dbNote = mockDb.length ? ` · mock-db=${mockDb.join(",")}` : "";
     console.log(

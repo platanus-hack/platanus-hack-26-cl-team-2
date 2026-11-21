@@ -1,5 +1,8 @@
 import {
   getArea,
+  inferAgentOrigin,
+  isAgentOrigin,
+  type AgentOrigin,
   type AgentProfile,
   type AreaId,
   type OrgHints,
@@ -27,6 +30,8 @@ export type StoredAgent = AgentProfile & {
   harnessTools: string[];
   harnessModel: string | null;
   orgHints?: OrgHints;
+  /** Stored origin, or inferred for rows saved before it was stored. */
+  origin: AgentOrigin;
   contextFiles: ContextFileDto[];
   updatedAt: string;
 };
@@ -52,6 +57,7 @@ export type NormalizedAgentRow = {
   orgHints: OrgHints | null;
   harnessTools: string[];
   harnessModel: string | null;
+  origin: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -91,6 +97,7 @@ export function rowToProfile(
     harnessTools:
       row.harnessTools?.length > 0 ? row.harnessTools : toolsForArea(row.areaId),
     harnessModel: row.harnessModel,
+    origin: isAgentOrigin(row.origin) ? row.origin : inferAgentOrigin(row),
     contextFiles: files.map(fileToDto),
   };
 }
@@ -113,6 +120,7 @@ export function profileToInsert(
     harnessTools?: string[];
     harnessModel?: string | null;
     orgHints?: OrgHints | null;
+    origin?: AgentOrigin | null;
   },
 ) {
   const areaTools = toolsForArea(profile.areaId);
@@ -133,6 +141,7 @@ export function profileToInsert(
     orgHints: extras?.orgHints ?? profile.orgHints ?? null,
     harnessTools: extras?.harnessTools ?? areaTools,
     harnessModel: extras?.harnessModel ?? null,
+    origin: extras?.origin ?? null,
     createdAt: new Date(profile.createdAt || now),
     updatedAt: now,
   };
@@ -154,11 +163,13 @@ export function asNormalizedAgent(row: {
   orgHints: OrgHints | null;
   harnessTools: string[] | null;
   harnessModel: string | null;
+  origin?: string | null;
   createdAt: Date | number;
   updatedAt: Date | number;
 }): NormalizedAgentRow {
   return {
     ...row,
+    origin: row.origin ?? null,
     operatingStyle: row.operatingStyle ?? [],
     harnessTools: row.harnessTools ?? [],
     createdAt:

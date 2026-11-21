@@ -184,6 +184,7 @@ profileRoutes.post("/save", requireAdmin, async (c) => {
     const profile = parsed.data.profile as AgentProfile;
     const agent = await upsertAgent(profile, {
       orgHints: profile.orgHints ?? null,
+      origin: "manual",
       ...(profile.orgHints?.notes === "mesh:prompt-only" ? { harnessTools: ["done", "send_message", "read_inbox"] } : {}),
     });
     return c.json({ ok: true, profile: agent, agent });

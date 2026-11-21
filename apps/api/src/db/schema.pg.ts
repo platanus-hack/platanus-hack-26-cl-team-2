@@ -1,13 +1,19 @@
 import {
   boolean,
+  integer,
   jsonb,
   pgTable,
   text,
   timestamp,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { InternalRun } from "../harness/orchestrator.js";
-import type { TraceEvent } from "@sandbox/shared";
+import type {
+  TraceEvent,
+  VulnBatchEstimate,
+  VulnBatchSettings,
+} from "@sandbox/shared";
 import type { RunJudgment } from "../harness/judge.js";
 
 export const simulationRuns = pgTable("simulation_runs", {
@@ -47,6 +53,8 @@ export const agents = pgTable(
       .notNull()
       .$defaultFn(() => []),
     harnessModel: text("harness_model"),
+    /** manual | enterprise | seed | test; null on rows saved before it existed. Set on insert only. */
+    origin: text("origin"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -126,4 +134,36 @@ export const agentVulnAssessments = pgTable(
       .defaultNow(),
   },
   (t) => [index("agent_vuln_assessments_agent_idx").on(t.agentId)],
+);
+
+/** One "evaluate every agent" batch (append-only history, unlike agent_vuln_assessments). */
+export const vulnEvalBatches = pgTable("vuln_eval_batches", {
+  id: text("id").primaryKey(),
+  status: text("status").notNull(),
+  settings: jsonb("settings").$type<VulnBatchSettings>().notNull(),
+  estimate: jsonb("estimate").$type<VulnBatchEstimate>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+});
+
+/** Per-agent snapshot inside a batch: scores before and after. No FK to agents, so history survives deletes. */
+export const vulnEvalBatchResults = pgTable(
+  "vuln_eval_batch_results",
+  {
+    id: text("id").primaryKey(),
+    batchId: text("batch_id")
+      .notNull()
+      .references(() => vulnEvalBatches.id, { onDelete: "cascade" }),
+    agentId: text("agent_id").notNull(),
+    agentName: text("agent_name").notNull(),
+    status: text("status").notNull(),
+    previousScores: jsonb("previous_scores").$type<Record<string, number>>(),
+    scores: jsonb("scores").$type<Record<string, number>>(),
+    summary: text("summary").notNull().default(""),
+    runIds: jsonb("run_ids").$type<string[]>().notNull(),
+    error: text("error"),
+    position: integer("position").notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("vuln_eval_batch_results_batch_agent_idx").on(t.batchId, t.agentId)],
 );

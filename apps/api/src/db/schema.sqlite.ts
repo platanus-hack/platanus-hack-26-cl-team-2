@@ -3,9 +3,14 @@ import {
   integer,
   sqliteTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import type { InternalRun } from "../harness/orchestrator.js";
-import type { TraceEvent } from "@sandbox/shared";
+import type {
+  TraceEvent,
+  VulnBatchEstimate,
+  VulnBatchSettings,
+} from "@sandbox/shared";
 import type { RunJudgment } from "../harness/judge.js";
 
 export const simulationRunsSqlite = sqliteTable("simulation_runs", {
@@ -53,6 +58,7 @@ export const agentsSqlite = sqliteTable(
       .notNull()
       .$defaultFn(() => []),
     harnessModel: text("harness_model"),
+    origin: text("origin"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -137,4 +143,34 @@ export const agentVulnAssessmentsSqlite = sqliteTable(
       .$defaultFn(() => new Date()),
   },
   (t) => [index("agent_vuln_assessments_agent_idx").on(t.agentId)],
+);
+
+export const vulnEvalBatchesSqlite = sqliteTable("vuln_eval_batches", {
+  id: text("id").primaryKey(),
+  status: text("status").notNull(),
+  settings: text("settings", { mode: "json" }).$type<VulnBatchSettings>().notNull(),
+  estimate: text("estimate", { mode: "json" }).$type<VulnBatchEstimate>().notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
+});
+
+export const vulnEvalBatchResultsSqlite = sqliteTable(
+  "vuln_eval_batch_results",
+  {
+    id: text("id").primaryKey(),
+    batchId: text("batch_id")
+      .notNull()
+      .references(() => vulnEvalBatchesSqlite.id, { onDelete: "cascade" }),
+    agentId: text("agent_id").notNull(),
+    agentName: text("agent_name").notNull(),
+    status: text("status").notNull(),
+    previousScores: text("previous_scores", { mode: "json" }).$type<Record<string, number>>(),
+    scores: text("scores", { mode: "json" }).$type<Record<string, number>>(),
+    summary: text("summary").notNull().default(""),
+    runIds: text("run_ids", { mode: "json" }).$type<string[]>().notNull(),
+    error: text("error"),
+    position: integer("position").notNull(),
+    finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [uniqueIndex("vuln_eval_batch_results_batch_agent_idx").on(t.batchId, t.agentId)],
 );

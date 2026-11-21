@@ -1,5 +1,6 @@
 import type {
   AgentKnobs,
+  AgentOrigin,
   BatchResults,
   AgentProfile,
   AgentVulnAssessment,
@@ -18,6 +19,8 @@ import type {
   RunSummary,
   SeniorityMix,
   TraceEvent,
+  VulnBatch,
+  VulnBatchEstimate,
   VulnCategory,
   VulnDesignerBrief,
   VulnScores,
@@ -35,6 +38,8 @@ export type VulnRunTraceDto = {
 export type StoredAgent = AgentProfile & {
   harnessTools: string[];
   harnessModel: string | null;
+  /** manual = made in the agent creator; enterprise/seed/test = generated. */
+  origin: AgentOrigin;
   contextFiles: Array<{
     id: string;
     agentId: string;
@@ -61,6 +66,17 @@ function writeHeaders(json: boolean): Record<string, string> {
     // storage blocked: no token
   }
   return headers;
+}
+
+/** An API error that keeps the HTTP status (429 = daily budget spent, 401 = admin token). */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
 
 export async function fetchHealth(): Promise<{
@@ -385,7 +401,7 @@ export async function designVulnScenarios(
     body: "{}",
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Falló el diseño de escenarios");
+  if (!res.ok) throw new ApiError(res.status, data.error ?? "Falló el diseño de escenarios");
   return data as { agentId: string; brief: VulnDesignerBrief };
 }
 
@@ -407,7 +423,7 @@ export async function runOneVulnScenario(
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Falló el escenario");
+  if (!res.ok) throw new ApiError(res.status, data.error ?? "Falló el escenario");
   return data.result as VulnRunTraceDto;
 }
 
@@ -429,7 +445,7 @@ export async function finalizeVulnAssessment(
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Falló el scoring final");
+  if (!res.ok) throw new ApiError(res.status, data.error ?? "Falló el scoring final");
   return data as {
     assessment: AgentVulnAssessment;
     descriptionUpdated: boolean;
@@ -490,4 +506,65 @@ export async function fetchBatchResults(): Promise<BatchResults | null> {
   const data = await res.json().catch(() => ({ error: `La API respondió ${res.status} sin datos del lote` }));
   if (!res.ok) throw new Error(data.error ?? "No se pudieron cargar los resultados del lote");
   return data.results ?? null;
+}
+
+export type VulnBatchOptions = {
+  agentIds?: string[];
+  iterations: number;
+  maxTurnsPerAgent: number;
+  concurrency: number;
+};
+
+async function batchJson<T>(res: Response, fallback: string): Promise<T> {
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error ?? fallback);
+  return data as T;
+}
+
+export async function listVulnBatches(): Promise<VulnBatch[]> {
+  const res = await fetch("/api/vuln-batches");
+  return (await batchJson<{ batches: VulnBatch[] }>(res, "No se pudieron cargar los lotes")).batches;
+}
+
+export async function estimateVulnBatch(options: VulnBatchOptions): Promise<VulnBatchEstimate> {
+  const res = await fetch("/api/vuln-batches/estimate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(options),
+  });
+  return (await batchJson<{ estimate: VulnBatchEstimate }>(res, "No se pudo estimar el costo")).estimate;
+}
+
+export async function startVulnBatch(options: VulnBatchOptions): Promise<VulnBatch> {
+  const res = await fetch("/api/vuln-batches", {
+    method: "POST",
+    headers: writeHeaders(true),
+    body: JSON.stringify(options),
+  });
+  return (await batchJson<{ batch: VulnBatch }>(res, "No se pudo iniciar el lote")).batch;
+}
+
+export async function reportVulnBatchAgent(
+  batchId: string,
+  agentId: string,
+  body: { status: "ok" | "failed"; error?: string },
+): Promise<VulnBatch> {
+  const res = await fetch(`/api/vuln-batches/${batchId}/agents/${encodeURIComponent(agentId)}`, {
+    method: "POST",
+    headers: writeHeaders(true),
+    body: JSON.stringify({ ...body, error: body.error?.slice(0, 1000) }),
+  });
+  return (await batchJson<{ batch: VulnBatch }>(res, "No se pudo guardar el resultado")).batch;
+}
+
+export async function finishVulnBatch(
+  batchId: string,
+  status: "completed" | "stopped" | "failed",
+): Promise<VulnBatch> {
+  const res = await fetch(`/api/vuln-batches/${batchId}/finish`, {
+    method: "POST",
+    headers: writeHeaders(true),
+    body: JSON.stringify({ status }),
+  });
+  return (await batchJson<{ batch: VulnBatch }>(res, "No se pudo cerrar el lote")).batch;
 }

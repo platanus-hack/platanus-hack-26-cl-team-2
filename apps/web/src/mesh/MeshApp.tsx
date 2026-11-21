@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Dashboard } from "./Dashboard";
 import { RealWorkspace } from "./RealWorkspace";
 import { AgentEvalsPage } from "./AgentEvalsPage";
+import { VulnBatchPanel } from "./VulnBatchPanel";
 import { EntityGlyph } from "./EntityGlyph";
 import { fetchHealth, listAgents } from "../api";
 import { LabPage } from "../LabPage";
@@ -114,9 +115,10 @@ export function MeshApp() {
           />
         ) : (
           <>
+            <VulnBatchPanel hasApiKey={Boolean(health?.hasApiKey)} onOpenEvals={openAgentEvals} />
             <div className="mesh-callout">
-              Laboratorio multi-agente · Para evals de vulnerabilidad por atributo, abre un agente
-              desde Organización → Ir a evals.
+              Laboratorio multi-agente · Para evals de vulnerabilidad de un solo agente, abre un agente
+              desde Organización → Ir a evals, o haz clic en su nombre en la tabla de arriba.
             </div>
             <BatchResultsPanel />
           </>
