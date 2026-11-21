@@ -21,6 +21,28 @@ un servidor escuchando puertos dentro de la función.
 
 No pongas secretos en variables `VITE_*` ni en archivos versionados.
 
+## Protecciones de la demo pública
+
+La API limita el consumo de créditos sin configuración adicional. Variables
+opcionales en Production:
+
+- `ADMIN_TOKEN`: si se define, las escrituras (crear o borrar agentes, guardar
+  perfiles, generar empresas, evals de vulnerabilidad) exigen el header
+  `x-admin-token`. En el navegador:
+  `localStorage.setItem("meshAdminToken", "<token>")`. Sin definir, las
+  escrituras quedan abiertas.
+- `MAX_SPEND_USD_PER_DAY` (por defecto `5`): tope diario en US$ de llamadas al
+  modelo; `0` lo desactiva. Al agotarse, la API responde 429 hasta el día
+  siguiente (UTC).
+- `RATE_LIMIT_PER_MINUTE` (por defecto `12` en Vercel): solicitudes que llaman
+  al modelo por IP y por minuto; `0` lo desactiva. `MAX_RUNS_PER_DAY` (por
+  defecto `40`) limita las ejecuciones diarias.
+
+La IP del visitante se toma de `x-real-ip` (o del primer valor de
+`x-vercel-forwarded-for`), que Vercel escribe. Los contadores viven en la memoria
+de cada instancia de la función: son una protección aproximada, no un límite
+exacto.
+
 El paquete `@sandbox/shared` exporta JavaScript y declaraciones desde `dist`.
 Se compila al instalar dependencias y antes del build de Vercel. La función
 incluye explícitamente esos archivos; no debe cargar fuentes `.ts` del workspace

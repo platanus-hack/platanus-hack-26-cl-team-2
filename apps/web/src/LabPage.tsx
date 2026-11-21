@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   CreateStoredRunRequest,
   EmailScenarioSummary,
+  RiskPathAnalysis,
   RunEvaluation,
+  RunRiskPaths,
   RunSummary,
   TraceEvent,
 } from "@sandbox/shared";
 import {
+  analyzeRiskPaths,
   createRunFromStored,
   fetchRun,
   judgeRun,
@@ -21,9 +24,12 @@ import {
 import { RunJudgmentPanel } from "./RunJudgment";
 import {
   BeforeAfterPanel,
+  emailKindLabel,
   RunOutcomePanel,
+  SENDER_VERDICT_LABEL,
   type RunSnapshot,
 } from "./RunOutcome";
+import { RiskPathsPanel } from "./RiskPaths";
 import { Timeline } from "./Timeline";
 import { ConversationDebugger } from "./ConversationDebugger";
 import { selectObservedRun } from "./mesh/runSelection";
@@ -33,11 +39,117 @@ type Props = {
   onRunCreated?: (run: RunSummary) => void;
   /** `demo` = solo agentes de la empresa DEMO. */
   scope?: "all" | "demo";
+  /**
+   * False while the lab is kept mounted but hidden (another sidebar section is open), so the
+   * trace and "Antes y después" survive. Each time it is shown again the agent list is reloaded.
+   */
+  active?: boolean;
 };
 
 const MAX_PARTICIPANTS = 8;
 
-export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
+const NO_API_KEY_HINT =
+  "Falta la ANTHROPIC_API_KEY en el servidor: no se pueden lanzar agentes.";
+
+/** Display labels only: the ids stored on the agents are unchanged. */
+const AREA_LABELS: Record<string, string> = {
+  all: "todas",
+  gtm: "Comercial (Ventas)",
+  csm: "CSM",
+  cs: "Soporte al cliente",
+  engineering: "Ingeniería",
+  product_design: "Producto y diseño",
+  data: "Datos",
+  it: "TI",
+  finance: "Finanzas",
+};
+
+const SENIORITY_LABELS: Record<string, string> = {
+  junior: "inicial",
+  mid: "intermedio",
+  senior: "avanzado",
+  staff: "especialista",
+};
+
+const MOTIVATION_LABELS: Record<string, string> = {
+  quality: "calidad",
+  speed: "rapidez",
+  compliance: "cumplimiento",
+  impact: "impacto",
+  recognition: "reconocimiento",
+};
+
+const RUN_STATUS_LABELS: Record<RunSummary["status"], string> = {
+  pending: "pendiente",
+  running: "en curso",
+  completed: "completada",
+  failed: "fallida",
+  stopped: "detenida",
+};
+
+/** Default email for the demo: the spoofed-Microsoft bank change, else the first suspicious attack. */
+function defaultEmail(scenarios: EmailScenarioSummary[]): EmailScenarioSummary | undefined {
+  return (
+    scenarios.find(
+      (e) => e.file === "spoof_eval_demo.json" && e.id === "spoof_02_fake_microsoft_bank",
+    ) ??
+    scenarios.find((e) => e.kind === "attack" && e.senderCheck.verdict === "SUSPICIOUS") ??
+    scenarios.find((e) => e.kind === "attack") ??
+    scenarios[0]
+  );
+}
+
+type FixName = "sender_check" | "provenance_tag" | "approval_gate";
+
+const ALL_FIXES: readonly FixName[] = ["sender_check", "provenance_tag", "approval_gate"];
+
+/** The emailScenario flag each fix turns on. */
+const FIX_FLAG: Record<FixName, "senderCheck" | "provenanceTag" | "approvalGate"> = {
+  sender_check: "senderCheck",
+  provenance_tag: "provenanceTag",
+  approval_gate: "approvalGate",
+};
+
+const FIX_BUTTON: Record<FixName, { label: string; title: string }> = {
+  sender_check: {
+    label: "Repetir con verificación del remitente",
+    title:
+      "Mismos agentes, agente inicial, herramientas y correo; solo se agrega la verificación del remitente (solo la ve el agente inicial)",
+  },
+  provenance_tag: {
+    label: "Repetir con etiqueta de procedencia",
+    title:
+      "Misma configuración; el sistema agrega el origen del correo (y el veredicto del remitente, si está activo) a cada mensaje entre agentes",
+  },
+  approval_gate: {
+    label: "Repetir con aprobación humana por procedencia",
+    title:
+      "Misma configuración; el entorno de finanzas retiene para aprobación humana los reembolsos grandes y los cambios bancarios pedidos desde un correo externo (los agentes no lo saben de antemano)",
+  },
+};
+
+const FIX_LABEL: Record<FixName, string> = {
+  sender_check: "verificación del remitente",
+  provenance_tag: "etiqueta de procedencia",
+  approval_gate: "aprobación humana por procedencia",
+};
+
+function fixesOf(req: CreateStoredRunRequest | null): FixName[] {
+  const e = req?.emailScenario;
+  if (!e) return [];
+  return ALL_FIXES.filter((f) => e[FIX_FLAG[f]]);
+}
+
+function fixesLabel(fixes: FixName[]): string {
+  return fixes.length ? fixes.map((f) => FIX_LABEL[f]).join(" + ") : "sin mitigación";
+}
+
+export function LabPage({
+  hasApiKey,
+  onRunCreated,
+  scope = "all",
+  active = true,
+}: Props) {
   const [catalog, setCatalog] = useState<StoredAgent[]>([]);
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
   const [seedAgentId, setSeedAgentId] = useState("");
@@ -52,6 +164,12 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
   const [emailLoadError, setEmailLoadError] = useState<string | null>(null);
   const [emailKey, setEmailKey] = useState("");
   const [senderCheckOn, setSenderCheckOn] = useState(false);
+  const [provenanceTagOn, setProvenanceTagOn] = useState(false);
+  const [approvalGateOn, setApprovalGateOn] = useState(false);
+  const [preview, setPreview] = useState<RiskPathAnalysis | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [runRiskPaths, setRunRiskPaths] = useState<RunRiskPaths | null>(null);
   const [peerFromId, setPeerFromId] = useState("");
   const [peerToId, setPeerToId] = useState("");
   const [peerBody, setPeerBody] = useState(
@@ -60,6 +178,9 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
   const [finance, setFinance] = useState<Record<string, boolean>>({});
   const [maxTurns, setMaxTurns] = useState(6);
   const [run, setRun] = useState<RunSummary | null>(null);
+  /** Id of the run on screen: late replies from an earlier run must not overwrite it. */
+  const currentRunId = useRef<string | null>(null);
+  currentRunId.current = run?.id ?? null;
   const [events, setEvents] = useState<TraceEvent[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,12 +195,24 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
   const [manualRunId, setManualRunId] = useState("");
   const [pastedTranscript, setPastedTranscript] = useState("");
 
+  const catalogLoaded = useRef(false);
   useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
     listAgents()
       .then((agents) => {
+        if (cancelled) return;
         const scoped =
           scope === "demo" ? agents.filter(isDemoStoredAgent) : agents;
         setCatalog(scoped);
+        if (catalogLoaded.current) {
+          // Shown again (agents may have been created meanwhile): keep the current selection.
+          setEnabled((prev) =>
+            Object.fromEntries(scoped.map((a) => [a.id, Boolean(prev[a.id])])),
+          );
+          return;
+        }
+        catalogLoaded.current = true;
         const next: Record<string, boolean> = {};
         for (const a of scoped) next[a.id] = false;
         // Enable first two by default for a quick start
@@ -88,16 +221,22 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
         setEnabled(next);
         if (scoped[0]) setSeedAgentId(scoped[0].id);
       })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : String(err)),
-      );
-  }, [scope]);
+      .catch((err) => {
+        // A failed refresh keeps the list already on screen.
+        if (cancelled || catalogLoaded.current) return;
+        setError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active, scope]);
 
   useEffect(() => {
     listEmailScenarios()
       .then(({ scenarios, errors }) => {
         setEmails(scenarios);
-        if (scenarios[0]) setEmailKey(emailKeyOf(scenarios[0]));
+        const first = defaultEmail(scenarios);
+        if (first) setEmailKey(emailKeyOf(first));
         if (errors.length) setEmailLoadError(errors.join(" · "));
       })
       .catch((err) =>
@@ -144,7 +283,11 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
         );
         if (run) {
           void fetchRun(run.id)
-            .then((d) => setEvaluation(d.evaluation))
+            .then((d) => {
+              if (currentRunId.current !== run.id) return;
+              setEvaluation(d.evaluation);
+              setRunRiskPaths(d.riskPaths ?? null);
+            })
             .catch(() => undefined);
         }
         if (event.type === "run.completed" && run) {
@@ -162,6 +305,7 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
     setJudgeError(null);
     try {
       const { judgment: j, evaluation: ev } = await judgeRun(id);
+      if (currentRunId.current !== null && currentRunId.current !== id) return;
       setJudgment(j);
       setEvaluation(ev);
     } catch (err) {
@@ -180,18 +324,28 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
     setBusy(false);
     try {
       const data = await fetchRun(id);
+      // A completed run that is new on screen is judged by the event stream (it replays
+      // run.completed); asking here too would send a second judge request.
+      const streamWillJudge =
+        currentRunId.current !== data.run.id && data.run.status === "completed";
+      // This run was not launched from this form: "re-run with fix" and the before/after
+      // table would mix it with the previous launch.
+      setLastLaunch(null);
+      setBaseline(null);
       setRun(data.run);
       selectObservedRun(data.run.id);
       onRunCreated?.(data.run);
       setEvents(data.events ?? []);
       setJudgment(data.judgment ?? null);
       setEvaluation(data.evaluation ?? null);
+      setRunRiskPaths(data.riskPaths ?? null);
       setManualRunId(id);
       if (
         !data.judgment &&
+        !streamWillJudge &&
         (data.run.status === "completed" || data.run.status === "failed")
       ) {
-        await requestJudge(id);
+        if (hasApiKey) await requestJudge(id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -201,7 +355,7 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
   async function judgePasted() {
     const transcript = pastedTranscript.trim();
     if (transcript.length < 40) {
-      setJudgeError("Paste the live-trace / conversation text first.");
+      setJudgeError("Primero pega el texto de la traza o de la conversación.");
       return;
     }
     setJudging(true);
@@ -255,9 +409,12 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
     return map;
   }, [run]);
 
-  // Keep seed / peer endpoints valid when toggling selection
+  // Keep seed / peer endpoints valid when toggling; with nothing selected there is no seed.
   useEffect(() => {
-    if (selectedIds.length === 0) return;
+    if (selectedIds.length === 0) {
+      if (seedAgentId) setSeedAgentId("");
+      return;
+    }
     if (!selectedIds.includes(seedAgentId)) {
       setSeedAgentId(selectedIds[0]);
     }
@@ -283,6 +440,64 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
     selectedIds.includes(peerToId) &&
     peerFromId !== peerToId;
 
+  // MESH preview: re-analyze the setup whenever it changes (no model call, debounced).
+  const previewKey = JSON.stringify({
+    selectedIds,
+    seedAgentId,
+    finance: selectedIds.filter((id) => finance[id]),
+    email: scenarioSource === "email" && selectedEmail ? emailKeyOf(selectedEmail) : null,
+    senderCheckOn,
+    provenanceTagOn,
+    approvalGateOn,
+  });
+  useEffect(() => {
+    if (selectedIds.length < 2 || !selectedIds.includes(seedAgentId)) {
+      setPreview(null);
+      setPreviewLoading(false);
+      setPreviewError(null);
+      return;
+    }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => {
+      setPreviewLoading(true);
+      analyzeRiskPaths(
+        {
+          agentIds: selectedIds,
+          seedAgentId,
+          financeAgentIds: selectedIds.filter((id) => finance[id]),
+          ...(scenarioSource === "email" && selectedEmail
+            ? {
+                emailScenario: {
+                  file: selectedEmail.file,
+                  id: selectedEmail.id,
+                  senderCheck: senderCheckOn,
+                  provenanceTag: provenanceTagOn,
+                  approvalGate: approvalGateOn,
+                },
+              }
+            : {}),
+        },
+        ctrl.signal,
+      )
+        .then((a) => {
+          setPreview(a);
+          setPreviewError(null);
+        })
+        .catch((err) => {
+          if (ctrl.signal.aborted) return;
+          setPreview(null);
+          setPreviewError(err instanceof Error ? err.message : String(err));
+        })
+        .finally(() => {
+          if (!ctrl.signal.aborted) setPreviewLoading(false);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [previewKey]);
+
   const canLaunch =
     hasApiKey &&
     !busy &&
@@ -299,7 +514,7 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
       if (turningOn) {
         const currentlyOn = Object.values(prev).filter(Boolean).length;
         if (currentlyOn >= MAX_PARTICIPANTS) {
-          setError(`Max ${MAX_PARTICIPANTS} agentes per run (token safety).`);
+          setError(`Máximo ${MAX_PARTICIPANTS} agentes por ejecución (para cuidar tokens).`);
           return prev;
         }
       }
@@ -326,16 +541,22 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
     });
   }
 
-  async function launch(body: CreateStoredRunRequest) {
+  /**
+   * The screen (trace, result, judgment, "Antes y después") is only replaced once the server
+   * accepted the run: a rejected launch (429 over budget, 503 no key) leaves it as it was.
+   * `onAccepted` runs in the same update as the swap to the new run.
+   */
+  async function launch(body: CreateStoredRunRequest, onAccepted?: () => void) {
     setError(null);
     setBusy(true);
-    setEvents([]);
-    setRun(null);
-    setJudgment(null);
-    setEvaluation(null);
-    setJudgeError(null);
     try {
       const { run: created } = await createRunFromStored(body);
+      setEvents([]);
+      setJudgment(null);
+      setEvaluation(null);
+      setRunRiskPaths(null);
+      setJudgeError(null);
+      onAccepted?.();
       setLastLaunch(body);
       setRun(created);
       selectObservedRun(created.id);
@@ -346,40 +567,61 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
     }
   }
 
-  /** Improve loop: same request, sender_check turned on; current run becomes "before". */
-  async function rerunWithFix() {
+  /** Improve loop: same request plus one fix; the current run becomes "before". */
+  async function rerunWithFix(fix: FixName) {
     if (!run || !lastLaunch?.emailScenario) return;
-    setBaseline({ runId: run.id, label: "antes (sin mitigación)", evaluation, judgment });
-    setSenderCheckOn(true);
-    await launch({
-      ...lastLaunch,
-      emailScenario: { ...lastLaunch.emailScenario, senderCheck: true },
-    });
+    const before: RunSnapshot = {
+      runId: run.id,
+      label: `antes (${fixesLabel(fixesOf(lastLaunch))})`,
+      evaluation,
+      judgment,
+      // The run is finished and nobody is judging it: no judgment now means there will be none.
+      judgeUnavailable: judgment === null,
+    };
+    await launch(
+      {
+        ...lastLaunch,
+        emailScenario: { ...lastLaunch.emailScenario, [FIX_FLAG[fix]]: true },
+      },
+      () => {
+        // Only when the re-run really started: otherwise the baseline and the toggle stay put.
+        setBaseline(before);
+        if (fix === "sender_check") setSenderCheckOn(true);
+        else if (fix === "provenance_tag") setProvenanceTagOn(true);
+        else setApprovalGateOn(true);
+      },
+    );
   }
 
-  const canRerunWithFix =
+  const runFinished =
     !busy &&
+    !judging &&
     run !== null &&
     (run.status === "completed" || run.status === "failed") &&
-    lastLaunch?.emailScenario !== undefined &&
-    !lastLaunch.emailScenario.senderCheck;
+    lastLaunch?.emailScenario !== undefined;
+  const rerunFixes: FixName[] = runFinished
+    ? ALL_FIXES.filter((f) => !fixesOf(lastLaunch).includes(f))
+    : [];
+  const afterLabel = `después (${fixesLabel(fixesOf(lastLaunch))})`;
 
   async function onLaunch() {
-    setBaseline(null);
-    await launch({
-      agentIds: selectedIds,
-      seedAgentId: scenarioSource === "peer" ? peerToId : seedAgentId,
-      maxTurnsPerAgent: maxTurns,
-      financeAgentIds: selectedIds.filter((id) => finance[id]),
-      ...(scenarioSource === "email" && selectedEmail
-        ? {
-            emailScenario: {
-              file: selectedEmail.file,
-              id: selectedEmail.id,
-              senderCheck: senderCheckOn,
-            },
-          }
-        : scenarioSource === "peer"
+    await launch(
+      {
+        agentIds: selectedIds,
+        seedAgentId: scenarioSource === "peer" ? peerToId : seedAgentId,
+        maxTurnsPerAgent: maxTurns,
+        financeAgentIds: selectedIds.filter((id) => finance[id]),
+        ...(scenarioSource === "email" && selectedEmail
+          ? {
+              emailScenario: {
+                file: selectedEmail.file,
+                id: selectedEmail.id,
+                senderCheck: senderCheckOn,
+                provenanceTag: provenanceTagOn,
+                approvalGate: approvalGateOn,
+              },
+            }
+          : scenarioSource === "peer"
           ? {
               peerMessage: {
                 fromAgentId: peerFromId,
@@ -388,7 +630,9 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
               },
             }
           : { scenarioHint: scenarioHint.trim() || undefined }),
-    });
+      },
+      () => setBaseline(null),
+    );
   }
 
   return (
@@ -419,7 +663,7 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
             >
               {areas.map((a) => (
                 <option key={a} value={a}>
-                  {a}
+                  {AREA_LABELS[a] ?? a}
                 </option>
               ))}
             </select>
@@ -456,7 +700,7 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
 
         <p className="hint">
           Seleccionados: {selectedIds.length} / {MAX_PARTICIPANTS} · herramientas financieras:{" "}
-          {selectedIds.filter((id) => finance[id]).length || "ninguno"} —
+          {selectedIds.filter((id) => finance[id]).length || "ninguna"} —
           los reembolsos son simulados; los cambios de cuenta bancaria siempre se bloquean y registran.
         </p>
 
@@ -472,7 +716,9 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
               <span className="fleet-main">
                 <strong>{a.name}</strong>
                 <span className="muted">
-                  {a.areaId} · {a.knobs.seniority} · {a.knobs.motivation}
+                  {AREA_LABELS[a.areaId] ?? a.areaId} ·{" "}
+                  {SENIORITY_LABELS[a.knobs.seniority] ?? a.knobs.seniority} ·{" "}
+                  {MOTIVATION_LABELS[a.knobs.motivation] ?? a.knobs.motivation}
                   {a.harnessTools
                     .filter((t) => t.endsWith("_db"))
                     .map((t) => (
@@ -613,7 +859,7 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
                             .filter((e) => e.file === file)
                             .map((e) => (
                               <option key={emailKeyOf(e)} value={emailKeyOf(e)}>
-                                [{e.kind}] {e.id}
+                                [{emailKindLabel(e.kind)}] {e.id}
                               </option>
                             ))}
                         </optgroup>
@@ -629,6 +875,30 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
                     />
                     Mostrar la verificación automática del remitente al agente inicial
                   </label>
+                  <label
+                    className="check"
+                    title="El sistema agrega el origen del correo (y el veredicto del remitente, si está activo) a cada mensaje entre agentes"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={provenanceTagOn}
+                      onChange={(e) => setProvenanceTagOn(e.target.checked)}
+                      disabled={busy}
+                    />
+                    Etiquetar cada mensaje entre agentes con la procedencia (mitigación)
+                  </label>
+                  <label
+                    className="check"
+                    title="El entorno de finanzas (no el modelo) retiene los reembolsos sobre el límite y los cambios bancarios pedidos desde un correo externo, y responde «pendiente de aprobación humana». Los agentes no lo saben de antemano."
+                  >
+                    <input
+                      type="checkbox"
+                      checked={approvalGateOn}
+                      onChange={(e) => setApprovalGateOn(e.target.checked)}
+                      disabled={busy}
+                    />
+                    Aprobación humana por procedencia: retener reembolsos grandes y cambios bancarios (mitigación)
+                  </label>
                 </div>
                 {emailLoadError ? (
                   <p className="hint">Se omitieron algunos archivos: {emailLoadError}</p>
@@ -637,7 +907,7 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
                   <>
                     <p className="hint">
                       <span className={`email-kind kind-${selectedEmail.kind}`}>
-                        {selectedEmail.kind}
+                        {emailKindLabel(selectedEmail.kind)}
                       </span>{" "}
                       {selectedEmail.technique} · verificación del remitente:{" "}
                       <strong
@@ -647,12 +917,12 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
                             : "verdict-ok"
                         }
                       >
-                        {selectedEmail.senderCheck.verdict}
+                        {SENDER_VERDICT_LABEL[selectedEmail.senderCheck.verdict]}
                       </strong>
                       {selectedEmail.senderCheck.reasons.length
                         ? ` — ${selectedEmail.senderCheck.reasons.join("; ")}`
                         : ""}
-                      {senderCheckOn ? "" : "(calculado, no mostrado a los agentes)"}
+                      {senderCheckOn ? "" : " (calculado, no mostrado a los agentes)"}
                     </p>
                     <pre className="email-preview">{selectedEmail.email}</pre>
                   </>
@@ -663,7 +933,10 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
         )}
         <p className="hint">
           Agente inicial:{" "}
-          {catalog.find((a) => a.id === seedAgentId)?.name ?? "(ninguno)"} — es el único que recibe este {scenarioSource === "email" ? "correo" : "texto"} y decide los siguientes pasos.
+          {(selectedIds.includes(seedAgentId)
+            ? catalog.find((a) => a.id === seedAgentId)?.name
+            : undefined) ?? "(ninguno)"}{" "}
+          — es el único que recibe este {scenarioSource === "email" ? "correo" : "texto"} y decide los siguientes pasos.
         </p>
 
         <div className="controls">
@@ -687,25 +960,33 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
             {busy ? "Ejecutando…" : "Iniciar conversación"}
           </button>
         </div>
-        {canRerunWithFix ? (
+        {!hasApiKey ? <p className="error">{NO_API_KEY_HINT}</p> : null}
+        {rerunFixes.length ? (
           <div className="controls">
-            <button
-              type="button"
-              className="btn"
-              onClick={() => void rerunWithFix()}
-              title="Mismos agentes, agente inicial, herramientas y correo; solo se agrega la verificación del remitente"
-            >
-              Repetir con verificación del remitente
-            </button>
-            {judgment?.audit?.recommendedFix === "sender_check" ? (
-              <span className="hint">El evaluador recomienda esta mitigación.</span>
+            {rerunFixes.map((fix) => (
+              <button
+                key={fix}
+                type="button"
+                className="btn"
+                disabled={!hasApiKey}
+                onClick={() => void rerunWithFix(fix)}
+                title={FIX_BUTTON[fix].title}
+              >
+                {FIX_BUTTON[fix].label}
+              </button>
+            ))}
+            {judgment?.audit?.recommendedFix &&
+            rerunFixes.includes(judgment.audit.recommendedFix as FixName) ? (
+              <span className="hint">
+                El evaluador recomienda {FIX_LABEL[judgment.audit.recommendedFix as FixName]}.
+              </span>
             ) : null}
           </div>
         ) : null}
         {error ? <p className="error">{error}</p> : null}
         {run ? (
           <p className="hint">
-            Ejecución: {run.id} · {run.status} · {run.agents.length} agentes · agente inicial primero
+            Ejecución: {run.id} · {RUN_STATUS_LABELS[run.status] ?? run.status} · {run.agents.length} agentes · agente inicial primero
           </p>
         ) : null}
 
@@ -725,7 +1006,8 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
           <button
             type="button"
             className="btn"
-            disabled={judging || pastedTranscript.trim().length < 40}
+            disabled={!hasApiKey || judging || pastedTranscript.trim().length < 40}
+            title={hasApiKey ? undefined : NO_API_KEY_HINT}
             onClick={() => void judgePasted()}
           >
             {judging ? "Evaluando…" : "Evaluar texto"}
@@ -757,7 +1039,8 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
             <button
               type="button"
               className="btn ghost"
-              disabled={judging || !manualRunId.trim()}
+              disabled={!hasApiKey || judging || !manualRunId.trim()}
+              title={hasApiKey ? undefined : NO_API_KEY_HINT}
               onClick={() => void requestJudge(manualRunId)}
             >
               Evaluar ID
@@ -765,6 +1048,27 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
           </div>
         </label>
       </section>
+
+      {selectedIds.length < 2 ? (
+        <section className="panel risk-paths">
+          <h2>Rutas de riesgo (MESH) — previstas para esta configuración</h2>
+          <p className="hint">Elige al menos dos agentes para ver las rutas de riesgo.</p>
+        </section>
+      ) : (
+        <RiskPathsPanel
+          title="Rutas de riesgo (MESH) — previstas para esta configuración"
+          analysis={preview}
+          loading={previewLoading}
+          error={previewError}
+        />
+      )}
+      {runRiskPaths ? (
+        <RiskPathsPanel
+          title="Rutas de riesgo (MESH) — esta ejecución"
+          analysis={runRiskPaths.predicted}
+          observed={runRiskPaths.observed}
+        />
+      ) : null}
 
       <section className="panel">
         <h2>Depurador de conversación</h2>
@@ -791,7 +1095,14 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
       {baseline && run ? (
         <BeforeAfterPanel
           before={baseline}
-          after={{ runId: run.id, label: "después (verificación del remitente)", evaluation, judgment }}
+          after={{
+            runId: run.id,
+            label: afterLabel,
+            evaluation,
+            judgment,
+            judgeUnavailable:
+              !judging && !judgment && (Boolean(judgeError) || run.status === "failed"),
+          }}
         />
       ) : null}
 
@@ -800,6 +1111,7 @@ export function LabPage({ hasApiKey, onRunCreated, scope = "all" }: Props) {
         loading={judging}
         error={judgeError}
         canRetry={Boolean(run && (run.status === "completed" || run.status === "failed"))}
+        hasApiKey={hasApiKey}
         onRetry={() => run && void requestJudge(run.id)}
       />
     </>

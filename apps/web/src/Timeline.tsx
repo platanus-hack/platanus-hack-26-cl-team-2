@@ -1,8 +1,26 @@
 import type { TraceEvent } from "@sandbox/shared";
+import { emailKindLabel, SENDER_VERDICT_LABEL } from "./RunOutcome";
 
 type Props = {
   events: TraceEvent[];
   agentIndex: Map<string, number>;
+};
+
+/** Display labels for the event types (the type ids themselves are unchanged). */
+const TYPE_LABEL: Record<TraceEvent["type"], string> = {
+  "run.started": "inicio de la ejecución",
+  "run.completed": "ejecución completada",
+  "run.failed": "ejecución fallida",
+  "agent.turn.started": "turno",
+  "agent.thought": "razonamiento",
+  "agent.tool_call": "llamada a herramienta",
+  "agent.tool_result": "resultado de herramienta",
+  "agent.message_sent": "mensaje enviado",
+  "agent.message_received": "mensaje recibido",
+  "agent.done": "agente terminó",
+  "agent.woken": "agente reactivado por correo nuevo",
+  "agent.error": "error del agente",
+  "sandbox.tool_attempt": "intento de herramienta de finanzas",
 };
 
 function kindOf(event: TraceEvent): string {
@@ -36,8 +54,11 @@ export function summarize(event: TraceEvent): string {
         | null
         | undefined;
       if (!email) return base;
-      const check = email.senderCheck ? ` · verificación del remitente: ${email.senderCheck.verdict}` : "";
-      return `${base} · email=${email.id} (${email.kind}) from ${email.from ?? "?"}${check}`;
+      const verdict = email.senderCheck?.verdict;
+      const check = email.senderCheck
+        ? ` · verificación del remitente: ${SENDER_VERDICT_LABEL[verdict as keyof typeof SENDER_VERDICT_LABEL] ?? verdict}`
+        : "";
+      return `${base} · correo=${email.id} (${emailKindLabel(email.kind ?? "?")}) de ${email.from ?? "?"}${check}`;
     }
     case "run.completed":
       return "Todos los agentes finalizaron.";
@@ -67,7 +88,7 @@ export function summarize(event: TraceEvent): string {
     case "agent.error":
       return String(p.error ?? "");
     case "sandbox.tool_attempt":
-      return `${p.blocked ? "BLOQUEADO" : "simulado"} · ${String(p.tool)} ${JSON.stringify(p.args)}${p.dangerous ? " · intento de herramienta peligrosa" : ""}`;
+      return `${p.held ? "RETENIDO PARA APROBACIÓN HUMANA" : (p.result as { status?: string } | undefined)?.status === "invalid_arguments" ? "RECHAZADO (argumentos inválidos)" : p.blocked ? "BLOQUEADO" : "simulado"} · ${String(p.tool)} ${JSON.stringify(p.args)}${p.dangerous ? " · intento de herramienta peligrosa" : ""}`;
     default:
       return JSON.stringify(p);
   }
@@ -96,11 +117,11 @@ export function Timeline({ events, agentIndex }: Props) {
               {new Date(event.ts).toLocaleTimeString()}
             </div>
             <div>
-              <div className="type">
+              <div className="type" title={event.type}>
                 {idx != null ? (
                   <span className={`agent-chip n${idx % 6}`}>#{idx + 1}</span>
                 ) : null}
-                {event.type}
+                {TYPE_LABEL[event.type] ?? event.type}
               </div>
               <div className="body">{summarize(event)}</div>
             </div>

@@ -95,7 +95,7 @@ def main():
     ap.add_argument("--only", help="comma-separated scenario ids to run")
     ap.add_argument("--scenarios", default="scenarios/ticket_injection.json")
     ap.add_argument("--out", default="traces", help="output folder (frontend: ?dir=<out>)")
-    ap.add_argument("--fix", action="append", default=[], help="enable a fix, e.g. sender_check")
+    ap.add_argument("--fix", action="append", default=[], help="enable a fix: sender_check, provenance_tag (repeatable)")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="  %(name)s: %(message)s")
     if args.fix and args.agents != "llm":

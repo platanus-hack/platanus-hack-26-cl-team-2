@@ -1,5 +1,6 @@
 import type {
   AgentKnobs,
+  BatchResults,
   AgentProfile,
   AgentVulnAssessment,
   AreaHeadcount,
@@ -11,7 +12,9 @@ import type {
   OrgHints,
   OrgSizePreset,
   RunAudit,
+  RiskPathAnalysis,
   RunEvaluation,
+  RunRiskPaths,
   RunSummary,
   SeniorityMix,
   TraceEvent,
@@ -43,6 +46,22 @@ export type StoredAgent = AgentProfile & {
   }>;
   updatedAt: string;
 };
+
+/**
+ * Writes that change the shared agent store need x-admin-token when the API has ADMIN_TOKEN
+ * set (public demo). Locally there is no token and nothing is sent. Team members on the
+ * deployed app: run localStorage.setItem("meshAdminToken", "<token>") in the browser console.
+ */
+function writeHeaders(json: boolean): Record<string, string> {
+  const headers: Record<string, string> = json ? { "Content-Type": "application/json" } : {};
+  try {
+    const token = localStorage.getItem("meshAdminToken");
+    if (token) headers["x-admin-token"] = token;
+  } catch {
+    // storage blocked: no token
+  }
+  return headers;
+}
 
 export async function fetchHealth(): Promise<{
   ok: boolean;
@@ -84,13 +103,13 @@ export async function createRunFromStored(
 }
 
 export async function listEmailScenarios(): Promise<{
-  dir: string;
+  dir?: string;
   scenarios: EmailScenarioSummary[];
   errors: string[];
 }> {
   const res = await fetch("/api/email-scenarios");
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to load email scenarios");
+  if (!res.ok) throw new Error(data.error ?? "No se pudieron cargar los correos de prueba");
   return data;
 }
 
@@ -139,8 +158,11 @@ export type RunJudgment = {
 export async function judgeRun(
   runId: string,
 ): Promise<{ judgment: RunJudgment; evaluation: RunEvaluation; cached: boolean }> {
+  // JSON content type is required on every POST (CSRF guard on the API).
   const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/judge`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "Falló la evaluación");
@@ -177,11 +199,28 @@ export async function fetchRun(runId: string): Promise<{
   events: TraceEvent[];
   judgment: RunJudgment | null;
   evaluation: RunEvaluation | null;
+  riskPaths: RunRiskPaths | null;
 }> {
   const res = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "Ejecución no encontrada");
   return data;
+}
+
+/** MESH risk paths for a setup, before launching (no model call). */
+export async function analyzeRiskPaths(
+  body: Pick<CreateStoredRunRequest, "agentIds" | "seedAgentId" | "financeAgentIds" | "emailScenario">,
+  signal?: AbortSignal,
+): Promise<RiskPathAnalysis> {
+  const res = await fetch("/api/risk-paths", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "No se pudo analizar las rutas de riesgo");
+  return data.analysis;
 }
 
 export async function listRuns(): Promise<RunSummary[]> {
@@ -260,7 +299,7 @@ export async function saveProfile(
 ): Promise<{ agent: StoredAgent }> {
   const res = await fetch("/api/profiles/save", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: writeHeaders(true),
     body: JSON.stringify({ profile }),
   });
   const data = await res.json();
@@ -276,7 +315,10 @@ export async function listAgents(): Promise<StoredAgent[]> {
 }
 
 export async function deleteAgent(id: string): Promise<void> {
-  const res = await fetch(`/api/agents/${id}`, { method: "DELETE" });
+  const res = await fetch(`/api/agents/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: writeHeaders(false),
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? "No se pudo eliminar");
 }
@@ -285,9 +327,9 @@ export async function addContextFile(
   agentId: string,
   body: { name: string; kind?: string; content: string },
 ): Promise<StoredAgent["contextFiles"][number]> {
-  const res = await fetch(`/api/agents/${agentId}/context-files`, {
+  const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/context-files`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: writeHeaders(true),
     body: JSON.stringify(body),
   });
   const data = await res.json();
@@ -299,9 +341,10 @@ export async function removeContextFile(
   agentId: string,
   fileId: string,
 ): Promise<void> {
-  const res = await fetch(`/api/agents/${agentId}/context-files/${fileId}`, {
-    method: "DELETE",
-  });
+  const res = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/context-files/${encodeURIComponent(fileId)}`,
+    { method: "DELETE", headers: writeHeaders(false) },
+  );
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? "No se pudo eliminar el archivo de contexto");
 }
@@ -337,7 +380,7 @@ export async function runVulnAssess(
 ): Promise<AgentVulnAssessment> {
   const res = await fetch(`/api/agents/${agentId}/vuln-assess`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: writeHeaders(true),
     body: JSON.stringify(body ?? {}),
   });
   const data = await res.json();
@@ -350,7 +393,7 @@ export async function designVulnScenarios(
 ): Promise<{ agentId: string; brief: VulnDesignerBrief }> {
   const res = await fetch(`/api/agents/${agentId}/vuln-design`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: writeHeaders(true),
     body: "{}",
   });
   const data = await res.json();
@@ -372,7 +415,7 @@ export async function runOneVulnScenario(
 ): Promise<VulnRunTraceDto> {
   const res = await fetch(`/api/agents/${agentId}/vuln-run-one`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: writeHeaders(true),
     body: JSON.stringify(body),
   });
   const data = await res.json();
@@ -394,7 +437,7 @@ export async function finalizeVulnAssessment(
 }> {
   const res = await fetch(`/api/agents/${agentId}/vuln-finalize`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: writeHeaders(true),
     body: JSON.stringify(body),
   });
   const data = await res.json();
@@ -445,7 +488,7 @@ export async function generateEnterprise(body: {
 }> {
   const res = await fetch("/api/enterprise/generate", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: writeHeaders(true),
     body: JSON.stringify(body),
   });
   const data = await res.json();
@@ -667,4 +710,12 @@ export async function waitForStoredRun(
     await new Promise((r) => setTimeout(r, intervalMs));
   }
   throw new Error(`Timeout esperando run ${runId}`);
+}
+
+/** Last published batch experiment, or null if none has been published yet. */
+export async function fetchBatchResults(): Promise<BatchResults | null> {
+  const res = await fetch("/api/batch-results");
+  const data = await res.json().catch(() => ({ error: `La API respondió ${res.status} sin datos del lote` }));
+  if (!res.ok) throw new Error(data.error ?? "No se pudieron cargar los resultados del lote");
+  return data.results ?? null;
 }

@@ -15,7 +15,14 @@ import {
   filterDemoFileToolNames,
   isDemoFileTool,
 } from "./demo-files.js";
-import { execSandboxed, FINANCE_TOOL_NAMES, FINANCE_TOOLS } from "./sandbox.js";
+import { withProvenance } from "./provenance.js";
+import {
+  type ApprovalGate,
+  DEFAULT_ALLOWED,
+  execSandboxed,
+  FINANCE_TOOL_NAMES,
+  FINANCE_TOOLS,
+} from "./sandbox.js";
 import { AGENT_TOOLS } from "./tools.js";
 
 export type AgentSession = {
@@ -27,6 +34,10 @@ export type AgentSession = {
   stopReason?: "done" | "max_turns";
   turnsUsed: number;
   isSeed: boolean;
+  /** provenance_tag fix: appended by the harness to every message this agent sends. */
+  provenanceTag?: string;
+  /** approval_gate fix: enforced by the sandbox on finance calls; never in the prompt. */
+  approvalGate?: ApprovalGate;
 };
 
 type ToolHandlerCtx = {
@@ -176,6 +187,8 @@ export function createSession(
   opts: {
     isSeed: boolean;
     scenarioHint?: string;
+    provenanceTag?: string;
+    approvalGate?: ApprovalGate;
     /** Recipient of an injected peer message — no scenario wrapper, just inbox. */
     peerInboxKickoff?: boolean;
   },
@@ -222,6 +235,8 @@ export function createSession(
     done: false,
     turnsUsed: 0,
     isSeed: opts.isSeed || Boolean(opts.peerInboxKickoff),
+    provenanceTag: opts.provenanceTag,
+    approvalGate: opts.approvalGate,
   };
 }
 
@@ -246,7 +261,14 @@ async function handleTool(
         error: `Unknown peer id "${to}". Valid: ${[...peerIds].join(", ")}`,
       };
     }
-    const msg = messageBus.send(runId, agent.id, to, body);
+    // The tag is added by the harness after the model wrote the body, so the agent
+    // cannot drop it; the trace records exactly what the receiver gets.
+    const msg = messageBus.send(
+      runId,
+      agent.id,
+      to,
+      withProvenance(body, session.provenanceTag),
+    );
     traceBus.emit(runId, "agent.message_sent", { message: msg }, agent.id);
     traceBus.emit(runId, "agent.message_received", { message: msg }, to);
     return { ok: true, messageId: msg.id, deliveredTo: to };
@@ -275,6 +297,8 @@ async function handleTool(
       agent.id,
       tool.name,
       (tool.input ?? {}) as Record<string, unknown>,
+      DEFAULT_ALLOWED,
+      session.approvalGate ?? null,
     );
   }
 

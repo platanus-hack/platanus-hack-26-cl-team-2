@@ -45,6 +45,26 @@ function sqlitePathFromUrl(url: string): string {
   return resolve(process.cwd(), url || "data/sandbox.sqlite");
 }
 
+/** Non-negative integer env var; 0 disables the limit it controls. */
+function intEnv(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
+}
+
+/** Non-negative number env var (decimals allowed, e.g. dollars); 0 disables the limit. */
+function numEnv(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+function flagEnv(name: string): boolean {
+  return ["1", "true", "yes"].includes((process.env[name] ?? "").trim().toLowerCase());
+}
+
 const databaseUrl = resolveDatabaseUrl();
 const dbDriver = resolveDriver(databaseUrl);
 
@@ -52,8 +72,46 @@ export const config = {
   port: Number(process.env.PORT ?? 8787),
   webOrigin: process.env.WEB_ORIGIN ?? "http://localhost:5173",
   anthropicApiKey: normalizeApiKey(process.env.ANTHROPIC_API_KEY),
+  /** Hackathon proxy (or any gateway). Every model call goes through anthropicClient(). */
+  anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL?.trim() || undefined,
   model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6",
-  maxTurnsPerAgent: Number(process.env.MAX_TURNS_PER_AGENT ?? 12),
+  /** Default AND ceiling: a request may ask for fewer turns, never more. */
+  maxTurnsPerAgent: Math.max(1, intEnv("MAX_TURNS_PER_AGENT", 12)),
+  // --- public-demo guard (see security/demo-guard.ts); 0 disables a limit ---
+  // Vercel: the POST that starts a run waits for it and the page polls, so 3 is too tight.
+  rateLimitPerMinute: intEnv("RATE_LIMIT_PER_MINUTE", process.env.VERCEL ? 12 : 3),
+  maxRunsPerDay: intEnv("MAX_RUNS_PER_DAY", 40),
+  maxConcurrentRuns: intEnv("MAX_CONCURRENT_RUNS", 3),
+  maxJudgeCallsPerDay: intEnv("MAX_JUDGE_CALLS_PER_DAY", 200),
+  /**
+   * US$ the server may spend per UTC day, measured from response usage (security/spend.ts).
+   * The hard money ceiling behind the request counters above; 0 disables it.
+   */
+  maxSpendUsdPerDay: numEnv("MAX_SPEND_USD_PER_DAY", 5),
+  /** Finished runs kept in memory (oldest evicted first). */
+  maxStoredRuns: Math.max(1, intEnv("MAX_STORED_RUNS", 200)),
+  /** Total saved agents; enterprise generate refuses to go past it. */
+  maxStoredAgents: intEnv("MAX_STORED_AGENTS", 2000),
+  /**
+   * Header holding the real client IP. On Render (RENDER=true) its Cloudflare edge sets
+   * True-Client-IP and overwrites client values; X-Forwarded-For keeps spoofed entries.
+   */
+  clientIpHeader:
+    process.env.CLIENT_IP_HEADER?.trim().toLowerCase() ||
+    (process.env.RENDER ? "true-client-ip" : ""),
+  /** On Vercel with no CLIENT_IP_HEADER, the client IP comes from Vercel's own headers. */
+  onVercel: Boolean(process.env.VERCEL?.trim()),
+  /** Proxies that append to X-Forwarded-For; 0 = ignore it and use the socket address. */
+  trustProxyHops: intEnv("TRUST_PROXY_HOPS", 0),
+  /** When set, writes (agents, context files, saved profiles, persisted fleets) need x-admin-token. */
+  adminToken: process.env.ADMIN_TOKEN?.trim() || undefined,
+  /**
+   * Deployed (RENDER) or REQUIRE_ADMIN_TOKEN=1: a missing ADMIN_TOKEN blocks writes instead of
+   * opening them, so a forgotten dashboard variable cannot leave the public store writable.
+   */
+  adminFailClosed: Boolean(process.env.RENDER?.trim()) || flagEnv("REQUIRE_ADMIN_TOKEN"),
+  /** Git-ignored real-mailbox scenario files are hidden from the HTTP API unless this is set. */
+  allowRealEmailFiles: flagEnv("ALLOW_REAL_EMAIL_FILES"),
   databaseUrl,
   dbDriver,
   sqlitePath: dbDriver === "sqlite" ? sqlitePathFromUrl(databaseUrl) : "",
@@ -62,7 +120,7 @@ export const config = {
 export function assertApiKeyConfigured(): void {
   if (!config.anthropicApiKey) {
     throw new Error(
-      "ANTHROPIC_API_KEY missing. Copy .env.example to .env and paste your key.",
+      "Falta ANTHROPIC_API_KEY. Copia .env.example a .env y pega tu key.",
     );
   }
 }

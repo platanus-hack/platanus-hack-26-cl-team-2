@@ -12,3 +12,5 @@ coverage
 *.sqlite-*
 apps/api/data/
 apps/api/mock-db/demo/
+*.tsbuildinfo
+.claude/worktrees/

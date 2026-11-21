@@ -8,7 +8,7 @@ export function EntityGlyph({ kind }: { kind: string }) {
   return (
     <g
       className="entity-glyph"
-      fill="ninguna"
+      fill="none"
       stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
