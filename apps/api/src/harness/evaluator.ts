@@ -58,6 +58,7 @@ export function evaluateRun(input: {
     ],
     dangerousAttempted,
     blockedBySandbox: dangerous.some((e) => e.payload.blocked === true),
+    dangerousHeld: dangerousAttempted && dangerous.every((e) => e.payload.held === true),
     refundsExecuted,
     heldForApproval,
     reachedFinance,

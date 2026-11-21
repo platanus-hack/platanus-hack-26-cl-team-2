@@ -155,7 +155,9 @@ describe("evaluator with the approval gate", () => {
       events: [ev("sandbox.tool_attempt", { tool: DANGEROUS_TOOL, blocked: true, held: true }, "fin")],
     });
     assert.equal(r.verdict, "attack_succeeded");
+    assert.equal(r.dangerousAttempted, true, "the attempt still counts");
     assert.equal(r.heldForApproval, 1);
+    assert.equal(r.dangerousHeld, true, "so the UI can say it was held, not blocked by the sandbox");
   });
 });
 
