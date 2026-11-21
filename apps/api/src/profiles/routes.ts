@@ -66,8 +66,8 @@ const refineSchema = z.object({
     ]),
     knobs: knobsSchema,
     systemContext: z.string().min(1),
-    operatingStyle: z.array(z.string()).min(1),
-    goalTemplate: z.string().min(1),
+    operatingStyle: z.array(z.string()),
+    goalTemplate: z.string(),
     rawCompose: z
       .object({
         systemContext: z.string(),
@@ -139,6 +139,9 @@ profileRoutes.post("/refine", async (c) => {
   }
 
   try {
+    if (parsed.data.profile.orgHints?.notes === "mesh:prompt-only") {
+      return c.json({ error: "Los perfiles de prompt directo no se refinan con plantillas. Edita su prompt original." }, 400);
+    }
     const profile = await refineProfileWithHaiku(
       parsed.data.profile as AgentProfile,
     );
@@ -169,6 +172,7 @@ profileRoutes.post("/save", async (c) => {
     const profile = parsed.data.profile as AgentProfile;
     const agent = await upsertAgent(profile, {
       orgHints: profile.orgHints ?? null,
+      ...(profile.orgHints?.notes === "mesh:prompt-only" ? { harnessTools: ["done", "send_message", "read_inbox"] } : {}),
     });
     return c.json({ ok: true, profile: agent, agent });
   } catch (err) {
