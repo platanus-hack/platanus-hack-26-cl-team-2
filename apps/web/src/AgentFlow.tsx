@@ -19,12 +19,31 @@ export type FlowStep =
     }
   | { kind: "done"; from: string; to: string; text: string };
 
-export type FlowAgent = { id: string; name: string; title: string; finance: boolean };
+export type FlowAgent = { id: string; name: string; title: string; finance: boolean; tools: string[] };
+/** One .txt database and which reached agents can read or write it. */
+export type FlowDb = {
+  id: string;
+  name: string;
+  txt: boolean;
+  links: Array<{ agentId: string; read: boolean; write: boolean }>;
+};
 /**
  * `agents` = the ones the email reached (directly or through a colleague); `idle` = how many in the
  * run it never reached; `background` = messages among those others, left out of `steps`.
  */
-export type Flow = { agents: FlowAgent[]; idle: number; background: number; sender: string; steps: FlowStep[] };
+export type Flow = { agents: FlowAgent[]; databases: FlowDb[]; idle: number; background: number; sender: string; steps: FlowStep[] };
+
+const TXT_TOOL = /^(.+)_txt_(read|write)$/;
+const DB_TOOL = /^(.+)_db$/;
+
+/** A .txt file (or the older *_db name) is one database, not a separate tool box. */
+function databaseOf(tool: string): { id: string; name: string; mode: "read" | "write" | "use" } | null {
+  const txt = TXT_TOOL.exec(tool);
+  if (txt?.[1] && txt[2]) return { id: `db:${txt[1]}`, name: txt[1], mode: txt[2] as "read" | "write" };
+  const db = DB_TOOL.exec(tool);
+  if (db?.[1]) return { id: `db:${db[1]}`, name: db[1], mode: "use" };
+  return null;
+}
 
 type Tone = "bad" | "warn" | "ok" | "muted";
 
@@ -44,6 +63,7 @@ export function buildFlow(events: TraceEvent[]): Flow | null {
     name: str(a.name) || str(a.id),
     title: /Title: ([^\n·]+)/.exec(str(a.role))?.[1]?.trim() ?? "",
     finance: financeIds.includes(str(a.id)),
+    tools: Array.isArray(a.mockDbTools) ? a.mockDbTools.map((tool) => str(tool)).filter(Boolean) : [],
   }));
   const email = (start.email ?? {}) as Record<string, unknown>;
   const hint = str(start.scenarioHint);
@@ -72,11 +92,13 @@ export function buildFlow(events: TraceEvent[]): Flow | null {
     if (e.type === "sandbox.tool_attempt") {
       const result = (p.result ?? {}) as Record<string, unknown>;
       const args = (p.args ?? {}) as Record<string, unknown>;
+      const toolName = str(p.tool);
+      const db = databaseOf(toolName);
       steps.push({
         kind: "tool",
         from: agent,
-        to: `tool:${str(p.tool)}`,
-        tool: str(p.tool),
+        to: db ? db.id : `tool:${toolName}`,
+        tool: toolName,
         args: p.mockDb ? { action: args.action } : args,
         status: p.held ? "held" : p.blocked ? "blocked" : "ok",
         dangerous: Boolean(p.dangerous),
@@ -100,8 +122,28 @@ export function buildFlow(events: TraceEvent[]): Flow | null {
     if (s.kind === "message") reached.add(s.to);
     return true;
   });
+  const reachedAgents = agents.filter((agent) => reached.has(agent.id));
+  const databases = new Map<string, FlowDb>();
+  const touch = (tool: string, agentId: string) => {
+    const db = databaseOf(tool);
+    if (!db || !agentId) return;
+    const row = databases.get(db.id) ?? { id: db.id, name: db.name, txt: false, links: [] };
+    const link = row.links.find((item) => item.agentId === agentId) ?? { agentId, read: false, write: false };
+    if (db.mode === "read" || db.mode === "use") link.read = true;
+    if (db.mode === "write") link.write = true;
+    if (db.mode !== "use") row.txt = true;
+    if (!row.links.includes(link)) row.links.push(link);
+    databases.set(db.id, row);
+  };
+  for (const agent of reachedAgents) {
+    for (const tool of agent.tools) touch(tool, agent.id);
+  }
+  for (const step of chain) {
+    if (step.kind === "tool") touch(step.tool, step.from);
+  }
   return {
-    agents: agents.filter((a) => reached.has(a.id)),
+    agents: reachedAgents,
+    databases: [...databases.values()],
     idle: agents.filter((a) => !reached.has(a.id)).length,
     background,
     sender: str(email.from),
@@ -147,8 +189,11 @@ function layout(flow: Flow): Record<string, Box> {
     });
   spread(flow.agents.filter((a) => !a.finance).map((a) => a.id), 290, 158, 56);
   spread(flow.agents.filter((a) => a.finance).map((a) => a.id), 510, 158, 56);
-  const tools = [...new Set(flow.steps.filter((s) => s.kind === "tool").map((s) => s.to))];
-  spread(tools.length ? tools : ["tool:issue_refund"], 715, 150, 46);
+  const tools = [
+    ...flow.databases.map((db) => db.id),
+    ...new Set(flow.steps.filter((s) => s.kind === "tool" && s.to.startsWith("tool:")).map((s) => s.to)),
+  ];
+  if (tools.length) spread(tools, 715, 150, 46);
   return pos;
 }
 
@@ -177,7 +222,7 @@ function FlowGraph({ flow, step, attack }: { flow: Flow; step: number; attack: b
   type Pair = { from: string; to: string; n: number; last: number; tone: Tone | null };
   const pairs = new Map<string, Pair>();
   upto.forEach((s, i) => {
-    if (s.kind === "done") return;
+    if (s.kind === "done" || s.to.startsWith("db:")) return;
     const k = `${s.from}>${s.to}`;
     const p = pairs.get(k) ?? { from: s.from, to: s.to, n: 0, last: -1, tone: null };
     p.n++;
@@ -224,6 +269,23 @@ function FlowGraph({ flow, step, attack }: { flow: Flow; step: number; attack: b
         </g>,
       ];
     });
+  const dbEdges = flow.databases.flatMap((db) => {
+    const target = pos[db.id];
+    if (!target) return [];
+    return db.links.flatMap((link) => {
+      const source = pos[link.agentId];
+      if (!source) return [];
+      const { d } = edgePath(source, target, 0);
+      const used = upto.some((item) => item.kind === "tool" && item.from === link.agentId && item.to === db.id);
+      const current = cur?.kind === "tool" && cur.from === link.agentId && cur.to === db.id;
+      if (current) pulse = { d, tone: "" };
+      const agent = flow.agents.find((item) => item.id === link.agentId)?.name ?? link.agentId;
+      const perms = db.txt
+        ? [link.read ? `leer · ${db.name}_txt_read` : "", link.write ? `escribir · ${db.name}_txt_write` : ""].filter(Boolean)
+        : [];
+      return { key: `${db.id}-${link.agentId}`, d, used, current, title: [agent, db.name, ...perms].join(" · ") };
+    });
+  });
   const activePulse = pulse as { d: string; tone: string } | null;
 
   return (
@@ -240,14 +302,21 @@ function FlowGraph({ flow, step, attack }: { flow: Flow; step: number; attack: b
           ["Entrada", 80],
           ["Agentes", 290],
           ["Finanzas", 510],
-          ["Herramientas", 715],
-        ] as const
+          ...(flow.databases.length || Object.keys(pos).some((id) => id.startsWith("tool:"))
+            ? [["Bases", 715] as const]
+            : []),
+        ]
       ).map(([t, x]) => (
         <text key={t} x={x} y={26} textAnchor="middle" className="flow-col-label">
           {t}
         </text>
       ))}
       {edges}
+      {dbEdges.map((edge) => (
+        <path key={edge.key} d={edge.d} className={`flow-db-edge${edge.used ? " seen" : ""}${edge.current ? " active" : ""}`}>
+          <title>{edge.title}</title>
+        </path>
+      ))}
       {nodes.map((n) => {
         const b = pos[n.id];
         if (!b) return null;
@@ -276,6 +345,20 @@ function FlowGraph({ flow, step, attack }: { flow: Flow; step: number; attack: b
           </g>
         );
       })}
+      {flow.databases.map((db) => {
+        const b = pos[db.id];
+        if (!b) return null;
+        const active = cur?.kind === "tool" && cur.to === db.id;
+        const r = 22;
+        return (
+          <g key={db.id} className={`flow-db${active ? " active" : ""}`} transform={`translate(${b.x - b.w / 2},${b.y - b.h / 2})`}>
+            <circle cx={b.w / 2} cy={b.h / 2 - 6} r={r} />
+            <text x={b.w / 2} y={b.h / 2 + r + 8} textAnchor="middle">
+              {db.name}
+            </text>
+          </g>
+        );
+      })}
       {activePulse ? (
         <circle r={5} className={`flow-pulse ${activePulse.tone}`}>
           <animateMotion dur="1.1s" repeatCount="indefinite" path={activePulse.d} />
@@ -289,7 +372,7 @@ function StepCard({ flow, step, attack }: { flow: Flow; step: number; attack: bo
   const s = flow.steps[step];
   if (!s) return <p className="hint">Esta ejecución no tiene pasos.</p>;
   const name = (id: string) =>
-    id === "email" ? "Correo externo" : id.startsWith("tool:") ? id.slice(5) : (flow.agents.find((a) => a.id === id)?.name ?? id);
+    id === "email" ? "Correo externo" : id.startsWith("tool:") ? id.slice(5) : id.startsWith("db:") ? id.slice(3) : (flow.agents.find((a) => a.id === id)?.name ?? id);
   let kind = "Correo";
   let tone = "";
   let route = <>{s.kind === "email" ? `${s.sender} → ${name(s.to)}` : ""}</>;
