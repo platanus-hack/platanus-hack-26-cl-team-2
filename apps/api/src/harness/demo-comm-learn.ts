@@ -8,6 +8,7 @@ import type {
   DemoCommPatterns,
 } from "@sandbox/shared";
 import { assertApiKeyConfigured, config } from "../config.js";
+import { activeApiKey } from "../user-api-key.js";
 import { getCurrentDemoOrg } from "../db/demo-orgs-repo.js";
 import type { StoredAgent } from "../db/mappers.js";
 import { loadRun } from "../db/runs-repo.js";
@@ -246,7 +247,7 @@ export async function designBusinessScenario(input?: {
     throw new Error("Need at least 2 DEMO agents for communication learning");
   }
 
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = new Anthropic({ apiKey: activeApiKey() });
   const avoid = (input?.avoidTitles ?? []).filter(Boolean).slice(-8);
 
   const response = await client.messages.create({
@@ -308,7 +309,7 @@ export async function analyzeCommPatterns(input: {
     current.agents.map((a) => [a.id, a.name] as const),
   );
   const trace = truncate(condenseTrace(stored.events, nameById), 12_000);
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = new Anthropic({ apiKey: activeApiKey() });
 
   const response = await client.messages.create({
     model: MODEL,

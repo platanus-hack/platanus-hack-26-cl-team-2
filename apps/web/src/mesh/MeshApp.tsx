@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AgentEvalsPage } from "./AgentEvalsPage";
+import { ApiKeyPanel } from "./ApiKeyPanel";
 import { fetchHealth } from "../api";
 import { ScenarioPlotPanel } from "../BatchResults";
 import { BUSINESS_SCENARIOS } from "../businessScenarios";
@@ -54,6 +55,7 @@ export function MeshApp() {
           {health?.ok && !health.hasApiKey && (
             <span className="mesh-status-warning" role="status"> · sin API key (no se pueden lanzar agentes)</span>
           )}
+          {health?.ok ? <ApiKeyPanel serverHasKey={health.serverHasApiKey} onChange={refresh} /> : null}
           <small>Encuentra las vulnerabilidades<br />entre los agentes.</small>
         </div>
       </aside>

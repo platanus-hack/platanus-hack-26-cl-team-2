@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { assertApiKeyConfigured, config } from "./config.js";
+import { normalizeUserApiKey, USER_API_KEY_HEADER, withUserApiKey } from "./user-api-key.js";
 import { loadRun } from "./db/runs-repo.js";
 import { judgeRun, judgeTranscript, type RunJudgment } from "./harness/judge.js";
 import {
@@ -140,7 +141,7 @@ app.use(
   cors({
     origin: config.webOrigin,
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", ADMIN_HEADER],
+    allowHeaders: ["Content-Type", ADMIN_HEADER, USER_API_KEY_HEADER],
   }),
 );
 
@@ -168,6 +169,9 @@ app.use("/api/*", async (c, next) => {
   }
   await next();
 });
+
+/** A visitor's own Anthropic key (see user-api-key.ts): model calls this request starts use it. */
+app.use("/api/*", (c, next) => withUserApiKey(normalizeUserApiKey(c.req.header(USER_API_KEY_HEADER)), () => next()));
 
 app.get("/health", async (c) => {
   const db = await pingDatabase();

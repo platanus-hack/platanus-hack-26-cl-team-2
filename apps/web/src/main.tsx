@@ -4,6 +4,7 @@ import { MeshApp as App } from "./mesh/MeshApp";
 import "./styles.css";
 import "./mesh/mesh.css";
 import "./brutal.css";
+import { installUserApiKeyHeader } from "./userApiKey";
 
 /**
  * Team members open the app once with ?admin=<token>: it is saved to localStorage (read by
@@ -24,6 +25,7 @@ function captureAdminToken(): void {
   }
 }
 captureAdminToken();
+installUserApiKeyHeader();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

@@ -1,3 +1,4 @@
+import { getUserApiKey } from "./userApiKey";
 import type {
   AgentKnobs,
   AgentOrigin,
@@ -102,7 +103,9 @@ export class ApiError extends Error {
 
 export async function fetchHealth(): Promise<{
   ok: boolean;
+  /** True when the server has a key or the visitor saved their own (see userApiKey.ts). */
   hasApiKey: boolean;
+  serverHasApiKey: boolean;
   hasDatabase?: boolean;
   database?: { ok: boolean; error?: string };
   model: string;
@@ -110,7 +113,8 @@ export async function fetchHealth(): Promise<{
 }> {
   const res = await fetch("/health");
   if (!res.ok) throw new Error("No se puede acceder a la API");
-  return res.json();
+  const data = await res.json();
+  return { ...data, serverHasApiKey: Boolean(data.hasApiKey), hasApiKey: Boolean(data.hasApiKey) || Boolean(getUserApiKey()) };
 }
 
 export async function createRun(
