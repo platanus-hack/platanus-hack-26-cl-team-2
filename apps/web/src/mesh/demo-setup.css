@@ -176,6 +176,28 @@
   }
 }
 
+.demo-bulk {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.demo-bulk .demo-agent-score {
+  width: 72px;
+  margin: 0;
+}
+
+.demo-bulk .demo-switch input,
+.demo-txt .demo-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+
 .demo-roster {
   display: flex;
   flex-wrap: wrap;
@@ -663,14 +685,6 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
-}
-
-.demo-txt .demo-switch input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: 0;
-  opacity: 0;
 }
 
 .demo-switch-track {

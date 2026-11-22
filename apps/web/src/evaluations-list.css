@@ -12,6 +12,12 @@
 .eval-vector { margin: .4rem 0 1rem; padding-left: 1.2rem; }
 .eval-vector li { margin: 0 0 .8rem; line-height: 1.5; }
 .eval-vector strong { display: block; }
+.eval-step-line { display: block; }
+.eval-step-risk { display: block; margin-top: .35rem; color: var(--agent-b, #ffc247); font-size: .85rem; letter-spacing: .03em; }
+.eval-step-risk.is-clear { color: var(--muted); }
+.eval-deep { margin: 0 0 1.2rem; }
+.eval-deep summary { cursor: pointer; color: var(--muted); font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; }
+.eval-deep[open] summary { margin-bottom: .8rem; }
 @media(max-width:700px) { .eval-row { flex-wrap: wrap; gap: .5rem; }.eval-row-title { min-width: 70%; }.eval-row > span:last-child { margin-left: 1.5rem; } }
 
 /* Business evals: one dropdown to pick an evaluation (email × mitigation); the graph sits below. */

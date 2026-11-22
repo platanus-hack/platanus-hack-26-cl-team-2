@@ -234,10 +234,24 @@ export function normalizeRiskDesign(
   };
 }
 
+/** Keep a finished summary. A hard slice would cut the risk sentence mid-word. */
+function completeStep(value: unknown): string {
+  const raw = String(value ?? "").trim().replace(/\s+/g, " ");
+  const max = 500;
+  if (raw.length <= max) return raw;
+  const window = raw.slice(0, max);
+  const end = Math.max(window.lastIndexOf("."), window.lastIndexOf("!"), window.lastIndexOf("?"));
+  if (end >= 80) return window.slice(0, end + 1);
+  const word = window.lastIndexOf(" ");
+  return (word > 40 ? window.slice(0, word) : window).trim();
+}
+
 export function normalizeRiskEval(raw: Record<string, unknown>): DemoSimEval {
   const list = (value: unknown, max: number) =>
     Array.isArray(value) ? value.map((item) => text(item, max)).filter(Boolean).slice(0, 12) : [];
-  const steps = list(raw.failuresAmplifications, 180);
+  const steps = Array.isArray(raw.failuresAmplifications)
+    ? raw.failuresAmplifications.map(completeStep).filter(Boolean).slice(0, 12)
+    : [];
   return {
     empty: Boolean(raw.empty),
     surface: steps.length ? "" : text(raw.surface, 2500),

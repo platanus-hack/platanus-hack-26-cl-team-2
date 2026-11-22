@@ -3,6 +3,30 @@ import { fetchDemoSimFindings, type DemoSimFinding } from "../api";
 import { AgentFlow } from "../AgentFlow";
 import "../evaluations-list.css";
 
+/** One finished descriptive line, then the risk sentence underneath. */
+export function splitAnalysis(item: string): { line: string; risk: string } {
+  const match = item.match(/^([\s\S]*?)\s+Riesgo\s*:\s*([\s\S]*)$/i);
+  if (!match?.[1]?.trim()) return { line: item.trim(), risk: "" };
+  return { line: match[1].trim(), risk: match[2].trim() };
+}
+
+export function AnalysisList({ items }: { items: string[] }) {
+  return (
+    <ol className="eval-vector">
+      {items.map((item) => {
+        const { line, risk } = splitAnalysis(item);
+        const clear = /^no\b/i.test(risk);
+        return (
+          <li key={item}>
+            <span className="eval-step-line">{line}</span>
+            {risk ? <span className={clear ? "eval-step-risk is-clear" : "eval-step-risk"}>RIESGO: {risk}</span> : null}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 /** Satisfactory DEMO SIM iterations, in the same expandable row as the other evaluations. */
 export function DemoSimFindings() {
   const [findings, setFindings] = useState<DemoSimFinding[] | null>(null);
@@ -53,23 +77,9 @@ export function DemoSimFindings() {
               <div hidden={!open}>
                 {open ? (
                   <div className="eval-expanded">
-                    <p>{finding.prompt}</p>
-                    <h4>Vector de ataque</h4>
-                    <ol className="eval-vector">
-                      {finding.vector.map((step, index) => (
-                        <li key={`${finding.id}-${index}`}>
-                          <strong>{step.title}</strong>
-                          {step.detail}
-                        </li>
-                      ))}
-                    </ol>
-                    <h4>Pasos de la IA</h4>
-                    <AgentFlow runId={finding.runId} attack />
                     <h4>Análisis</h4>
                     {finding.analysis.failuresAmplifications.length > 0 ? (
-                      <ol className="eval-vector">
-                        {finding.analysis.failuresAmplifications.map((item) => <li key={item}>{item}</li>)}
-                      </ol>
+                      <AnalysisList items={finding.analysis.failuresAmplifications} />
                     ) : (
                       <>
                         {finding.analysis.scoreSummary ? <p>{finding.analysis.scoreSummary}</p> : null}
@@ -81,6 +91,21 @@ export function DemoSimFindings() {
                         ) : null}
                       </>
                     )}
+                    <details className="eval-deep">
+                      <summary>Análisis a profundidad</summary>
+                      <p>{finding.prompt}</p>
+                      <h4>Vector de ataque</h4>
+                      <ol className="eval-vector">
+                        {finding.vector.map((step, index) => (
+                          <li key={`${finding.id}-${index}`}>
+                            <strong>{step.title}</strong>
+                            {step.detail}
+                          </li>
+                        ))}
+                      </ol>
+                    </details>
+                    <h4>Pasos de la IA</h4>
+                    <AgentFlow runId={finding.runId} attack />
                   </div>
                 ) : null}
               </div>

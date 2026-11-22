@@ -1297,6 +1297,15 @@ button {
   background: var(--accent);
 }
 
+.flow-strip button.risk {
+  border-color: var(--agent-b);
+}
+
+.flow-strip button.risk.seen {
+  background: var(--agent-b);
+  border-color: var(--agent-b);
+}
+
 .flow-strip button.tool.seen {
   background: var(--agent-b);
 }
@@ -1375,6 +1384,25 @@ button {
   font: 500 0.7rem var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.flow-deep {
+  border-top: 1px solid var(--line);
+  padding-top: 0.7rem;
+}
+
+.flow-deep summary {
+  cursor: pointer;
+  color: var(--muted);
+  font: 500 0.72rem var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.flow-deep .flow-body,
+.flow-deep .flow-args,
+.flow-deep .flow-why {
+  margin-top: 0.7rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

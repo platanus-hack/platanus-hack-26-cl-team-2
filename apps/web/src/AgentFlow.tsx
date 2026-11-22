@@ -116,6 +116,21 @@ export function toolTone(s: Extract<FlowStep, { kind: "tool" }>, attack: boolean
   return attack && (s.tool === "issue_refund" || s.dangerous) ? "bad" : "ok";
 }
 
+const RISK_WORD =
+  /reembolso|refund|banco|cuenta|iban|tarjeta|clave|contraseña|password|secret|salud|l[ií]mite|usd|exfil|n[oó]mina|transferenc|proveedor|pago|datos/i;
+
+/** Any hint of risk paints the step orange. A blocked or paid attack stays red. */
+export function stepRisk(s: FlowStep, attack: boolean): "bad" | "warn" | "" {
+  if (s.kind === "tool") {
+    const tone = toolTone(s, attack);
+    if (tone === "bad") return "bad";
+    if (tone === "warn" || tone === "ok") return "warn";
+    return "";
+  }
+  const blob = `${s.text}\n${"why" in s ? s.why : ""}\n${s.kind === "email" ? `${s.subject} ${s.sender}` : ""}`;
+  return RISK_WORD.test(blob) ? "warn" : "";
+}
+
 const TOOL_LABEL: Record<string, string> = { issue_refund: "Reembolso", update_vendor_bank_account: "Cambio bancario" };
 const cutTo = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
@@ -296,6 +311,7 @@ function StepCard({ flow, step, attack }: { flow: Flow; step: number; attack: bo
       </>
     );
   }
+  const dump = Boolean(s.text || ("why" in s && s.why) || s.kind === "tool");
   return (
     <div className="flow-card" aria-live="polite">
       <div className="flow-card-head">
@@ -303,13 +319,18 @@ function StepCard({ flow, step, attack }: { flow: Flow; step: number; attack: bo
         <span className="flow-route">{route}</span>
       </div>
       {s.kind === "email" ? <div className="flow-args">Asunto: {s.subject}</div> : null}
-      {s.kind === "tool" ? <div className="flow-args">{JSON.stringify(s.args)}</div> : null}
-      {s.text ? <p className="flow-body">{s.text}</p> : null}
-      {"why" in s && s.why ? (
-        <p className="flow-why">
-          <b>Lo que razonó antes</b>
-          {s.why}
-        </p>
+      {dump ? (
+        <details className="flow-deep">
+          <summary>Análisis a profundidad</summary>
+          {s.kind === "tool" ? <div className="flow-args">{JSON.stringify(s.args)}</div> : null}
+          {s.text ? <p className="flow-body">{s.text}</p> : null}
+          {"why" in s && s.why ? (
+            <p className="flow-why">
+              <b>Lo que razonó antes</b>
+              {s.why}
+            </p>
+          ) : null}
+        </details>
       ) : null}
     </div>
   );
@@ -401,14 +422,14 @@ export function AgentFlow({ runId, attack }: { runId: string; attack: boolean })
         </span>
         <div className="flow-strip" aria-label="Pasos">
           {flow.steps.map((s, i) => {
-            const tone = s.kind === "tool" ? toolTone(s, attack) : "";
+            const tone = stepRisk(s, attack);
             const label =
               s.kind === "tool" ? s.tool : s.kind === "message" ? "mensaje" : s.kind === "done" ? "terminó" : "correo";
             return (
               <button
                 key={i}
                 type="button"
-                className={`${s.kind}${tone === "bad" ? " bad" : ""}${i <= step ? " seen" : ""}${i === step ? " current" : ""}`}
+                className={`${s.kind}${tone === "bad" ? " bad" : ""}${tone === "warn" ? " risk" : ""}${i <= step ? " seen" : ""}${i === step ? " current" : ""}`}
                 aria-label={`Paso ${i + 1}: ${label}`}
                 title={`Paso ${i + 1}: ${label}`}
                 onClick={() => go(i)}

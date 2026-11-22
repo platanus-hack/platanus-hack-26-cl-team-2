@@ -16,8 +16,10 @@ import {
   type StoredAgent,
 } from "../api";
 import { FlowGraphView, type FlowLive } from "./FlowGraph";
+import { AnalysisList } from "./DemoSimFindings";
 import type { TraceEvent } from "@sandbox/shared";
 import { LoadingProgress } from "../LoadingProgress";
+import "../evaluations-list.css";
 import "./demo-setup.css";
 
 type Props = { hasDatabase: boolean; hasApiKey: boolean };
@@ -518,9 +520,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
             ) : null}
             {notice ? <p className="demo-run-note">{notice}</p> : null}
             {lastEval && lastEval.failuresAmplifications.length > 0 ? (
-              <ol className="demo-sim-feedback">
-                {lastEval.failuresAmplifications.map((step) => <li key={step}>{step}</li>)}
-              </ol>
+              <AnalysisList items={lastEval.failuresAmplifications} />
             ) : null}
           </div>
         ) : null}

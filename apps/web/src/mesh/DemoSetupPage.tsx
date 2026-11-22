@@ -75,6 +75,7 @@ export function DemoSetupPage({ hasDatabase, hasApiKey }: Props) {
   const [company, setCompany] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [scores, setScores] = useState<Record<string, string>>({});
+  const [bulkScore, setBulkScore] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(hasDatabase);
   const [running, setRunning] = useState(false);
@@ -177,6 +178,22 @@ export function DemoSetupPage({ hasDatabase, hasApiKey }: Props) {
     return Number.isInteger(value) && value >= 1 && value <= 100;
   });
   const canRun = hasApiKey && readySeeds.length === selectedIds.length && readySeeds.length > 0;
+  const allOn = companyAgents.length > 0 && companyAgents.every((agent) => selectedIds.includes(agent.id));
+
+  function applyBulk(raw: string) {
+    if (raw !== "" && !/^\d+$/.test(raw)) return;
+    if (raw !== "") {
+      const value = Number(raw);
+      if (value < 1 || value > 100) return;
+    }
+    setBulkScore(raw);
+    if (raw === "") return;
+    setScores((prev) => {
+      const next = { ...prev };
+      for (const agent of companyAgents) next[agent.id] = raw;
+      return next;
+    });
+  }
 
   function log(text: string, tone: LogLine["tone"] = "info") {
     const ts = new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -302,6 +319,7 @@ export function DemoSetupPage({ hasDatabase, hasApiKey }: Props) {
           onChange={(event) => {
             setCompany(event.target.value);
             setSelectedIds([]);
+            setBulkScore("");
             setLogs([]);
             setGraph(null);
             setPhase("");
@@ -327,10 +345,39 @@ export function DemoSetupPage({ hasDatabase, hasApiKey }: Props) {
           className="demo-space demo-space-characterize"
           onClick={(event) => {
             if (running) return;
-            if (!(event.target as HTMLElement).closest(".demo-agent, .demo-run")) setSelectedIds([]);
+            if (!(event.target as HTMLElement).closest(".demo-agent, .demo-run, .demo-bulk")) setSelectedIds([]);
           }}
         >
           <h2>Caracteriza tu empresa</h2>
+          {companyAgents.length > 0 ? (
+            <div className="demo-bulk">
+              <label className="demo-switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={allOn}
+                  disabled={running}
+                  aria-label="Activar todos"
+                  onChange={(event) =>
+                    setSelectedIds(event.target.checked ? companyAgents.map((agent) => agent.id) : [])
+                  }
+                />
+                <span className="demo-switch-track" aria-hidden="true" />
+              </label>
+              <input
+                className="demo-agent-score"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={100}
+                step={1}
+                disabled={running}
+                aria-label="Número para todos"
+                value={bulkScore}
+                onChange={(event) => applyBulk(event.target.value)}
+              />
+            </div>
+          ) : null}
           {companyAgents.length > 0 ? (
             <ul className="demo-roster">
               {companyAgents.map((agent) => {
