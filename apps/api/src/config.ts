@@ -122,8 +122,14 @@ export const config = {
   sqlitePath: dbDriver === "sqlite" ? sqlitePathFromUrl(databaseUrl) : "",
 };
 
+/** Set by user-api-key.ts: the visitor's own key for the current request, if any. */
+let requestKey: () => string = () => "";
+export function setRequestKeyReader(read: () => string): void {
+  requestKey = read;
+}
+
 export function assertApiKeyConfigured(): void {
-  if (!config.anthropicApiKey) {
+  if (!config.anthropicApiKey && !requestKey()) {
     throw new Error(
       "Falta ANTHROPIC_API_KEY. Copia .env.example a .env y pega tu key.",
     );

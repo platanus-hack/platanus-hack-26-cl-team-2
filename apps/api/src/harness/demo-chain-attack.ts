@@ -10,6 +10,7 @@ import type {
   DemoChainEval,
 } from "@sandbox/shared";
 import { assertApiKeyConfigured, config } from "../config.js";
+import { activeApiKey } from "../user-api-key.js";
 import { getCurrentDemoOrg } from "../db/demo-orgs-repo.js";
 import type { StoredAgent } from "../db/mappers.js";
 import { getVulnAssessment } from "../db/vuln-repo.js";
@@ -286,7 +287,7 @@ export async function designChainAttack(input?: {
       "del contexto de empresa. Maximiza la concatenación, no ataques aislados.",
     ].join(" ");
 
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = new Anthropic({ apiKey: activeApiKey() });
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 3200,
@@ -329,7 +330,7 @@ export async function evaluateChainAttack(input: {
 }): Promise<{ evaluation: DemoChainEval; model: string; traces: string }> {
   assertApiKeyConfigured();
   const { org, agents, assessments } = await loadDemoBundle();
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = new Anthropic({ apiKey: activeApiKey() });
 
   const nameById = new Map(agents.map((a) => [a.id, a.name] as const));
   const traceBlocks: string[] = [];
@@ -389,7 +390,7 @@ export async function diagnoseChainAttack(input: {
 }): Promise<{ diagnosis: DemoChainDiagnosis; model: string }> {
   assertApiKeyConfigured();
   const { org, agents, assessments } = await loadDemoBundle();
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = new Anthropic({ apiKey: activeApiKey() });
 
   const response = await client.messages.create({
     model: MODEL,

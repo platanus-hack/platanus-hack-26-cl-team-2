@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { VULN_CATEGORIES, type EvaluationJobData } from "@sandbox/shared";
 import { getAgent } from "../db/agents-repo.js";
 import { claimEvaluationJob, expireEvaluationJobs, getEvaluationJob, listEvaluationJobs, updateEvaluationJob } from "../db/evaluation-jobs-repo.js";
+import { takeJobApiKey, withUserApiKey } from "../user-api-key.js";
 import { designVulnScenariosForAgent, finalizeVulnAssessment, runOneVulnScenario, type VulnRunTrace } from "../harness/vuln-assess.js";
 import { demoGuard } from "../security/budget.js";
 import { errorMessage } from "../security/redact.js";
@@ -116,7 +117,7 @@ export function startEvaluationWorker() {
     try {
       await expireEvaluationJobs();
       const queued = (await listEvaluationJobs()).filter((j) => j.status === "queued").reverse();
-      if (queued[0]) await processEvaluationJob(queued[0].id);
+      if (queued[0]) await withUserApiKey(takeJobApiKey(queued[0].id), () => processEvaluationJob(queued[0].id));
     } catch (err) { console.error("[evaluation-worker]", errorMessage(err)); }
     finally { busy = false; }
   }

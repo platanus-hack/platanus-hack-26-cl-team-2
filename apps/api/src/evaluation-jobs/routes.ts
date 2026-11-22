@@ -5,6 +5,7 @@ import { assertApiKeyConfigured } from "../config.js";
 import { getAgent } from "../db/agents-repo.js";
 import { cancelEvaluationJob, createEvaluationJob, getEvaluationJob, listEvaluationJobs } from "../db/evaluation-jobs-repo.js";
 import { requireAdmin } from "../security/admin.js";
+import { rememberJobApiKey, userApiKey } from "../user-api-key.js";
 import { demoGuard, denyIfOverBudget, requestIp } from "../security/budget.js";
 
 export const evaluationJobRoutes = new Hono();
@@ -40,5 +41,6 @@ evaluationJobRoutes.post("/", async (c) => {
     completedSteps: 0, totalSteps: agents.length * (2 + 6 * input.data.iterations),
     phase: "En cola", agentStatus: {}, logs: [],
   });
+  rememberJobApiKey(job.id, userApiKey());
   return c.json({ job }, 202);
 });
