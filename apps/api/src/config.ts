@@ -78,20 +78,20 @@ export const config = {
   /** Default AND ceiling: a request may ask for fewer turns, never more. */
   maxTurnsPerAgent: Math.max(1, intEnv("MAX_TURNS_PER_AGENT", 12)),
   // --- public-demo guard (see security/demo-guard.ts); 0 disables a limit ---
-  // Vercel: the POST that starts a run waits for it and the page polls, so 3 is too tight.
-  rateLimitPerMinute: intEnv("RATE_LIMIT_PER_MINUTE", process.env.VERCEL ? 12 : 3),
-  maxRunsPerDay: intEnv("MAX_RUNS_PER_DAY", 40),
-  maxConcurrentRuns: intEnv("MAX_CONCURRENT_RUNS", 3),
-  maxJudgeCallsPerDay: intEnv("MAX_JUDGE_CALLS_PER_DAY", 200),
+  // All off by default: set a value in the host's environment to turn a limit back on.
+  rateLimitPerMinute: intEnv("RATE_LIMIT_PER_MINUTE", 0),
+  maxRunsPerDay: intEnv("MAX_RUNS_PER_DAY", 0),
+  maxConcurrentRuns: intEnv("MAX_CONCURRENT_RUNS", 0),
+  maxJudgeCallsPerDay: intEnv("MAX_JUDGE_CALLS_PER_DAY", 0),
   /**
    * US$ the server may spend per UTC day, measured from response usage (security/spend.ts).
    * The hard money ceiling behind the request counters above; 0 disables it.
    */
-  maxSpendUsdPerDay: numEnv("MAX_SPEND_USD_PER_DAY", 5),
+  maxSpendUsdPerDay: numEnv("MAX_SPEND_USD_PER_DAY", 0),
   /** Finished runs kept in memory (oldest evicted first). */
   maxStoredRuns: Math.max(1, intEnv("MAX_STORED_RUNS", 200)),
   /** Total saved agents; enterprise generate refuses to go past it. */
-  maxStoredAgents: intEnv("MAX_STORED_AGENTS", 2000),
+  maxStoredAgents: intEnv("MAX_STORED_AGENTS", 0),
   /**
    * Header holding the real client IP. On Render (RENDER=true) its Cloudflare edge sets
    * True-Client-IP and overwrites client values; X-Forwarded-For keeps spoofed entries.
