@@ -133,12 +133,7 @@ async function main() {
   console.log("Done.");
 }
 
-// Exit explicitly: an open Postgres pool keeps the process alive, and the start command
-// (`seed && server`) would never reach the server.
-main().then(
-  () => process.exit(0),
-  (err) => {
-    console.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
-  },
-);
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});
