@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   designEverydayProblems,
+  fetchCompanyTxtFiles,
   fetchFlowGraph,
   fetchRun,
   listAgents,
   startCharacterizeRuns,
   summarizeFlows,
+  type CompanyTxtFile,
   type EverydayProblem,
   type FlowGraph,
   type StoredAgent,
@@ -13,6 +15,7 @@ import {
 import { areaLabel } from "../generator/labels";
 import { FlowGraphView } from "./FlowGraph";
 import "./demo-setup.css";
+import { CompanyTxtFiles } from "./CompanyTxtFiles";
 import { DemoAgentAssessment } from "./DemoAgentAssessment";
 import { LoadingProgress } from "../LoadingProgress";
 
@@ -78,6 +81,8 @@ export function DemoSetupPage({ hasDatabase, hasApiKey }: Props) {
   const [phase, setPhase] = useState("");
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [graph, setGraph] = useState<FlowGraph | null>(null);
+  const [txtFiles, setTxtFiles] = useState<CompanyTxtFile[]>([]);
+  const [filesTick, setFilesTick] = useState(0);
   const [logs, setLogs] = useState<LogLine[]>([]);
   const stopRef = useRef(false);
   const logRef = useRef<HTMLPreElement>(null);
@@ -123,6 +128,24 @@ export function DemoSetupPage({ hasDatabase, hasApiKey }: Props) {
       cancelled = true;
     };
   }, [company]);
+
+  useEffect(() => {
+    if (!company) {
+      setTxtFiles([]);
+      return;
+    }
+    let cancelled = false;
+    fetchCompanyTxtFiles(company)
+      .then((stored) => {
+        if (!cancelled) setTxtFiles(stored);
+      })
+      .catch(() => {
+        if (!cancelled) setTxtFiles([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [company, filesTick]);
 
   useEffect(() => {
     const el = logRef.current;
@@ -391,13 +414,25 @@ export function DemoSetupPage({ hasDatabase, hasApiKey }: Props) {
                   </pre>
                 </div>
               ) : null}
-              {graph && graph.nodes.length > 0 ? <FlowGraphView graph={graph} /> : null}
+              {graph && graph.nodes.length > 0 ? <FlowGraphView graph={graph} files={txtFiles} /> : null}
             </div>
           ) : null}
         </div>
         <div className="demo-space demo-space-evaluate">
           <h2>Evalúa los agentes en solitario</h2>
-          {company ? <DemoAgentAssessment key={company} agents={companyAgents} hasApiKey={hasApiKey} /> : <p className="demo-run-note">Selecciona una empresa para evaluar sus agentes.</p>}
+          {company ? (
+            <>
+              <DemoAgentAssessment key={company} agents={companyAgents} hasApiKey={hasApiKey} />
+              <CompanyTxtFiles
+                company={company}
+                agents={companyAgents}
+                onSaved={() => {
+                  setFilesTick((tick) => tick + 1);
+                  listAgents().then(setAgents).catch((err) => setError(err instanceof Error ? err.message : String(err)));
+                }}
+              />
+            </>
+          ) : <p className="demo-run-note">Selecciona una empresa para evaluar sus agentes.</p>}
         </div>
       </div>
     </section>

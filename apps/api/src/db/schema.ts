@@ -5,6 +5,7 @@ export {
   agentContextFiles,
   agentVulnAssessments,
   flowGraphs,
+  companyTxtFiles,
   demoSimFindings,
   commObservations,
   vulnEvalBatches,

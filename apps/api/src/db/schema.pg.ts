@@ -163,6 +163,22 @@ export const flowGraphs = pgTable("flow_graphs", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
 });
 
+export type CompanyTxtFileRow = {
+  id: string;
+  filename: string;
+  content: string;
+  label: string;
+  readAgentIds: string[];
+  writeAgentIds: string[];
+};
+
+/** .txt files for one company, with per-agent read and write tools. */
+export const companyTxtFiles = pgTable("company_txt_files", {
+  companyName: text("company_name").primaryKey(),
+  files: jsonb("files").$type<CompanyTxtFileRow[]>().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});
+
 export type DemoSimVectorRow = { title: string; detail: string };
 export type DemoSimAnalysisRow = {
   surface: string;

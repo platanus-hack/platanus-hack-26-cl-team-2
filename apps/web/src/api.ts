@@ -829,6 +829,29 @@ export function summarizeFlows(body: {
   return postJson("/api/characterize/flows", body);
 }
 
+export type CompanyTxtFile = {
+  id: string;
+  filename: string;
+  content: string;
+  label: string;
+  readAgentIds: string[];
+  writeAgentIds: string[];
+};
+
+export async function fetchCompanyTxtFiles(companyName: string): Promise<CompanyTxtFile[]> {
+  const res = await fetch(`/api/characterize/files?company=${encodeURIComponent(companyName)}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "No se pudieron cargar los archivos");
+  return (data.files as CompanyTxtFile[]) ?? [];
+}
+
+export function saveCompanyTxtFiles(body: {
+  companyName: string;
+  files: Array<Omit<CompanyTxtFile, "id"> & { id?: string }>;
+}): Promise<{ files: CompanyTxtFile[] }> {
+  return postJson("/api/characterize/files", body);
+}
+
 export async function fetchFlowGraph(companyName: string): Promise<FlowGraph | null> {
   const res = await fetch(`/api/characterize/graph?company=${encodeURIComponent(companyName)}`);
   const data = await res.json().catch(() => ({}));

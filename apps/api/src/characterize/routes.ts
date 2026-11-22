@@ -3,7 +3,9 @@ import { z } from "zod";
 import { chainFromHops, graphFromIdChains } from "@sandbox/shared";
 import { designEverydayProblems } from "../harness/characterize.js";
 import { prepareStoredRun, startPreparedRun } from "../harness/orchestrator.js";
+import { getCompanyTxtFiles } from "../db/company-files-repo.js";
 import { getFlowGraph, saveFlowGraph } from "../db/flow-graph-repo.js";
+import { applyCompanyTxtFiles, ensureTxtFilesForAgents } from "../harness/company-files.js";
 import { loadRun } from "../db/runs-repo.js";
 import { demoGuard, denyIfOverBudget, requestIp } from "../security/budget.js";
 import { errorMessage } from "../security/redact.js";
@@ -55,6 +57,7 @@ characterizeRoutes.post("/runs", async (c) => {
   const spend = spendMeter.check();
   if (!spend.ok) return c.json({ error: spend.message }, 429);
   try {
+    await ensureTxtFilesForAgents(parsed.data.runs[0]?.agentIds ?? []);
     const prepared = await Promise.all(
       parsed.data.runs.map((run) => prepareStoredRun({ ...run, maxTurnsPerAgent: run.maxTurnsPerAgent ?? 5 })),
     );
@@ -78,6 +81,44 @@ const flowBody = z.object({
     )
     .min(1)
     .max(40),
+});
+
+const fileBody = z.object({
+  companyName: z.string().min(1).max(120),
+  files: z.array(z.object({
+    id: z.string().max(40).optional(),
+    filename: z.string().min(1).max(120),
+    content: z.string().max(100_000).optional(),
+    label: z.string().max(120).optional(),
+    readAgentIds: z.array(id).max(24).optional(),
+    writeAgentIds: z.array(id).max(24).optional(),
+  })).max(12),
+});
+
+characterizeRoutes.get("/files", async (c) => {
+  const companyName = c.req.query("company")?.trim() ?? "";
+  if (!companyName) return c.json({ error: "Falta la empresa" }, 400);
+  try {
+    const files = await getCompanyTxtFiles(companyName);
+    return c.json({ files: files ?? [] });
+  } catch (err) {
+    return c.json({ error: errorMessage(err) }, 500);
+  }
+});
+
+/** Save .txt files for this company and attach read/write tools to its agents. */
+characterizeRoutes.post("/files", async (c) => {
+  const json = await c.req.json().catch(() => null);
+  const parsed = fileBody.safeParse(json);
+  if (!parsed.success) return c.json({ error: "Cuerpo inválido", details: parsed.error.flatten() }, 400);
+  try {
+    const files = await applyCompanyTxtFiles(parsed.data.companyName, parsed.data.files);
+    return c.json({ files });
+  } catch (err) {
+    const message = errorMessage(err);
+    const status = /Falta la empresa|Archivo repetido|misma tool|\.txt simple/.test(message) ? 400 : 500;
+    return c.json({ error: message }, status);
+  }
 });
 
 characterizeRoutes.get("/graph", async (c) => {

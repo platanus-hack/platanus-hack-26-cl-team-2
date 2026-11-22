@@ -3,17 +3,20 @@ import {
   designRiskPrompts,
   deepenRiskPrompt,
   evaluateRiskRun,
+  fetchCompanyTxtFiles,
   fetchFlowGraph,
   fetchRun,
   listAgents,
   saveDemoSimFinding,
   startRiskRuns,
+  type CompanyTxtFile,
   type DemoSimAction,
   type DemoSimEval,
   type FlowGraph,
   type StoredAgent,
 } from "../api";
-import { FlowGraphView } from "./FlowGraph";
+import { FlowGraphView, type FlowLive } from "./FlowGraph";
+import type { TraceEvent } from "@sandbox/shared";
 import { LoadingProgress } from "../LoadingProgress";
 import "./demo-setup.css";
 
@@ -24,11 +27,30 @@ function companyName(agent: StoredAgent): string {
   return agent.orgHints?.companyName?.trim() ?? "";
 }
 
-async function waitForRun(runId: string, shouldStop: () => boolean) {
+function liveFromEvents(events: TraceEvent[]): FlowLive | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]!;
+    if (event.type === "agent.message_sent") {
+      const message = (event.payload.message ?? {}) as { fromAgentId?: string; toAgentId?: string };
+      const fromAgentId = message.fromAgentId || event.agentId;
+      const toAgentId = message.toAgentId;
+      if (fromAgentId && toAgentId && fromAgentId !== toAgentId) return { kind: "flow", fromAgentId, toAgentId };
+    }
+    if (event.type === "agent.tool_call" || event.type === "sandbox.tool_attempt") {
+      const name = String(event.payload.name ?? event.payload.tool ?? "");
+      const slug = name.match(/^(.+)_txt_(?:read|write)$/)?.[1];
+      if (slug && event.agentId) return { kind: "file", agentId: event.agentId, slug };
+    }
+  }
+  return null;
+}
+
+async function waitForRun(runId: string, shouldStop: () => boolean, onTick?: (events: TraceEvent[]) => void) {
   const started = Date.now();
   while (Date.now() - started < 180_000) {
     if (shouldStop()) throw new Error("Detenido");
-    const { run } = await fetchRun(runId);
+    const { run, events } = await fetchRun(runId);
+    onTick?.(events);
     if (run.status === "completed" || run.status === "failed") return run;
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
@@ -44,6 +66,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
   const [agents, setAgents] = useState<StoredAgent[]>([]);
   const [company, setCompany] = useState("");
   const [graph, setGraph] = useState<FlowGraph | null>(null);
+  const [txtFiles, setTxtFiles] = useState<CompanyTxtFile[]>([]);
   const [prompt, setPrompt] = useState("");
   const [seedId, setSeedId] = useState("");
   const [surface, setSurface] = useState("");
@@ -54,6 +77,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(hasDatabase);
   const [running, setRunning] = useState(false);
+  const [live, setLive] = useState<FlowLive | null>(null);
   const [phase, setPhase] = useState("");
   const [error, setError] = useState("");
   const [logs, setLogs] = useState<LogLine[]>([]);
@@ -102,6 +126,24 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
   }, [company]);
 
   useEffect(() => {
+    if (!company) {
+      setTxtFiles([]);
+      return;
+    }
+    let cancelled = false;
+    fetchCompanyTxtFiles(company)
+      .then((stored) => {
+        if (!cancelled) setTxtFiles(stored);
+      })
+      .catch(() => {
+        if (!cancelled) setTxtFiles([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [company]);
+
+  useEffect(() => {
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [logs]);
@@ -132,6 +174,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
     if (!canRun || running || !company || !graph) return;
     stopRef.current = false;
     setRunning(true);
+    setLive(null);
     setError("");
     setNotice("");
     try {
@@ -166,7 +209,10 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
       const run = started.runs[0];
       if (!run) throw new Error("No partió la simulación.");
       log(`Run ${run.id} en curso`);
-      const done = await waitForRun(run.id, () => stopRef.current);
+      const done = await waitForRun(run.id, () => stopRef.current, (events) => {
+        const next = liveFromEvents(events);
+        if (next) setLive(next);
+      });
       log(`Run ${run.id} → ${done.status}`, done.status === "failed" ? "err" : "ok");
       if (stopRef.current) throw new Error("Detenido");
 
@@ -304,6 +350,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
             setNotice("");
             setLogs([]);
             setPhase("");
+            setLive(null);
             setError("");
           }}
         >
@@ -324,7 +371,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
         {company && !graph ? (
           <p className="demo-run-note">Esta empresa todavía no tiene grafo. Caracterízala en DEMO SETUP.</p>
         ) : null}
-        {graph && graph.nodes.length > 0 ? <FlowGraphView graph={graph} /> : null}
+        {graph && graph.nodes.length > 0 ? <FlowGraphView graph={graph} files={txtFiles} live={live} /> : null}
         {graph && graph.edges.length > 0 ? (
           <div className="demo-run">
             <p className="demo-run-note">

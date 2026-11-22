@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { DemoSimDesign, FlowGraphEdge } from "@sandbox/shared";
+import { ensureCompanyTxtFiles } from "../harness/company-files.js";
 import { applyPathBias, deepenRiskPrompt, designRiskPrompts, evaluateRiskRun, loadCompanySim } from "../harness/demo-sim.js";
 import { listDemoSimFindings, saveDemoSimFinding } from "../db/demo-sim-repo.js";
 import { prepareStoredRun, startPreparedRun } from "../harness/orchestrator.js";
@@ -61,6 +62,7 @@ demoSimRoutes.post("/runs", async (c) => {
   const spend = spendMeter.check();
   if (!spend.ok) return c.json({ error: spend.message }, 429);
   try {
+    await ensureCompanyTxtFiles(parsed.data.companyName);
     const bundle = await loadCompanySim(parsed.data.companyName);
     const ids = bundle.agents.map((agent) => agent.id);
     const edges: FlowGraphEdge[] = bundle.graph.edges;

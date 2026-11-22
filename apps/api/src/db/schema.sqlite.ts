@@ -172,6 +172,22 @@ export const flowGraphsSqlite = sqliteTable("flow_graphs", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+export type CompanyTxtFileRow = {
+  id: string;
+  filename: string;
+  content: string;
+  label: string;
+  readAgentIds: string[];
+  writeAgentIds: string[];
+};
+
+/** .txt files for one company, with per-agent read and write tools. */
+export const companyTxtFilesSqlite = sqliteTable("company_txt_files", {
+  companyName: text("company_name").primaryKey(),
+  files: text("files", { mode: "json" }).$type<CompanyTxtFileRow[]>().notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+
 export type DemoSimVectorRow = { title: string; detail: string };
 export type DemoSimAnalysisRow = {
   surface: string;

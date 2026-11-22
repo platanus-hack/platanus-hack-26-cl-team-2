@@ -133,6 +133,12 @@ function ensureSqliteTables(db: Database.Database): void {
       updated_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS company_txt_files (
+      company_name TEXT PRIMARY KEY NOT NULL,
+      files TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS demo_sim_findings (
       id TEXT PRIMARY KEY NOT NULL,
       company_name TEXT NOT NULL,
