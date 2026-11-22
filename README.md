@@ -266,15 +266,16 @@ are in memory (a restart resets them) and `0` disables a limit.
 
 | Env var | Default | What it does |
 |---|---|---|
-| `RATE_LIMIT_PER_MINUTE` | `3` (`12` on Vercel) | Model-calling requests per client IP per minute: runs, judge, transcript judge, profile refine (and compose with refine). Over it: `429` "Límite de demo alcanzado, intenta en un minuto." |
-| `MAX_RUNS_PER_DAY` | `40` | Runs started per UTC day, all clients together. |
-| `MAX_CONCURRENT_RUNS` | `3` | Runs pending or running at the same time. |
-| `MAX_JUDGE_CALLS_PER_DAY` | `200` | Judge + refine calls per UTC day, all clients together. |
-| `MAX_SPEND_USD_PER_DAY` | `5` | **Hard money ceiling.** US$ the server may spend per UTC day, priced from the `usage` of every model response (Sonnet 4.6 $3/$15, Haiku 4.5 $1/$5 per million tokens; cache writes 1.25x, reads 0.1x). Once spent, new runs, judge and refine calls get `429` "Presupuesto diario de la demo agotado, intenta mañana." and running agents stop before their next call. The counters above bound requests; this bounds what they cost (an 8-agent run that never calls `done`, a 200k-character transcript). Only the HTTP server enforces it (`batch` and `mcp:quick` are deliberate spend). Like the other limits it resets on restart, so each redeploy grants a fresh day. |
+| `RATE_LIMIT_PER_MINUTE` | `0` (off) | Model-calling requests per client IP per minute: runs, judge, transcript judge, profile refine (and compose with refine). Over it: `429` "Límite de demo alcanzado, intenta en un minuto." |
+| `MAX_RUNS_PER_DAY` | `0` (off) | Runs started per UTC day, all clients together. |
+| `MAX_CONCURRENT_RUNS` | `0` (off) | Runs pending or running at the same time. |
+| `MAX_JUDGE_CALLS_PER_DAY` | `0` (off) | Judge + refine calls per UTC day, all clients together. |
+| `MAX_SPEND_USD_PER_DAY` | `0` (off) | **Hard money ceiling.** US$ the server may spend per UTC day, priced from the `usage` of every model response (Sonnet 4.6 $3/$15, Haiku 4.5 $1/$5 per million tokens; cache writes 1.25x, reads 0.1x). Once spent, new runs, judge and refine calls get `429` "Presupuesto diario de la demo agotado, intenta mañana." and running agents stop before their next call. The counters above bound requests; this bounds what they cost (an 8-agent run that never calls `done`, a 200k-character transcript). Only the HTTP server enforces it (`batch` and `mcp:quick` are deliberate spend). Like the other limits it resets on restart, so each redeploy grants a fresh day. |
 | `MAX_TURNS_PER_AGENT` | `12` | Default **and ceiling**: a request may ask for fewer turns, never more. |
 | `MAX_STORED_RUNS` | `200` | Finished runs whose live trace and inboxes stay in memory; older ones are dropped from memory (they remain in the database). |
-| `MAX_STORED_AGENTS` | `2000` | Enterprise generate refuses to save past this many agents. |
+| `MAX_STORED_AGENTS` | `0` (off) | Enterprise generate refuses to save past this many agents. |
 | `ADMIN_TOKEN` | unset | When set, writes need the header `x-admin-token`: `PUT`/`DELETE /api/agents…`, context files, `POST /api/profiles/save`, `POST /api/enterprise/generate` with `persist` (a preview with `persist: false` stays public). Unset locally: writes stay open. Unset on Render (`RENDER` is set) or with `REQUIRE_ADMIN_TOKEN=1`: writes are **blocked**, so a forgotten dashboard variable cannot leave the store writable. |
+| `ALLOW_PUBLIC_WRITES` | unset | `1`: every write is open to anyone, ignoring `ADMIN_TOKEN` and the Render block. For a demo whose stored data is disposable; `render.yaml` sets it. |
 | `CLIENT_IP_HEADER` | `true-client-ip` on Render, else unset | Header with the real client IP. On Render the Cloudflare edge sets `True-Client-IP` and overwrites client values, while the left side of `X-Forwarded-For` is whatever the client sent. |
 | `TRUST_PROXY_HOPS` | `0` | Without a trusted header: how many proxies append to `X-Forwarded-For` (read from the right). `0` ignores `X-Forwarded-For` (any client can write it, and rotating it would give each request a fresh per-IP bucket) and uses the socket address. |
 | `ALLOW_REAL_EMAIL_FILES` | unset | The git-ignored real-mailbox files (`gmail_*`, `outlook_*`, `spoof_eval.json`) are hidden from the HTTP API unless this is `1`. The batch and MCP scripts still read them locally. |

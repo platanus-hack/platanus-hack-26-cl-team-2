@@ -31,12 +31,12 @@ opcionales en Production:
   `x-admin-token`. En el navegador:
   `localStorage.setItem("meshAdminToken", "<token>")`. Sin definir, las
   escrituras quedan abiertas.
-- `MAX_SPEND_USD_PER_DAY` (por defecto `5`): tope diario en US$ de llamadas al
+- `MAX_SPEND_USD_PER_DAY` (por defecto `0`, desactivado): tope diario en US$ de llamadas al
   modelo; `0` lo desactiva. Al agotarse, la API responde 429 hasta el día
   siguiente (UTC).
-- `RATE_LIMIT_PER_MINUTE` (por defecto `12` en Vercel): solicitudes que llaman
+- `RATE_LIMIT_PER_MINUTE` (por defecto `0`, desactivado): solicitudes que llaman
   al modelo por IP y por minuto; `0` lo desactiva. `MAX_RUNS_PER_DAY` (por
-  defecto `40`) limita las ejecuciones diarias.
+  defecto `0`, desactivado) limita las ejecuciones diarias.
 
 La IP del visitante se toma de `x-real-ip` (o del primer valor de
 `x-vercel-forwarded-for`), que Vercel escribe. Los contadores viven en la memoria
