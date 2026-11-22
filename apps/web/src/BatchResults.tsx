@@ -85,30 +85,27 @@ const TONE_CLASS: Record<Tone, string> = {
   muted: "verdict-muted",
 };
 
-const TONE_LABEL: Record<Tone, string> = {
-  bad: "El fraude pasó",
-  warn: "Retenido para aprobación",
-  ok: "Correcto",
-  muted: "Sin resultado",
-};
-const TONES: Tone[] = ["bad", "warn", "ok", "muted"];
 
 /**
- * Minimal dot plot of a small hand-written eval set: one dot per email (columns) and
- * mitigation (rows), colored by what happened. Hovering or focusing a dot names it below.
+ * Plain list of the evaluations: one row per email, one result chip per mitigation. Picking a
+ * row (or a chip) shows that run step by step in the agent graph below the list.
  */
 export function ScenarioPlotPanel({ set, title, scenarios }: { set: BatchResultSet; title: string; scenarios: ScenarioInfo[] }) {
   const [results, setResults] = useState<BatchResults | null | undefined>(undefined);
-  const [active, setActive] = useState<{ s: ScenarioInfo; fix: string; text: string } | null>(null);
+  const [error, setError] = useState("");
   const [picked, setPicked] = useState<{ id: string; fix: string } | null>(null);
   const [selectedRunId, setSelectedRunId] = useState("");
-  const [search, setSearch] = useState("");
 
   useEffect(() => {
     let cancelled = false;
+    setError("");
     fetchBatchResults(set)
       .then((r) => !cancelled && setResults(r))
-      .catch(() => !cancelled && setResults(null));
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : String(e));
+        setResults(null);
+      });
     return () => {
       cancelled = true;
     };
@@ -118,141 +115,87 @@ export function ScenarioPlotPanel({ set, title, scenarios }: { set: BatchResultS
     return (
       <section className="panel">
         <h2>{title}</h2>
-        <p className="hint">{results === undefined ? "Cargando resultados…" : "Todavía no hay resultados publicados."}</p>
+        {error ? (
+          <p className="hint verdict-bad">No se pudieron cargar los resultados: {error}. Revisa que la API esté corriendo y usa «Actualizar datos».</p>
+        ) : (
+          <p className="hint">{results === undefined ? "Cargando resultados…" : "Todavía no hay resultados publicados."}</p>
+        )}
       </section>
     );
   }
 
-  const fixes = [...new Set(results.rows.map((r) => r.fixes))].sort(
-    (a, b) => FIX_ORDER.indexOf(a) - FIX_ORDER.indexOf(b),
-  );
-  const attacks = scenarios.filter((s) => s.expect === "no_payment");
-  const benign = scenarios.filter((s) => s.expect !== "no_payment");
-  const cells = fixes.map((fix) => ({
-    fix,
-    dots: scenarios.map((s) => ({
-      s,
-      o: cellOutcome(
-        results.rows.filter((r) => r.emailId === s.id && r.fixes === fix),
-        s.expect,
-      ),
-    })),
-  }));
-  const total = cells.reduce((n, c) => n + c.dots.length, 0);
-  const tally = (dots: { o: { tone: Tone } }[], tone: Tone) => dots.filter((d) => d.o.tone === tone).length;
-  const shown = picked;
+  const fixes = [...new Set(results.rows.map((r) => r.fixes))].sort((a, b) => FIX_ORDER.indexOf(a) - FIX_ORDER.indexOf(b));
+  const outcome = (id: string, fix: string, expect: ScenarioInfo["expect"]) =>
+    cellOutcome(results.rows.filter((r) => r.emailId === id && r.fixes === fix), expect);
+  const shown = picked ?? (scenarios[0] && fixes[0] ? { id: scenarios[0].id, fix: fixes[0] } : null);
+  const shownScenario = shown ? scenarios.find((s) => s.id === shown.id) : undefined;
   const shownRows = shown ? results.rows.filter((r) => r.emailId === shown.id && r.fixes === shown.fix && r.runId) : [];
-  const shownRun = shownRows.find(row => row.runId === selectedRunId) ?? shownRows.find(row => row.status === "completed") ?? shownRows[0];
-  const evaluations = cells.flatMap(({ fix, dots }) => dots.map(dot => ({ ...dot, fix })));
-  const filtered = evaluations.filter(({ s, fix, o }) => `${s.label} ${s.detail} ${fixLabel(fix)} ${o.text}`.toLowerCase().includes(search.toLowerCase()));
+  const shownRun = shownRows.find((r) => r.runId === selectedRunId) ?? shownRows.find((r) => r.status === "completed") ?? shownRows[0];
+  const pick = (id: string, fix: string) => {
+    setPicked({ id, fix });
+    setSelectedRunId("");
+  };
 
   return (
     <section className="panel">
       <h2>{title}</h2>
-      <p className="hint">
-        {total} evaluaciones: {attacks.length} correos de fraude y {benign.length} legítimos, con cada mitigación.
-      </p>
-      <label className="eval-search">Buscar evaluaciones<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Escenario, mitigación o resultado…" /></label>
-      <p className="hint">{filtered.length} de {total} combinaciones · {results.rows.length} ejecuciones registradas</p>
-      <div className="eval-list">
-        {filtered.map(({ s, fix, o }) => {
-          const expanded = shown?.id === s.id && shown.fix === fix;
-          const key = JSON.stringify([s.id, fix]);
-          const panelId = "eval-" + encodeURIComponent(s.id + ":" + fix);
-          const attempts = results.rows.filter(row => row.emailId === s.id && row.fixes === fix);
-          return <article className={expanded ? "eval-item expanded" : "eval-item"} key={key}>
-            <h3 className="eval-row-heading"><button type="button" className="eval-row" aria-expanded={expanded} aria-controls={panelId} onClick={() => { setPicked(expanded ? null : { id: s.id, fix }); setSelectedRunId(""); }}>
-              <span className="eval-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
-              <span className="eval-row-title">{s.label}<small>{fixLabel(fix)} · {s.expect === "no_payment" ? "Fraude" : "Control legítimo"} · {attempts.length} ejecución(es)</small></span>
-              <span className={TONE_CLASS[o.tone]}>{o.text}</span>
-            </button></h3>
-            <div id={panelId} hidden={!expanded}>
-              {expanded && <div className="eval-expanded"><p>{s.detail}</p><h4>Paso a paso · {fixLabel(fix)}</h4>
-                {shownRows.length > 1 && <label className="eval-search">Ejecución<select value={shownRun?.runId ?? ""} onChange={event => setSelectedRunId(event.target.value)}>{shownRows.map((row, index) => <option key={row.runId} value={row.runId!}>Ejecución {index + 1} · {row.status === "completed" ? "Completada" : "Fallida"} · {row.runId}</option>)}</select></label>}
-                {shownRun?.runId ? <AgentFlow key={shownRun.runId} runId={shownRun.runId} attack={s.expect === "no_payment"} /> : <p className="hint">No hay traza guardada para esta combinación.</p>}
-              </div>}
-            </div>
-          </article>;
-        })}
-        {!filtered.length && <p className="empty">No hay evaluaciones que coincidan con la búsqueda.</p>}
-      </div>
-      <details className="eval-overview"><summary>Ver resumen gráfico de todas las evaluaciones</summary>
-      <div className="dot-plot" style={{ ["--cols" as string]: scenarios.length, ["--split" as string]: attacks.length }}>
-        <span />
-        <span className="dot-plot-group" style={{ gridColumn: `2 / span ${attacks.length}` }}>Fraude</span>
-        <span className="dot-plot-group" style={{ gridColumn: `${attacks.length + 2} / span ${benign.length}` }}>Legítimos</span>
-        {cells.map(({ fix, dots }) => (
-          <div className="dot-plot-row" key={fix}>
-            <span className="dot-plot-label">
-              {fix === "approval_gate" ? "Aprobación humana" : fixLabel(fix)}
-              <small>
-                {tally(dots.slice(0, attacks.length), "bad")}/{attacks.length} fraudes pasaron
-              </small>
-            </span>
-            {dots.map(({ s, o }, i) => (
-              <button
-                key={s.id}
-                type="button"
-                className={`dot ${TONE_CLASS[o.tone]}${i === attacks.length ? " dot-split" : ""}${shown?.id === s.id && shown.fix === fix ? " picked" : ""}`}
-                aria-label={`${s.label} · ${fixLabel(fix)}: ${o.text}. Ver paso a paso`}
-                aria-pressed={shown?.id === s.id && shown.fix === fix}
-                onClick={() => setPicked({ id: s.id, fix })}
-                onMouseEnter={() => setActive({ s, fix, text: o.text })}
-                onFocus={() => setActive({ s, fix, text: o.text })}
-                onMouseLeave={() => setActive(null)}
-                onBlur={() => setActive(null)}
-              />
+      <div className="evals-pick">
+        <label className="eval-search">
+          Evaluación
+          <select
+            value={shown ? `${shown.id}|${shown.fix}` : ""}
+            onChange={(event) => {
+              const [id, fix] = event.target.value.split("|");
+              pick(id, fix);
+            }}
+          >
+            {scenarios.map((s) => (
+              <optgroup key={s.id} label={s.label}>
+                {fixes.map((fix) => {
+                  const o = outcome(s.id, fix, s.expect);
+                  const mark = { bad: "✕", warn: "‖", ok: "✓", muted: "–" }[o.tone];
+                  return (
+                    <option key={fix} value={`${s.id}|${fix}`}>
+                      {mark} {s.label} · {fixLabel(fix)} · {o.text}
+                    </option>
+                  );
+                })}
+              </optgroup>
             ))}
-          </div>
-        ))}
+          </select>
+        </label>
+        {shownScenario && shown ? (
+          <span className={`evals-verdict ${TONE_CLASS[outcome(shown.id, shown.fix, shownScenario.expect).tone]}`}>
+            {outcome(shown.id, shown.fix, shownScenario.expect).text}
+          </span>
+        ) : null}
       </div>
-      <p className="dot-plot-detail" aria-live="polite">
-        {active ? (
-          <>
-            <strong>{active.s.label}</strong> · {fixLabel(active.fix)} ·{" "}
-            {active.text}
-            <small>{active.s.detail}</small>
-          </>
-        ) : (
-          <small>Pasa el cursor sobre un punto para ver el correo; haz clic para verlo paso a paso.</small>
-        )}
-      </p>
-      <ul className="dot-plot-legend">
-        {TONES.map((t) => (
-          <li key={t}>
-            <span className={`dot ${TONE_CLASS[t]}`} aria-hidden="true" />
-            {TONE_LABEL[t]}
-          </li>
-        ))}
-      </ul>
-      </details>
-      <details>
-        <summary>Ver como tabla</summary>
-        <div className="table-scroll">
-          <table className="before-after">
-            <thead>
-              <tr>
-                <th>Correo</th>
-                {fixes.map((f) => (
-                  <th key={f}>{fixLabel(f)}</th>
+
+      {shown && shownScenario ? (
+        <div className="evals-flow">
+          <h3>
+            {shownScenario.label} · {fixLabel(shown.fix)}
+          </h3>
+          <p className="hint">{shownScenario.detail}</p>
+          {shownRows.length > 1 ? (
+            <label className="eval-search">
+              Ejecución
+              <select value={shownRun?.runId ?? ""} onChange={(event) => setSelectedRunId(event.target.value)}>
+                {shownRows.map((row, index) => (
+                  <option key={row.runId} value={row.runId!}>
+                    Ejecución {index + 1} · {row.status === "completed" ? "Completada" : "Fallida"} · {row.runId}
+                  </option>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {scenarios.map((s, i) => (
-                <tr key={s.id}>
-                  <td>{s.label}</td>
-                  {cells.map(({ fix, dots }) => (
-                    <td key={fix} className={TONE_CLASS[dots[i].o.tone]}>
-                      {dots[i].o.text}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              </select>
+            </label>
+          ) : null}
+          {shownRun?.runId ? (
+            <AgentFlow key={shownRun.runId} runId={shownRun.runId} attack={shownScenario.expect === "no_payment"} />
+          ) : (
+            <p className="hint">No hay traza guardada para esta combinación.</p>
+          )}
         </div>
-      </details>
+      ) : null}
     </section>
   );
 }

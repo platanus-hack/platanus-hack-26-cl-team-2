@@ -12,5 +12,12 @@
 .eval-vector { margin: .4rem 0 1rem; padding-left: 1.2rem; }
 .eval-vector li { margin: 0 0 .8rem; line-height: 1.5; }
 .eval-vector strong { display: block; }
-.eval-overview { margin-bottom: 1.5rem; }.eval-overview summary { cursor: pointer; padding: .7rem 0; }
 @media(max-width:700px) { .eval-row { flex-wrap: wrap; gap: .5rem; }.eval-row-title { min-width: 70%; }.eval-row > span:last-child { margin-left: 1.5rem; } }
+
+/* Business evals: one dropdown to pick an evaluation (email × mitigation); the graph sits below. */
+.evals-pick { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .4rem 1rem; }
+.evals-pick .eval-search { flex: 1 1 22rem; margin: .8rem 0 0; }
+.evals-verdict { font-size: .85rem; padding-bottom: .8rem; }
+.evals-verdict::before { content: ""; display: inline-block; width: .55rem; height: .55rem; border-radius: 50%; background: currentColor; margin-right: .45rem; }
+.evals-flow { margin-top: 1.2rem; }
+.evals-flow h3 { margin: 0 0 .3rem; font-size: 1rem; font-weight: 400; }

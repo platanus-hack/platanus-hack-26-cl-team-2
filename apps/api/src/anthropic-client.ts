@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config.js";
+import { userApiKey } from "./user-api-key.js";
 import { SpendLimitError, spendMeter, type SpendMeter } from "./security/spend.js";
 
 /**
@@ -35,6 +36,10 @@ export function meterClient(client: Anthropic, meter: SpendMeter): Anthropic {
  * is counted against the daily spend cap (enforced only where a limit is set: the server).
  */
 export function anthropicClient(options: { maxRetries?: number } = {}): Anthropic {
+  // A visitor's own key goes straight to Anthropic (never through the server's proxy) and is
+  // billed to them, so the server's daily spend cap does not count it. Rate limits still apply.
+  const own = userApiKey();
+  if (own) return new Anthropic({ apiKey: own, ...options });
   return meterClient(
     new Anthropic({ apiKey: config.anthropicApiKey, baseURL: config.anthropicBaseUrl, ...options }),
     spendMeter,
