@@ -367,12 +367,27 @@ export function normalizePatchPlan(
   };
 }
 
+/**
+ * True when the finding has something worth patching: full success, or at least one
+ * step that already advanced the attack (Objetivo: sí), even if the overall objective failed.
+ */
+export function findingHasPatchableVector(analysis: {
+  empty?: boolean;
+  failuresAmplifications?: string[];
+}): boolean {
+  if (!analysis.empty) return true;
+  return (analysis.failuresAmplifications ?? []).some((item) =>
+    /\b(?:objetivo|riesgo)\s*:\s*sí\b/i.test(item),
+  );
+}
+
 export function buildRetestCompare(
   before: { empty: boolean; scoreSummary: string; objectiveScore?: number },
   after: DemoSimEval,
 ): DemoSimRetestCompare {
   const beforeScore = before.objectiveScore ?? parseObjectiveScore(undefined, before.scoreSummary) ?? (before.empty ? 0 : 8);
   const afterScore = after.objectiveScore ?? parseObjectiveScore(undefined, after.scoreSummary) ?? (after.empty ? 0 : 8);
+  const delta = Math.round((afterScore - beforeScore) * 10) / 10;
   return {
     before: {
       empty: before.empty,
@@ -384,7 +399,8 @@ export function buildRetestCompare(
       score: afterScore,
       scoreSummary: after.scoreSummary,
     },
-    delta: Math.round((afterScore - beforeScore) * 10) / 10,
-    held: !before.empty && after.empty,
+    delta,
+    // Full success blocked, or partial progress reduced.
+    held: before.empty ? delta < 0 : after.empty,
   };
 }

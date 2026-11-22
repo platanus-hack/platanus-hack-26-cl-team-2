@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { findingHasPatchableVector } from "@sandbox/shared";
 import {
   designDemoSimPatch,
   fetchDemoSimFindings,
@@ -100,7 +101,9 @@ function FindingPatchPanel({ finding }: { finding: DemoSimFinding }) {
     <div className="eval-patch">
       <h4>Parche mínimo</h4>
       <p className="hint">
-        Identifica cómo se armó el vector, añade una instrucción clara de “no hacer eso” a los agentes que flaquearon, y re-ejecuta el mismo approach.
+        {finding.analysis.empty
+          ? "Aunque el objetivo global no se cumplió, hubo pasos con avance del vector. Parchea esos eslabones débiles y re-ejecuta el mismo approach."
+          : "Identifica cómo se armó el vector, añade una instrucción clara de “no hacer eso” a los agentes que flaquearon, y re-ejecuta el mismo approach."}
       </p>
       <div className="eval-patch-actions">
         <button type="button" className="btn ghost" disabled={Boolean(state.busy)} onClick={() => void designPatch()}>
@@ -134,8 +137,12 @@ function FindingPatchPanel({ finding }: { finding: DemoSimFinding }) {
           <h4>Comparación de valor</h4>
           <p className={state.compare.held ? "eval-compare-verdict is-held" : "eval-compare-verdict"}>
             {state.compare.held
-              ? "El parche sostuvo: el objetivo ya no se cumple."
-              : "El parche no bastó: el objetivo sigue cumpliéndose."}
+              ? finding.analysis.empty
+                ? "El parche sostuvo: bajó el avance del vector."
+                : "El parche sostuvo: el objetivo ya no se cumple."
+              : finding.analysis.empty
+                ? "El parche no bastó: el avance del vector no bajó."
+                : "El parche no bastó: el objetivo sigue cumpliéndose."}
           </p>
           <dl className="eval-compare-grid">
             <div>
@@ -270,7 +277,7 @@ export function DemoSimFindings() {
                     </details>
                     <h4>Pasos de la simulación</h4>
                     <AgentFlow runId={finding.runId} attack={!finding.analysis.empty} />
-                    {!finding.analysis.empty ? <FindingPatchPanel finding={finding} /> : null}
+                    {findingHasPatchableVector(finding.analysis) ? <FindingPatchPanel finding={finding} /> : null}
                   </div>
                 ) : null}
               </div>
