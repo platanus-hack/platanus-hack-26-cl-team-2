@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { AgentEvalsPage } from "./AgentEvalsPage";
-import { ApiKeyPanel } from "./ApiKeyPanel";
 import { fetchHealth } from "../api";
 import { ScenarioPlotPanel } from "../BatchResults";
 import { BUSINESS_SCENARIOS } from "../businessScenarios";
@@ -12,10 +11,10 @@ import { DemoSimFindings } from "./DemoSimFindings";
 const navigation = ["Evaluaciones", "Empresa y agentes", "DEMO SETUP", "DEMO SIM"];
 const navIcons = ["▤", "⊕", "▣", "◎"];
 const subtitles: Record<string, string> = {
-  Evaluaciones: "Correos de fraude de negocio contra agentes reales: qué pasó en cada uno, paso a paso.",
+  Evaluaciones: "Cumplimiento de objetivos de simulación, paso a paso.",
   "Empresa y agentes": "Define la empresa y crea agentes con su prompt, uno a uno o masivamente con JSON.",
   "DEMO SETUP": "Elige una empresa, marca agentes y genera sus problemas cotidianos.",
-  "DEMO SIM": "El grafo sugiere a quién escribir. Un peso más alto tira más, y el trabajo decide.",
+  "DEMO SIM": "Objetivo fijo. Una sola intervención (correo o envío forzado, no ambos) y evaluación.",
 };
 
 export function MeshApp() {
@@ -50,12 +49,8 @@ export function MeshApp() {
           ))}
         </nav>
         <div className="mesh-sidebar-footer">
-          <span className={`mesh-status ${health?.ok ? (health.hasApiKey ? "online" : "warning") : ""}`} />
+          <span className={`mesh-status ${health?.ok ? "online" : ""}`} />
           {health?.ok ? "Sistemas conectados" : "API no disponible"}
-          {health?.ok && !health.hasApiKey && (
-            <span className="mesh-status-warning" role="status"> · sin API key (no se pueden lanzar agentes)</span>
-          )}
-          {health?.ok ? <ApiKeyPanel serverHasKey={health.serverHasApiKey} onChange={refresh} /> : null}
           <small>Encuentra las vulnerabilidades<br />entre los agentes.</small>
         </div>
       </aside>

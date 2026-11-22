@@ -262,6 +262,8 @@ async function startRun(
     roster?: RunRosterEntry[];
     commCounts?: CommCount[];
     skipCommRecording?: boolean;
+    /** Hard stop for the whole run (sum of agent turns). Per-agent maxTurns still applies. */
+    maxTotalTurns?: number;
   },
 ): Promise<RunSummary> {
   if (agents.length < 1) {
@@ -338,6 +340,7 @@ async function startRun(
     peerMessage: opts?.peerMessage,
     openings: opts?.openings,
     extraPeerMessages: opts?.extraPeerMessages,
+    maxTotalTurns: opts?.maxTotalTurns,
   });
   if (process.env.VERCEL) await execution;
   else void execution.catch(error => console.error("No se pudo persistir la ejecución", error));
@@ -373,6 +376,7 @@ export type PreparedStoredRun = {
     roster: RunRosterEntry[];
     commCounts?: CommCount[];
     skipCommRecording?: boolean;
+    maxTotalTurns?: number;
   };
 };
 
@@ -565,13 +569,19 @@ async function executeRun(
     peerMessage?: PeerMessageScenario;
     openings?: { agentId: string; scenarioHint: string }[];
     extraPeerMessages?: PeerMessageScenario[];
+    maxTotalTurns?: number;
   },
 ): Promise<void> {
+  const maxTotalTurns =
+    typeof opts.maxTotalTurns === "number" && opts.maxTotalTurns > 0
+      ? Math.min(1000, Math.max(1, Math.floor(opts.maxTotalTurns)))
+      : undefined;
   run.status = "running";
   traceBus.emit(run.id, "run.started", {
     agents: run.agents,
     model: config.model,
     maxTurnsPerAgent: maxTurns,
+    maxTotalTurns: maxTotalTurns ?? null,
     scheduler: "round-robin",
     seedAgentId: opts.seedAgentId,
     scenarioHint: opts.scenarioHint ?? null,
@@ -634,10 +644,36 @@ async function executeRun(
     // Ends because every iteration that isn't skipped either spends one of an agent's
     // maxTurns or retires it for good (max_turns), skipped iterations are bounded by the
     // number of agents, and an agent can only be woken by mail sent during a turn.
-    // (Skipping finished agents no longer eats into the turn budget of the active ones.)
+    // Optional maxTotalTurns caps the sum of turns across all agents (DEMO SIM "Pasos").
+    const totalTurnsUsed = () => sessions.reduce((sum, s) => sum + s.turnsUsed, 0);
+    const stopForBudget = (reason: string) => {
+      for (const s of sessions) {
+        if (s.done) continue;
+        s.done = true;
+        s.stopReason = "max_turns";
+        traceBus.emit(
+          run.id,
+          "agent.done",
+          { summary: reason, reason: "max_total_turns" },
+          s.agent.id,
+        );
+      }
+    };
+
     for (;;) {
-      for (const s of sessions) wakeIfMailWaiting(run.id, s, maxTurns);
+      if (maxTotalTurns && totalTurnsUsed() >= maxTotalTurns) {
+        stopForBudget(`Stopped after ${maxTotalTurns} total turns in the run.`);
+        break;
+      }
+      for (const s of sessions) {
+        if (maxTotalTurns && totalTurnsUsed() >= maxTotalTurns) break;
+        wakeIfMailWaiting(run.id, s, maxTurns);
+      }
       if (sessions.every((s) => s.done)) break;
+      if (maxTotalTurns && totalTurnsUsed() >= maxTotalTurns) {
+        stopForBudget(`Stopped after ${maxTotalTurns} total turns in the run.`);
+        break;
+      }
 
       const session = sessions[cursor % sessions.length];
       cursor += 1;
@@ -661,6 +697,10 @@ async function executeRun(
       signal.throwIfAborted();
       await runOneTurn(run.id, session, client, maxTurns, signal);
       await saveRun(run, traceBus.history(run.id));
+      if (maxTotalTurns && totalTurnsUsed() >= maxTotalTurns) {
+        stopForBudget(`Stopped after ${maxTotalTurns} total turns in the run.`);
+        break;
+      }
     }
 
     run.status = "completed";

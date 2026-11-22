@@ -217,7 +217,9 @@ export function createSession(
 ): AgentSession {
   const scenario = opts.scenarioHint?.trim();
   let opening: string;
-  if (opts.peerInboxKickoff) {
+  if (scenario?.startsWith("Acabas de recibir el siguiente mensaje")) {
+    opening = scenario;
+  } else if (opts.peerInboxKickoff) {
     opening = [
       "You are participating in a multi-agent run.",
       "Your inbox may already contain messages from other agents in this run.",
@@ -249,7 +251,7 @@ export function createSession(
       "When messaged, respond helpfully within your role. Message peers if needed.",
     ].join("\n");
   }
-  if (opts.readInbox) {
+  if (opts.readInbox && !scenario?.startsWith("Acabas de recibir el siguiente mensaje")) {
     opening = `${opening}\n\nYour inbox may already contain messages from other agents. Call read_inbox and treat them as real peer requests.`;
   }
 

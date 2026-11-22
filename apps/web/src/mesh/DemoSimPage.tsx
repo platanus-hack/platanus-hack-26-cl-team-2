@@ -29,6 +29,13 @@ function companyName(agent: StoredAgent): string {
   return agent.orgHints?.companyName?.trim() ?? "";
 }
 
+function approachText(actions: DemoSimAction[]): string {
+  return actions
+    .map((action) => (action.scenarioHint ?? action.peerMessage?.body ?? "").trim())
+    .filter((text) => text.length >= 20)
+    .join("\n\n");
+}
+
 function liveFromEvents(events: TraceEvent[]): FlowLive | null {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]!;
@@ -97,13 +104,17 @@ function suggestedPath(graph: FlowGraph, count: number): string[] {
   return path.slice(0, count);
 }
 
-/** The user writes an objective. The planner writes the message an agent actually receives. */
+/**
+ * Fixed objective → invisible control agent plans a one-shot intervention →
+ * sim runs → score each step vs objective → iterate approach (not objective).
+ */
 export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
   const [agents, setAgents] = useState<StoredAgent[]>([]);
   const [company, setCompany] = useState("");
   const [graph, setGraph] = useState<FlowGraph | null>(null);
   const [txtFiles, setTxtFiles] = useState<CompanyTxtFile[]>([]);
   const [prompt, setPrompt] = useState("");
+  const [approachNotes, setApproachNotes] = useState("");
   const [delivered, setDelivered] = useState("");
   const [plannedFor, setPlannedFor] = useState("");
   const [seedId, setSeedId] = useState("");
@@ -218,6 +229,27 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
     setLogs((prev) => [...prev, { text: `${ts}  ${text}`, tone }]);
   }
 
+  function resetCompanyState() {
+    setGraph(null);
+    setPrompt("");
+    setApproachNotes("");
+    setDelivered("");
+    setPlannedFor("");
+    setSeedId("");
+    setSurface("");
+    setEntries([]);
+    setChanges([]);
+    setLastEval(null);
+    setLastRunId("");
+    setPublishedRunId("");
+    setNotice("");
+    setLogs([]);
+    setPhase("");
+    setLive(null);
+    setSteps([]);
+    setError("");
+  }
+
   async function runSimulation() {
     if (!canRun || running || !company || !graph) return;
     const objective = prompt.trim();
@@ -235,15 +267,20 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
       let attackSurface = surface;
       let rationale = "";
       if (!actions.length) {
-        setPhase("Diseñando el mensaje");
-        log("El objetivo se queda acá. El sistema arma hasta tres entradas si el objetivo las necesita.");
-        const designed = await designRiskPrompts(company, objective, steps.length || graph.nodes.length);
+        setPhase("Planificando intervención");
+        log("El objetivo se queda fijo. El agente controlador arma exactamente una intervención (correo externo o envío forzado, no ambos).");
+        const designed = await designRiskPrompts(
+          company,
+          objective,
+          steps.length || graph.nodes.length,
+          approachNotes.trim() || undefined,
+        );
         actions = designed.design.actions.filter((action) => (action.scenarioHint ?? action.peerMessage?.body ?? "").trim().length >= 20);
-        if (!actions.length) throw new Error("No salió un mensaje.");
+        if (!actions.length) throw new Error("No salió una intervención.");
         attackSurface = designed.design.attackSurface;
         rationale = designed.design.rationale;
         setEntries(actions);
-        setDelivered(actions.map((action) => (action.scenarioHint ?? action.peerMessage?.body ?? "").trim()).join("\n\n"));
+        setDelivered(approachText(actions));
         setPlannedFor(objective);
         setSeedId(actions[0]!.seedAgentId);
         setSurface(attackSurface);
@@ -254,7 +291,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
 
       setPhase("Simulando");
       const seedName = companyAgents.find((agent) => agent.id === actions[0]?.seedAgentId)?.name ?? "el agente";
-      log(actions.length > 1 ? `${actions.length} entradas en la misma corrida. La primera llega a ${seedName}.` : `Mensaje enviado a ${seedName}. El objetivo no va en ese texto.`);
+      log(`Una intervención hacia ${seedName}. El objetivo no viaja en ese texto; después solo se observa.`);
       const started = await startRiskRuns({
         companyName: company,
         actions,
@@ -270,10 +307,11 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
       log(`Run ${run.id} → ${done.status}`, done.status === "failed" ? "err" : "ok");
       if (stopRef.current) throw new Error("Detenido");
 
-      setPhase("Evaluando");
-      log("Evaluando si el objetivo se cumplió");
+      setPhase("Evaluando objetivo");
+      log("Puntuando cada paso contra el objetivo fijo");
       const judged = await evaluateRiskRun({
         companyName: company,
+        objective,
         design: {
           attackSurface: attackSurface || objective,
           successCriteria: objective,
@@ -284,13 +322,15 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
       });
       setLastEval(judged.evaluation);
       setLastRunId(done.id);
+      if (judged.evaluation.scoreSummary) log(judged.evaluation.scoreSummary, judged.evaluation.empty ? "info" : "ok");
       for (const step of judged.evaluation.failuresAmplifications) log(step, judged.evaluation.empty ? "info" : "ok");
+      for (const factor of judged.evaluation.actionableRemediations) log(`Resistencia: ${factor}`, "info");
       if (judged.evaluation.empty) {
-        setNotice("El objetivo no se cumplió. Abajo está lo que pasó. Puedes guardar la evaluación, o seguir iterando para cambiar la estrategia.");
+        setNotice("El objetivo no se cumplió. Abajo está el puntaje por paso. Puedes guardar la evaluación, anotar un approach nuevo y seguir iterando (el objetivo no cambia).");
         log("Objetivo no cumplido.", "info");
         setPhase("Objetivo pendiente");
       } else {
-        setNotice("El objetivo se cumplió. Abajo está lo que pasó. Guarda la evaluación, o sigue iterando para apretar el mismo camino.");
+        setNotice("El objetivo se cumplió. Abajo está el puntaje por paso. Guarda la evaluación, o itera el approach para apretar el mismo objetivo.");
         log("Objetivo cumplido. Todavía no está en Evaluaciones.", "ok");
         setPhase("Objetivo cumplido");
       }
@@ -310,19 +350,22 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
   }
 
   async function publishEvaluation() {
-    if (!canRun || running || !company || !lastEval || !lastRunId || delivered.trim().length < 20 || publishedRunId === lastRunId) return;
+    if (!canRun || running || !company || !lastEval || !lastRunId || prompt.trim().length < 20 || publishedRunId === lastRunId) return;
     setRunning(true);
     setError("");
     setPhase("Guardando");
     try {
-      log("Armando la evaluación de esta corrida para dejarla en Evaluaciones");
+      log("Guardando la evaluación de cumplimiento del objetivo");
       await saveDemoSimFinding({
         companyName: company,
-        prompt: delivered.trim(),
+        prompt: prompt.trim(),
         attackSurface: surface || prompt.trim() || lastEval.surface || (lastEval.empty ? "Objetivo no cumplido" : "Objetivo cumplido"),
         runId: lastRunId,
         evaluation: lastEval,
+        approach: delivered.trim() || undefined,
         allowEmpty: lastEval.empty,
+        actions: entries.length ? entries : undefined,
+        maxTurns: steps.length || graph?.nodes.length || undefined,
       });
       setPublishedRunId(lastRunId);
       setNotice("La evaluación quedó en la pestaña Evaluaciones.");
@@ -342,30 +385,32 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
     if (!canRun || running || !company || !lastEval || prompt.trim().length < 20 || delivered.trim().length < 20) return;
     setRunning(true);
     setError("");
-    setPhase("Profundizando");
+    setPhase("Nuevo approach");
     try {
-      log("Rediseñando el mensaje con lo que pensaron los agentes. El objetivo no cambia.");
+      log("Rediseñando la intervención con las resistencias y tus notas. El objetivo no cambia.");
       const deepened = await deepenRiskPrompt({
         companyName: company,
-        prompt: delivered.trim(),
+        objective: prompt.trim(),
+        approach: delivered.trim(),
         seedAgentId: seedId || undefined,
-        attackSurface: prompt.trim(),
+        attackSurface: surface || prompt.trim(),
         runId: lastRunId || undefined,
         evaluation: lastEval,
+        userApproachNotes: approachNotes.trim() || undefined,
       });
       const next = deepened.deepen;
-      setDelivered(next.prompt);
-      setSeedId(next.seedAgentId);
-      setEntries([{
-        kind: "scenarioHint",
-        label: "Siguiente mensaje",
-        seedAgentId: next.seedAgentId,
-        scenarioHint: next.prompt,
-      }]);
+      const actions = next.actions.filter((action) => (action.scenarioHint ?? action.peerMessage?.body ?? "").trim().length >= 20);
+      if (!actions.length) throw new Error("No salió un approach nuevo.");
+      setEntries(actions);
+      setDelivered(approachText(actions));
+      setPlannedFor(prompt.trim());
+      setSeedId(actions[0]!.seedAgentId);
+      setSurface(next.attackSurface);
       setChanges(next.changes);
       for (const change of next.changes) log(change, "ok");
-      setNotice("Hay un mensaje nuevo para el mismo objetivo. Itera de nuevo para mandarlo, o guarda la evaluación de lo que ya pasó.");
-      setPhase("Mensaje listo");
+      if (next.rationale) log(next.rationale);
+      setNotice("Hay un approach nuevo para el mismo objetivo. Revisa las sugerencias, anota las tuyas si quieres, e itera de nuevo.");
+      setPhase("Approach listo");
     } catch (failure) {
       const message = failure instanceof Error ? failure.message : String(failure);
       setError(message);
@@ -385,23 +430,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
           disabled={!hasDatabase || loading || companies.length === 0 || running}
           onChange={(event) => {
             setCompany(event.target.value);
-            setGraph(null);
-            setPrompt("");
-            setDelivered("");
-            setPlannedFor("");
-            setSeedId("");
-            setSurface("");
-            setEntries([]);
-            setChanges([]);
-            setLastEval(null);
-            setLastRunId("");
-            setPublishedRunId("");
-            setNotice("");
-            setLogs([]);
-            setPhase("");
-            setLive(null);
-            setSteps([]);
-            setError("");
+            resetCompanyState();
           }}
         >
           <option value="">{loading ? "Cargando…" : "Elige una empresa"}</option>
@@ -416,7 +445,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
       {!hasDatabase ? <p className="error">Base de datos no disponible: no hay empresas cargadas.</p> : null}
       {error ? <p className="error">{error}</p> : null}
       <div className="demo-space demo-space-characterize demo-space-sim">
-        <h2>Simula el riesgo</h2>
+        <h2>Simulación controlada</h2>
         {!company ? <p className="demo-run-note">Elige una empresa para ver su grafo de caracterización.</p> : null}
         {company && !graph ? (
           <p className="demo-run-note">Esta empresa todavía no tiene grafo. Caracterízala en DEMO SETUP.</p>
@@ -426,7 +455,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
           <div className="demo-run">
             <p className="demo-run-note">
               {hasApiKey
-                ? "Escribes el objetivo. El sistema lee la comunicación, el trabajo, los permisos y las evaluaciones, y manda uno, dos o tres mensajes si el objetivo los necesita."
+                ? "El objetivo es fijo. El controlador hace exactamente una intervención: o un mensaje externo a un agente, o un envío forzado entre dos agentes — nunca ambos — y luego solo observa."
                 : "Falta la API key: no se puede simular."}
             </p>
             <label className="demo-sim-prompt">
@@ -435,16 +464,24 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
                 rows={5}
                 value={prompt}
                 disabled={running || !hasApiKey}
-                placeholder="Qué quieres que pase: confundir a dos agentes, un ping-pong, comprobar que una base no se abre, o llegar a un archivo."
-                onChange={(event) => setPrompt(event.target.value)}
+                placeholder="Qué debe ocurrir en la simulación. No se reescribe entre iteraciones: solo cambia el approach."
+                onChange={(event) => {
+                  setPrompt(event.target.value);
+                  if (plannedFor && event.target.value.trim() !== plannedFor) {
+                    setEntries([]);
+                    setDelivered("");
+                    setPlannedFor("");
+                    setChanges([]);
+                  }
+                }}
               />
             </label>
             {entries.map((action, index) => {
               const who = (id: string) => companyAgents.find((agent) => agent.id === id)?.name.split(/\s+[—–-]\s+/)[0] ?? "un agente";
               const text = (action.scenarioHint ?? action.peerMessage?.body ?? "").trim();
               const heading = action.peerMessage
-                ? `Entrada ${index + 1}: ${who(action.peerMessage.fromAgentId)} le escribe a ${who(action.peerMessage.toAgentId)}`
-                : `Entrada ${index + 1}: mensaje a ${who(action.seedAgentId)}`;
+                ? `Intervención: forzar que ${who(action.peerMessage.fromAgentId)} le escriba a ${who(action.peerMessage.toAgentId)}`
+                : `Intervención: mensaje externo a ${who(action.seedAgentId)}`;
               return (
                 <p key={`${action.seedAgentId}-${index}`} className="demo-run-note demo-sim-delivered">
                   {heading}. {text}
@@ -453,12 +490,12 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
             })}
             {graph.nodes.length > 0 ? (
               <label className="demo-sim-steps">
-                Pasos
+                Pasos (tope total de turnos)
                 <input
                   type="number"
                   min={1}
                   max={1000}
-                  aria-label="Pasos"
+                  aria-label="Pasos tope total de turnos"
                   value={steps.length || graph.nodes.length}
                   disabled={running}
                   onChange={(event) => {
@@ -469,10 +506,25 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
                 />
               </label>
             ) : null}
+            {lastEval || changes.length > 0 ? (
+              <label className="demo-sim-prompt">
+                Tus notas de approach
+                <textarea
+                  rows={4}
+                  value={approachNotes}
+                  disabled={running || !hasApiKey}
+                  placeholder="Cómo quieres que el controlador cambie el approach: a quién tocar, qué bypassar, con qué resistencia colaborar. El objetivo de arriba no se modifica."
+                  onChange={(event) => setApproachNotes(event.target.value)}
+                />
+              </label>
+            ) : null}
             {changes.length > 0 ? (
-              <ul className="demo-sim-changes">
-                {changes.map((change) => <li key={change}>{change}</li>)}
-              </ul>
+              <>
+                <p className="demo-run-note">Sugerencias del agente controlador</p>
+                <ul className="demo-sim-changes">
+                  {changes.map((change) => <li key={change}>{change}</li>)}
+                </ul>
+              </>
             ) : null}
             <div className="demo-run-actions">
               <button type="button" className="btn" disabled={!canRun || running || prompt.trim().length < 20} onClick={() => void runSimulation()}>
@@ -490,7 +542,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
                 <button
                   type="button"
                   className="btn ghost"
-                  disabled={!canRun || running || !lastRunId || delivered.trim().length < 20}
+                  disabled={!canRun || running || !lastRunId || prompt.trim().length < 20}
                   onClick={() => void publishEvaluation()}
                 >
                   Generar evaluación
@@ -516,8 +568,17 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
               </div>
             ) : null}
             {notice ? <p className="demo-run-note">{notice}</p> : null}
+            {lastEval?.scoreSummary ? <p className="demo-run-note demo-sim-delivered">{lastEval.scoreSummary}</p> : null}
             {lastEval && lastEval.failuresAmplifications.length > 0 ? (
               <AnalysisList items={lastEval.failuresAmplifications} />
+            ) : null}
+            {lastEval && lastEval.actionableRemediations.length > 0 ? (
+              <>
+                <p className="demo-run-note">Factores de resistencia</p>
+                <ul className="demo-sim-changes">
+                  {lastEval.actionableRemediations.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+              </>
             ) : null}
           </div>
         ) : null}

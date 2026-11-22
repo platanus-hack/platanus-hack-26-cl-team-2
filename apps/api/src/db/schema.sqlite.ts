@@ -195,9 +195,20 @@ export type DemoSimAnalysisRow = {
   actionableRemediations: string[];
   scoreSummary: string;
   empty?: boolean;
+  /** Control-agent opening approach for that cycle. */
+  approach?: string;
+  objectiveScore?: number;
+  actions?: Array<{
+    kind: "scenarioHint" | "peerMessage";
+    label: string;
+    seedAgentId: string;
+    scenarioHint?: string;
+    peerMessage?: { fromAgentId: string; toAgentId: string; body: string };
+  }>;
+  maxTurns?: number;
 };
 
-/** A satisfactory DEMO SIM iteration, listed in Evaluaciones. */
+/** One DEMO SIM cycle scored against its objective, listed in Evaluaciones. */
 export const demoSimFindingsSqlite = sqliteTable("demo_sim_findings", {
   id: text("id").primaryKey(),
   companyName: text("company_name").notNull(),

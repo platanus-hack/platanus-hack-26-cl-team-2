@@ -884,14 +884,35 @@ export type DemoSimEval = {
   failuresAmplifications: string[];
   actionableRemediations: string[];
   scoreSummary: string;
+  objectiveScore?: number;
+};
+
+export type DemoSimGuardPatch = {
+  agentId: string;
+  agentName: string;
+  reason: string;
+  instruction: string;
+};
+
+export type DemoSimPatchPlan = {
+  howCreated: string;
+  patches: DemoSimGuardPatch[];
+};
+
+export type DemoSimRetestCompare = {
+  before: { empty: boolean; score: number; scoreSummary: string };
+  after: { empty: boolean; score: number; scoreSummary: string };
+  delta: number;
+  held: boolean;
 };
 
 export function designRiskPrompts(
   companyName: string,
   objective: string,
   pathSteps?: number,
+  approachNotes?: string,
 ): Promise<{ design: DemoSimDesign; model: string }> {
-  return postJson("/api/demo-sim/design", { companyName, objective, pathSteps });
+  return postJson("/api/demo-sim/design", { companyName, objective, pathSteps, approachNotes });
 }
 
 export function startRiskRuns(body: {
@@ -904,6 +925,7 @@ export function startRiskRuns(body: {
 
 export function evaluateRiskRun(body: {
   companyName: string;
+  objective: string;
   design: DemoSimDesign;
   runIds: string[];
 }): Promise<{ evaluation: DemoSimEval; model: string }> {
@@ -913,17 +935,19 @@ export function evaluateRiskRun(body: {
 export type DemoSimDeepen = {
   changes: string[];
   attackSurface: string;
-  prompt: string;
-  seedAgentId: string;
+  rationale: string;
+  actions: DemoSimAction[];
 };
 
 export function deepenRiskPrompt(body: {
   companyName: string;
-  prompt: string;
+  objective: string;
+  approach: string;
   seedAgentId?: string;
   attackSurface?: string;
   runId?: string;
   evaluation: DemoSimEval;
+  userApproachNotes?: string;
 }): Promise<{ deepen: DemoSimDeepen; model: string }> {
   return postJson("/api/demo-sim/deepen", body);
 }
@@ -944,6 +968,10 @@ export type DemoSimFinding = {
     actionableRemediations: string[];
     scoreSummary: string;
     empty?: boolean;
+    approach?: string;
+    objectiveScore?: number;
+    actions?: DemoSimAction[];
+    maxTurns?: number;
   };
 };
 
@@ -960,9 +988,23 @@ export function saveDemoSimFinding(body: {
   attackSurface: string;
   runId: string;
   evaluation: DemoSimEval;
+  approach?: string;
   allowEmpty?: boolean;
+  actions?: DemoSimAction[];
+  maxTurns?: number;
 }): Promise<{ finding: DemoSimFinding }> {
   return postJson("/api/demo-sim/findings", body);
+}
+
+export function designDemoSimPatch(findingId: string): Promise<{ plan: DemoSimPatchPlan; model: string }> {
+  return postJson(`/api/demo-sim/findings/${encodeURIComponent(findingId)}/patch`, {});
+}
+
+export function retestDemoSimFinding(
+  findingId: string,
+  patches: DemoSimGuardPatch[],
+): Promise<{ runId: string; evaluation: DemoSimEval; compare: DemoSimRetestCompare; model: string }> {
+  return postJson(`/api/demo-sim/findings/${encodeURIComponent(findingId)}/retest`, { patches });
 }
 
 /** Who talks to whom, summed over every saved run (weights for the org map). */

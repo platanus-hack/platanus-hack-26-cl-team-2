@@ -20,6 +20,18 @@
 .eval-deep[open] summary { margin-bottom: .8rem; }
 @media(max-width:700px) { .eval-row { flex-wrap: wrap; gap: .5rem; }.eval-row-title { min-width: 70%; }.eval-row > span:last-child { margin-left: 1.5rem; } }
 
+.eval-patch { margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.eval-patch-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin: .6rem 0 1rem; }
+.eval-patch-list li { margin-bottom: 1rem; }
+.eval-patch-rule { display: block; margin-top: .35rem; color: var(--ink); font-weight: 500; }
+.eval-compare { margin-top: 1rem; }
+.eval-compare-verdict { margin: .4rem 0 .8rem; }
+.eval-compare-verdict.is-held { color: var(--ok, #3d9a5f); }
+.eval-compare-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem 1rem; margin: 0 0 1rem; }
+.eval-compare-grid dt { color: var(--muted); font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; }
+.eval-compare-grid dd { margin: .2rem 0 0; }
+@media(max-width:700px) { .eval-compare-grid { grid-template-columns: 1fr; } }
+
 /* Business evals: one dropdown to pick an evaluation (email × mitigation); the graph sits below. */
 .evals-pick { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .4rem 1rem; }
 .evals-pick .eval-search { flex: 1 1 22rem; margin: .8rem 0 0; }

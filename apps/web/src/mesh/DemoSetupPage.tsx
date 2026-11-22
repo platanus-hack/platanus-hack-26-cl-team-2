@@ -203,6 +203,7 @@ export function DemoSetupPage({ hasDatabase, hasApiKey }: Props) {
   async function problemsFor(seedId: string, total: number, names: Map<string, string>): Promise<EverydayProblem[]> {
     const problems: EverydayProblem[] = [];
     const avoidTitles: string[] = [];
+    let emptyStreak = 0;
     while (problems.length < total) {
       if (stopRef.current) throw new Error("Detenido");
       const count = Math.min(BATCH, total - problems.length);
@@ -215,9 +216,22 @@ export function DemoSetupPage({ hasDatabase, hasApiKey }: Props) {
         count,
         avoidTitles,
       });
+      // Prefer unseen titles; if the batch collides, keep going with renamed copies.
       const fresh = designed.problems.filter((problem) => !avoidTitles.includes(problem.title));
-      if (!fresh.length) throw new Error("No salieron problemas nuevos.");
-      for (const problem of fresh) {
+      const batch = fresh.length ? fresh : designed.problems.map((problem, index) => ({
+        ...problem,
+        title: avoidTitles.includes(problem.title)
+          ? `${problem.title} (${problems.length + index + 1})`
+          : problem.title,
+      }));
+      if (!batch.length) {
+        emptyStreak += 1;
+        if (emptyStreak >= 3) throw new Error(`No se pudieron armar problemas para ${name}.`);
+        log(`${name}: tanda vacía, reintentando…`, "info");
+        continue;
+      }
+      emptyStreak = 0;
+      for (const problem of batch) {
         if (problems.length >= total) break;
         problems.push(problem);
         avoidTitles.push(problem.title);
