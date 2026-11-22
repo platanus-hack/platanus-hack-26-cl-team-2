@@ -139,7 +139,7 @@ export function pathBiasNote(agentId: string, edges: FlowGraphEdge[]): string {
     : edges
         .filter((edge) => edge.weight > 0 && edge.toAgentId !== agentId)
         .sort((a, b) => b.weight - a.weight || a.to.localeCompare(b.to, "es"))
-        .slice(0, 4);
+        .slice(0, new Set(edges.map((edge) => edge.toAgentId)).size || 4);
   if (!ranked.length) {
     return "No hay caminos con peso en esta empresa. Escribe a quien el trabajo necesite.";
   }

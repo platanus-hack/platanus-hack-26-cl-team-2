@@ -61,6 +61,57 @@ function heaviestSeed(graph: FlowGraph): string {
   return [...graph.edges].sort((a, b) => b.weight - a.weight)[0]?.fromAgentId ?? "";
 }
 
+/** One step per agent, walking the heaviest unused hop. Extra steps repeat that walk. */
+function suggestedPath(graph: FlowGraph, count: number): string[] {
+  const nodes = [...graph.nodes].sort((a, b) => b.weight - a.weight || a.label.localeCompare(b.label, "es"));
+  if (!nodes.length || count <= 0) return [];
+  const outgoing = new Map<string, FlowGraph["edges"]>();
+  for (const edge of graph.edges) {
+    if (edge.fromAgentId === edge.toAgentId || edge.weight <= 0) continue;
+    const list = outgoing.get(edge.fromAgentId) ?? [];
+    list.push(edge);
+    outgoing.set(edge.fromAgentId, list);
+  }
+  for (const list of outgoing.values()) list.sort((a, b) => b.weight - a.weight || a.to.localeCompare(b.to, "es"));
+  const path = [nodes[0]!.agentId];
+  const seen = new Set(path);
+  while (path.length < Math.min(count, nodes.length)) {
+    const from = path[path.length - 1]!;
+    const next = (outgoing.get(from) ?? []).find((edge) => !seen.has(edge.toAgentId));
+    if (next) {
+      path.push(next.toAgentId);
+      seen.add(next.toAgentId);
+      continue;
+    }
+    const spare = nodes.find((node) => !seen.has(node.agentId));
+    if (!spare) break;
+    path.push(spare.agentId);
+    seen.add(spare.agentId);
+  }
+  let guard = 0;
+  while (path.length < count && guard < count) {
+    guard += 1;
+    const from = path[path.length - 1]!;
+    const next = (outgoing.get(from) ?? []).find((edge) => edge.toAgentId !== from) ?? graph.edges.find((edge) => edge.toAgentId !== from);
+    if (!next) break;
+    path.push(next.toAgentId);
+  }
+  return path.slice(0, count);
+}
+
+function routeLine(graph: FlowGraph, steps: string[]): string {
+  const names = new Map(graph.nodes.map((node) => [node.agentId, node.label]));
+  const hops = steps.map((id, index) => `${index + 1}. ${names.get(id) ?? "Agente"}`).join(" → ");
+  return `Recorrido sugerido: ${hops}. Es una sugerencia; si el trabajo encaja mejor con otro colega, escríbele a ese.`;
+}
+
+function withRoute(text: string, line: string): string {
+  const stripped = text.replace(/\n*Recorrido sugerido:[\s\S]*$/, "").trim();
+  const room = Math.max(0, 2000 - line.length - 2);
+  const head = stripped.slice(0, room);
+  return (head ? `${head}\n\n${line}` : line).slice(0, 2000);
+}
+
 /** One prompt, iterated until it finds a vector. That vector is listed in Evaluaciones. */
 export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
   const [agents, setAgents] = useState<StoredAgent[]>([]);
@@ -78,6 +129,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
   const [loading, setLoading] = useState(hasDatabase);
   const [running, setRunning] = useState(false);
   const [live, setLive] = useState<FlowLive | null>(null);
+  const [steps, setSteps] = useState<string[]>([]);
   const [phase, setPhase] = useState("");
   const [error, setError] = useState("");
   const [logs, setLogs] = useState<LogLine[]>([]);
@@ -144,6 +196,14 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
   }, [company]);
 
   useEffect(() => {
+    if (!graph || graph.nodes.length === 0) {
+      setSteps([]);
+      return;
+    }
+    setSteps(suggestedPath(graph, graph.nodes.length));
+  }, [graph]);
+
+  useEffect(() => {
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [logs]);
@@ -199,6 +259,13 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
         action = { kind: "scenarioHint", label: attackSurface || "Iteración", seedAgentId: seed, scenarioHint: text };
         setSeedId(seed);
         setDraft(action);
+      }
+      const route = steps.length ? routeLine(graph, steps) : "";
+      if (route) {
+        text = withRoute(text, route);
+        action = { ...action!, scenarioHint: text, kind: "scenarioHint", peerMessage: undefined };
+        setPrompt(text);
+        log(route);
       }
       if (text.length < 20) throw new Error("El prompt necesita al menos 20 caracteres.");
       if (stopRef.current) throw new Error("Detenido");
@@ -351,6 +418,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
             setLogs([]);
             setPhase("");
             setLive(null);
+            setSteps([]);
             setError("");
           }}
         >
@@ -389,6 +457,52 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
                 onChange={(event) => setPrompt(event.target.value)}
               />
             </label>
+            {graph.nodes.length > 0 ? (
+              <div className="demo-sim-steps">
+                <div className="demo-sim-steps-head">
+                  <span>Pasos</span>
+                  <label>
+                    Cantidad
+                    <input
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={steps.length || graph.nodes.length}
+                      disabled={running}
+                      onChange={(event) => {
+                        const next = Number(event.target.value);
+                        if (!Number.isInteger(next) || next < 1 || next > 12) return;
+                        setSteps((prev) => {
+                          const base = suggestedPath(graph, next);
+                          return base.map((id, index) => prev[index] ?? id);
+                        });
+                      }}
+                    />
+                  </label>
+                </div>
+                <p>Parte con un paso por agente, siguiendo el camino más pesado. Cámbialos antes de iterar.</p>
+                <ol>
+                  {steps.map((id, index) => (
+                    <li key={`${index}-${id}`}>
+                      <span>{index + 1}</span>
+                      <select
+                        aria-label={`Paso ${index + 1}`}
+                        value={id}
+                        disabled={running}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setSteps((prev) => prev.map((item, itemIndex) => (itemIndex === index ? value : item)));
+                        }}
+                      >
+                        {graph.nodes.map((node) => (
+                          <option key={node.agentId} value={node.agentId}>{node.label}</option>
+                        ))}
+                      </select>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
             {changes.length > 0 ? (
               <ul className="demo-sim-changes">
                 {changes.map((change) => <li key={change}>{change}</li>)}
