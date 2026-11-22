@@ -97,7 +97,7 @@ enterpriseRoutes.post("/generate", async (c) => {
   let saved = 0;
   if (persist) {
     for (const profile of result.profiles) {
-      await upsertAgent(profile, { orgHints: profile.orgHints ?? null });
+      await upsertAgent(profile, { orgHints: profile.orgHints ?? null, origin: "enterprise" });
       saved += 1;
     }
   }

@@ -1,13 +1,19 @@
 import {
   boolean,
+  integer,
   jsonb,
   pgTable,
   text,
   timestamp,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { InternalRun } from "../harness/orchestrator.js";
-import type { TraceEvent } from "@sandbox/shared";
+import type {
+  TraceEvent,
+  VulnBatchEstimate,
+  VulnBatchSettings,
+} from "@sandbox/shared";
 import type { RunJudgment } from "../harness/judge.js";
 import type { EvaluationJobData, EvaluationJobStatus } from "@sandbox/shared";
 
@@ -57,6 +63,8 @@ export const agents = pgTable(
       .notNull()
       .$defaultFn(() => []),
     harnessModel: text("harness_model"),
+    /** manual | enterprise | seed | test; null on rows saved before it existed. Set on insert only. */
+    origin: text("origin"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -173,4 +181,85 @@ export const demoSimFindings = pgTable("demo_sim_findings", {
   analysis: jsonb("analysis").$type<DemoSimAnalysisRow>().notNull(),
   runId: text("run_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+});
+
+/**
+ * Messages one agent sent another in one run (counted from the trace, injected messages left out).
+ * One row per (run, from, to), so re-counting a run replaces its rows instead of adding twice.
+ */
+export const commObservations = pgTable(
+  "comm_observations",
+  {
+    runId: text("run_id").notNull(),
+    fromAgentId: text("from_agent_id").notNull(),
+    toAgentId: text("to_agent_id").notNull(),
+    messageCount: integer("message_count").notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("comm_observations_run_pair_idx").on(t.runId, t.fromAgentId, t.toAgentId),
+    index("comm_observations_pair_idx").on(t.fromAgentId, t.toAgentId),
+  ],
+);
+
+/** One "evaluate every agent" batch (append-only history, unlike agent_vuln_assessments). */
+export const vulnEvalBatches = pgTable("vuln_eval_batches", {
+  id: text("id").primaryKey(),
+  status: text("status").notNull(),
+  settings: jsonb("settings").$type<VulnBatchSettings>().notNull(),
+  estimate: jsonb("estimate").$type<VulnBatchEstimate>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+});
+
+/** Per-agent snapshot inside a batch: scores before and after. No FK to agents, so history survives deletes. */
+export const vulnEvalBatchResults = pgTable(
+  "vuln_eval_batch_results",
+  {
+    id: text("id").primaryKey(),
+    batchId: text("batch_id")
+      .notNull()
+      .references(() => vulnEvalBatches.id, { onDelete: "cascade" }),
+    agentId: text("agent_id").notNull(),
+    agentName: text("agent_name").notNull(),
+    status: text("status").notNull(),
+    previousScores: jsonb("previous_scores").$type<Record<string, number>>(),
+    scores: jsonb("scores").$type<Record<string, number>>(),
+    summary: text("summary").notNull().default(""),
+    runIds: jsonb("run_ids").$type<string[]>().notNull(),
+    error: text("error"),
+    position: integer("position").notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("vuln_eval_batch_results_batch_agent_idx").on(t.batchId, t.agentId)],
+);
+
+export type DemoOrgFileRow = {
+  id: string;
+  filename: string;
+  content: string;
+  label: string;
+  readAgentIds: string[];
+  writeAgentIds: string[];
+};
+
+/** DEMO mode company snapshot + agent ids created from prompts. */
+export const demoOrgs = pgTable("demo_orgs", {
+  id: text("id").primaryKey(),
+  companyName: text("company_name").notNull(),
+  context: text("context").notNull(),
+  agentIds: jsonb("agent_ids")
+    .$type<string[]>()
+    .notNull()
+    .$defaultFn(() => []),
+  files: jsonb("files")
+    .$type<DemoOrgFileRow[]>()
+    .notNull()
+    .$defaultFn(() => []),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });

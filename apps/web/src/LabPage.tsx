@@ -14,6 +14,7 @@ import {
   fetchRun,
   judgeRun,
   judgeTranscript,
+  isDemoStoredAgent,
   listAgents,
   listEmailScenarios,
   subscribeRunEvents,
@@ -36,6 +37,8 @@ import { selectObservedRun } from "./mesh/runSelection";
 type Props = {
   hasApiKey: boolean;
   onRunCreated?: (run: RunSummary) => void;
+  /** `demo` = solo agentes de la empresa DEMO. */
+  scope?: "all" | "demo";
   /**
    * False while the lab is kept mounted but hidden (another sidebar section is open), so the
    * trace and "Antes y después" survive. Each time it is shown again the agent list is reloaded.
@@ -141,7 +144,12 @@ function fixesLabel(fixes: FixName[]): string {
   return fixes.length ? fixes.map((f) => FIX_LABEL[f]).join(" + ") : "sin mitigación";
 }
 
-export function LabPage({ hasApiKey, onRunCreated, active = true }: Props) {
+export function LabPage({
+  hasApiKey,
+  onRunCreated,
+  scope = "all",
+  active = true,
+}: Props) {
   const [catalog, setCatalog] = useState<StoredAgent[]>([]);
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
   const [seedAgentId, setSeedAgentId] = useState("");
@@ -158,6 +166,8 @@ export function LabPage({ hasApiKey, onRunCreated, active = true }: Props) {
   const [senderCheckOn, setSenderCheckOn] = useState(false);
   const [provenanceTagOn, setProvenanceTagOn] = useState(false);
   const [approvalGateOn, setApprovalGateOn] = useState(false);
+  /** Communication bias: tell agents who they usually talk to (from past runs). */
+  const [commBiasOn, setCommBiasOn] = useState(true);
   const [preview, setPreview] = useState<RiskPathAnalysis | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -194,20 +204,24 @@ export function LabPage({ hasApiKey, onRunCreated, active = true }: Props) {
     listAgents()
       .then((agents) => {
         if (cancelled) return;
-        setCatalog(agents);
+        const scoped =
+          scope === "demo" ? agents.filter(isDemoStoredAgent) : agents;
+        setCatalog(scoped);
         if (catalogLoaded.current) {
           // Shown again (agents may have been created meanwhile): keep the current selection.
-          setEnabled((prev) => Object.fromEntries(agents.map((a) => [a.id, Boolean(prev[a.id])])));
+          setEnabled((prev) =>
+            Object.fromEntries(scoped.map((a) => [a.id, Boolean(prev[a.id])])),
+          );
           return;
         }
         catalogLoaded.current = true;
         const next: Record<string, boolean> = {};
-        for (const a of agents) next[a.id] = false;
+        for (const a of scoped) next[a.id] = false;
         // Enable first two by default for a quick start
-        if (agents[0]) next[agents[0].id] = true;
-        if (agents[1]) next[agents[1].id] = true;
+        if (scoped[0]) next[scoped[0].id] = true;
+        if (scoped[1]) next[scoped[1].id] = true;
         setEnabled(next);
-        if (agents[0]) setSeedAgentId(agents[0].id);
+        if (scoped[0]) setSeedAgentId(scoped[0].id);
       })
       .catch((err) => {
         // A failed refresh keeps the list already on screen.
@@ -217,7 +231,7 @@ export function LabPage({ hasApiKey, onRunCreated, active = true }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [active]);
+  }, [active, scope]);
 
   useEffect(() => {
     listEmailScenarios()
@@ -599,6 +613,7 @@ export function LabPage({ hasApiKey, onRunCreated, active = true }: Props) {
         seedAgentId: scenarioSource === "peer" ? peerToId : seedAgentId,
         maxTurnsPerAgent: maxTurns,
         financeAgentIds: selectedIds.filter((id) => finance[id]),
+        commBias: commBiasOn,
         ...(scenarioSource === "email" && selectedEmail
           ? {
               emailScenario: {
@@ -635,7 +650,9 @@ export function LabPage({ hasApiKey, onRunCreated, active = true }: Props) {
 
         {catalog.length < 2 ? (
           <p className="error">
-            Necesitas al menos 2 agentes guardados. Usa primero el creador de empresas o de agentes.
+            {scope === "demo"
+              ? "Necesitas al menos 2 agentes en tu empresa DEMO. Guárdalos en DEMO mode."
+              : "Necesitas al menos 2 agentes guardados. Usa primero el creador de empresas o de agentes."}
           </p>
         ) : null}
 
@@ -926,6 +943,18 @@ export function LabPage({ hasApiKey, onRunCreated, active = true }: Props) {
         </p>
 
         <div className="controls">
+          <label
+            className="check"
+            title="Cada agente ve con quién habló más en ejecuciones anteriores (pesos de Organización). Es una sugerencia, no una regla: puede escribirle a cualquiera."
+          >
+            <input
+              type="checkbox"
+              checked={commBiasOn}
+              onChange={(e) => setCommBiasOn(e.target.checked)}
+              disabled={busy}
+            />
+            Sesgo de comunicación (pesos observados)
+          </label>
           <label>
             Máximo de turnos por agente
             <input

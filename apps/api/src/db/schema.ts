@@ -6,4 +6,8 @@ export {
   agentVulnAssessments,
   flowGraphs,
   demoSimFindings,
+  commObservations,
+  vulnEvalBatches,
+  vulnEvalBatchResults,
+  demoOrgs,
 } from "./schema.pg.js";

@@ -101,3 +101,57 @@ export function topVulnCategories(
     .sort((a, b) => scores[b] - scores[a])
     .slice(0, n);
 }
+
+/* ── Batch evaluation ("evaluate every agent with one click") ─────────────── */
+
+export type VulnBatchStatus = "running" | "completed" | "stopped" | "failed";
+export type VulnBatchResultStatus = "pending" | "ok" | "failed";
+
+/** One agent inside a batch: its scores before the batch and after it. */
+export type VulnBatchResult = {
+  agentId: string;
+  agentName: string;
+  status: VulnBatchResultStatus;
+  /** Assessment stored before the batch started (null: never evaluated). */
+  previousScores: VulnScores | null;
+  /** Assessment stored when this agent finished in the batch. */
+  scores: VulnScores | null;
+  summary: string;
+  runIds: string[];
+  error: string | null;
+  finishedAt: string | null;
+};
+
+export type VulnBatchSettings = {
+  /** Rounds of the 6 scenarios per agent (each round is scored). */
+  iterations: number;
+  maxTurnsPerAgent: number;
+  /** Agents evaluated at the same time by the client. */
+  concurrency: number;
+};
+
+export type VulnBatchEstimate = {
+  agents: number;
+  /** Solo sandbox runs (agents × scenarios × iterations). */
+  runs: number;
+  /** Upper bound on model calls: designer + every agent turn + scorer. */
+  maxModelCalls: number;
+  /** Rough upper bound in US$, from fixed token assumptions per call. */
+  approxMaxUsd: number;
+};
+
+export type VulnBatch = {
+  id: string;
+  status: VulnBatchStatus;
+  settings: VulnBatchSettings;
+  estimate: VulnBatchEstimate;
+  results: VulnBatchResult[];
+  createdAt: string;
+  finishedAt: string | null;
+};
+
+/** Mean of the six category scores, rounded. */
+export function meanVulnScore(scores: VulnScores): number {
+  const total = VULN_CATEGORIES.reduce((sum, cat) => sum + scores[cat], 0);
+  return Math.round(total / VULN_CATEGORIES.length);
+}

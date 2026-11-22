@@ -92,6 +92,7 @@ function ensureSqliteTables(db: Database.Database): void {
       org_hints TEXT,
       harness_tools TEXT NOT NULL DEFAULT '[]',
       harness_model TEXT,
+      origin TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -142,7 +143,65 @@ function ensureSqliteTables(db: Database.Database): void {
       run_id TEXT NOT NULL,
       created_at INTEGER NOT NULL
     );
+
+CREATE TABLE IF NOT EXISTS comm_observations (
+      run_id TEXT NOT NULL,
+      from_agent_id TEXT NOT NULL,
+      to_agent_id TEXT NOT NULL,
+      message_count INTEGER NOT NULL,
+      observed_at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS comm_observations_run_pair_idx
+      ON comm_observations (run_id, from_agent_id, to_agent_id);
+    CREATE INDEX IF NOT EXISTS comm_observations_pair_idx
+      ON comm_observations (from_agent_id, to_agent_id);
+
+    CREATE TABLE IF NOT EXISTS vuln_eval_batches (
+      id TEXT PRIMARY KEY NOT NULL,
+      status TEXT NOT NULL,
+      settings TEXT NOT NULL,
+      estimate TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      finished_at INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS vuln_eval_batch_results (
+      id TEXT PRIMARY KEY NOT NULL,
+      batch_id TEXT NOT NULL REFERENCES vuln_eval_batches(id) ON DELETE CASCADE,
+      agent_id TEXT NOT NULL,
+      agent_name TEXT NOT NULL,
+      status TEXT NOT NULL,
+      previous_scores TEXT,
+      scores TEXT,
+      summary TEXT NOT NULL DEFAULT '',
+      run_ids TEXT NOT NULL DEFAULT '[]',
+      error TEXT,
+      position INTEGER NOT NULL,
+      finished_at INTEGER
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS vuln_eval_batch_results_batch_agent_idx
+      ON vuln_eval_batch_results (batch_id, agent_id);
+    CREATE TABLE IF NOT EXISTS demo_orgs (
+      id TEXT PRIMARY KEY NOT NULL,
+      company_name TEXT NOT NULL,
+      context TEXT NOT NULL,
+      agent_ids TEXT NOT NULL DEFAULT '[]',
+      files TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `);
+  // Databases made before agents.origin existed: add the column (CREATE TABLE IF NOT EXISTS skips it).
+  const agentColumns = db.prepare("PRAGMA table_info(agents)").all() as Array<{ name: string }>;
+  if (!agentColumns.some((c) => c.name === "origin")) {
+    db.exec("ALTER TABLE agents ADD COLUMN origin TEXT");
+  }
+  try {
+    db.exec(
+      `ALTER TABLE demo_orgs ADD COLUMN files TEXT NOT NULL DEFAULT '[]'`,
+    );
+  } catch {
+    // column already exists
+  }
 }
 
 export async function pingDatabase(): Promise<{

@@ -19,6 +19,7 @@
     "eval:worker": "tsx src/evaluation-jobs/start.ts",
     "db:eval-jobs": "tsx src/db/setup-evaluation-jobs.ts",
     "results:traces": "tsx src/published-traces.ts",
+    "comm-bias-batch": "tsx src/comm-bias-batch.ts",
     "mcp:server": "tsx src/mcp/server.ts",
     "mcp:quick": "tsx src/mcp/quick-test.ts",
     "mcp:claude-code": "tsx src/mcp/claude-code-exp.ts"

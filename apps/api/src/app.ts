@@ -23,13 +23,19 @@ import { evaluationJobRoutes } from "./evaluation-jobs/routes.js";
 import { BATCH_RESULT_SETS, batchResultSetPath, isBatchResultSet, readBatchResults } from "./batch-results.js";
 import { loadPublishedRun } from "./published-traces.js";
 import { pingDatabase } from "./db/client.js";
+import { demoOrgRoutes } from "./demo-orgs/routes.js";
+import { demoPipelineRoutes } from "./demo-pipeline/routes.js";
 import { isRealMailFile, listEmailScenarios } from "./email/scenarios.js";
 import { characterizeRoutes } from "./characterize/routes.js";
 import { demoSimRoutes } from "./demo-sim/routes.js";
 import { enterpriseRoutes } from "./enterprise/routes.js";
 import { profileRoutes } from "./profiles/routes.js";
+import { vulnBatchRoutes } from "./vuln-batches/routes.js";
+import { commGraphRoutes } from "./comm-graph/routes.js";
 import { refineModelId } from "./profiles/refine.js";
 import { MOCK_DB_CATALOG } from "./harness/mock-db.js";
+import { listDemoFileCatalog } from "./harness/demo-files.js";
+import { getCurrentDemoOrg } from "./db/demo-orgs-repo.js";
 import { ADMIN_HEADER } from "./security/admin.js";
 import { demoGuard, denyIfOverBudget, requestIp } from "./security/budget.js";
 import { errorMessage } from "./security/redact.js";
@@ -72,6 +78,7 @@ const createStoredRunSchema = z.object({
   scenarioHint: z.string().max(2000).optional(),
   emailScenario: emailScenarioSchema.optional(),
   financeAgentIds: z.array(id).max(8).optional(),
+  commBias: z.boolean().optional(),
   peerMessage: z.object({
     fromAgentId: id,
     toAgentId: id,
@@ -185,6 +192,10 @@ app.route("/api/evaluation-jobs", evaluationJobRoutes);
 app.route("/api/enterprise", enterpriseRoutes);
 app.route("/api/characterize", characterizeRoutes);
 app.route("/api/demo-sim", demoSimRoutes);
+app.route("/api/vuln-batches", vulnBatchRoutes);
+app.route("/api/demo-orgs", demoOrgRoutes);
+app.route("/api/demo-pipeline", demoPipelineRoutes);
+app.route("/api/comm-graph", commGraphRoutes);
 
 app.get("/api/runs", async (c) => c.json({ runs: await listRuns() }));
 
@@ -199,9 +210,26 @@ app.get("/api/email-scenarios", (c) => {
     errors: errors.map((e) => e.split(dir).join("email-harness/scenarios")),
   });
 });
-app.get("/api/mock-db", (c) => c.json({
-  databases: Object.entries(MOCK_DB_CATALOG).map(([tool, meta]) => ({ tool, file: meta.file, label: meta.label, sensitivity: meta.sensitivity, kind: "tool" })),
-}));
+app.get("/api/mock-db", async (c) => {
+  await getCurrentDemoOrg().catch(() => null);
+  const staticDbs = Object.entries(MOCK_DB_CATALOG).map(([tool, meta]) => ({
+    tool,
+    file: meta.file,
+    label: meta.label,
+    sensitivity: meta.sensitivity,
+    kind: "tool" as const,
+  }));
+  const demoDbs = listDemoFileCatalog().map((meta) => ({
+    tool: meta.readTool,
+    file: meta.file,
+    label: meta.label,
+    sensitivity: meta.sensitivity,
+    kind: "tool" as const,
+    readTool: meta.readTool,
+    writeTool: meta.writeTool,
+  }));
+  return c.json({ databases: [...staticDbs, ...demoDbs] });
+});
 
 /**
  * A published batch experiment, or null if none yet. ?set= picks the result set: "latest"

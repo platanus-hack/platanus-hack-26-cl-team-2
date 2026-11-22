@@ -1,5 +1,7 @@
 import type {
   AgentKnobs,
+  AgentOrigin,
+  CommGraph,
   BatchResults,
   AgentProfile,
   EvaluationJob,
@@ -19,6 +21,8 @@ import type {
   RunSummary,
   SeniorityMix,
   TraceEvent,
+  VulnBatch,
+  VulnBatchEstimate,
   VulnCategory,
   VulnDesignerBrief,
   VulnScores,
@@ -33,32 +37,30 @@ export type VulnRunTraceDto = {
   iteration?: number;
 };
 
-export class ApiError extends Error {
-  constructor(message: string, public readonly status: number) { super(message); }
-}
-
 export async function listEvaluationJobs(): Promise<EvaluationJob[]> {
   const res = await fetch("/api/evaluation-jobs", { headers: writeHeaders(false) });
   const data = await res.json();
-  if (!res.ok) throw new ApiError(data.error ?? "No se pudo consultar la cola", res.status);
+  if (!res.ok) throw new ApiError(res.status, data.error ?? "No se pudo consultar la cola");
   return data.jobs;
 }
 export async function startEvaluationJob(agentIds: string[], iterations: number): Promise<EvaluationJob> {
   const res = await fetch("/api/evaluation-jobs", { method: "POST", headers: writeHeaders(true), body: JSON.stringify({ agentIds, iterations }) });
   const data = await res.json();
-  if (!res.ok) throw new ApiError(data.error ?? "No se pudo iniciar el análisis", res.status);
+  if (!res.ok) throw new ApiError(res.status, data.error ?? "No se pudo iniciar el análisis");
   return data.job;
 }
 export async function cancelEvaluationJob(id: string): Promise<EvaluationJob> {
   const res = await fetch(`/api/evaluation-jobs/${encodeURIComponent(id)}/cancel`, { method: "POST", headers: writeHeaders(true), body: "{}" });
   const data = await res.json();
-  if (!res.ok) throw new ApiError(data.error ?? "No se pudo detener el análisis", res.status);
+  if (!res.ok) throw new ApiError(res.status, data.error ?? "No se pudo detener el análisis");
   return data.job;
 }
 
 export type StoredAgent = AgentProfile & {
   harnessTools: string[];
   harnessModel: string | null;
+  /** manual = made in the agent creator; enterprise/seed/test = generated. */
+  origin: AgentOrigin;
   contextFiles: Array<{
     id: string;
     agentId: string;
@@ -85,6 +87,17 @@ function writeHeaders(json: boolean): Record<string, string> {
     // storage blocked: no token
   }
   return headers;
+}
+
+/** An API error that keeps the HTTP status (429 = daily budget spent, 401 = admin token). */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
 
 export async function fetchHealth(): Promise<{
@@ -143,7 +156,19 @@ export type MockDbSummary = {
   label: string;
   sensitivity: string;
   kind: string;
+  readTool?: string;
+  writeTool?: string;
 };
+
+export function isDemoStoredAgent(agent: {
+  id: string;
+  orgHints?: { notes?: string } | null;
+}): boolean {
+  return (
+    agent.id.startsWith("demo_agent_") ||
+    Boolean(agent.orgHints?.notes?.includes("mesh:demo-org:"))
+  );
+}
 
 export async function listMockDatabases(): Promise<{ databases: MockDbSummary[] }> {
   const res = await fetch("/api/mock-db");
@@ -409,8 +434,7 @@ export async function designVulnScenarios(
     body: "{}",
   });
   const data = await res.json();
-  if (!res.ok) throw new ApiError(data.error ?? "Falló el diseño de escenarios", res.status);
-  return data as { agentId: string; brief: VulnDesignerBrief };
+  if (!res.ok) throw new ApiError(res.status, data.error ?? "Falló el diseño de escenarios");  return data as { agentId: string; brief: VulnDesignerBrief };
 }
 
 export async function runOneVulnScenario(
@@ -431,8 +455,7 @@ export async function runOneVulnScenario(
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok) throw new ApiError(data.error ?? "Falló el escenario", res.status);
-  return data.result as VulnRunTraceDto;
+  if (!res.ok) throw new ApiError(res.status, data.error ?? "Falló el escenario");  return data.result as VulnRunTraceDto;
 }
 
 export async function finalizeVulnAssessment(
@@ -453,8 +476,7 @@ export async function finalizeVulnAssessment(
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok) throw new ApiError(data.error ?? "Falló el scoring final", res.status);
-  return data as {
+  if (!res.ok) throw new ApiError(res.status, data.error ?? "Falló el scoring final");  return data as {
     assessment: AgentVulnAssessment;
     descriptionUpdated: boolean;
     previousScores: VulnScores | null;
@@ -517,6 +539,222 @@ export async function fetchBatchResults(set: BatchResultSet = "latest"): Promise
   const data = await res.json().catch(() => ({ error: `La API respondió ${res.status} sin datos del lote` }));
   if (!res.ok) throw new Error(data.error ?? "No se pudieron cargar los resultados del lote");
   return data.results ?? null;
+}
+
+export type DemoOrgFile = {
+  id: string;
+  filename: string;
+  content: string;
+  label: string;
+  readAgentIds: string[];
+  writeAgentIds: string[];
+};
+
+export type DemoOrg = {
+  id: string;
+  companyName: string;
+  context: string;
+  agentIds: string[];
+  files: DemoOrgFile[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function saveDemoOrg(body: {
+  companyName?: string;
+  context: string;
+  agents: Array<{ name: string; prompt: string }>;
+  files?: Array<{
+    filename: string;
+    content: string;
+    label?: string;
+    readAgentNames: string[];
+    writeAgentNames: string[];
+  }>;
+}): Promise<{ org: DemoOrg; agents: StoredAgent[] }> {
+  const res = await fetch("/api/demo-orgs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "No se pudo guardar la empresa DEMO");
+  return data as { org: DemoOrg; agents: StoredAgent[] };
+}
+
+/** @deprecated alias — saves overwrite the current DEMO org */
+export const createDemoOrg = saveDemoOrg;
+
+export async function getCurrentDemoOrg(): Promise<{
+  org: DemoOrg | null;
+  agents: StoredAgent[];
+}> {
+  const res = await fetch("/api/demo-orgs/current");
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "No se pudo cargar la empresa DEMO");
+  return data as { org: DemoOrg | null; agents: StoredAgent[] };
+}
+
+export async function listDemoOrgs(): Promise<DemoOrg[]> {
+  const res = await fetch("/api/demo-orgs");
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "No se pudieron listar las empresas DEMO");
+  return data.orgs as DemoOrg[];
+}
+
+export async function getDemoOrg(id: string): Promise<DemoOrg> {
+  const res = await fetch(`/api/demo-orgs/${id}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Empresa DEMO no encontrada");
+  return data.org as DemoOrg;
+}
+
+export async function patchDemoOrgContext(context: string): Promise<{
+  org: DemoOrg;
+  agents: StoredAgent[];
+}> {
+  const res = await fetch("/api/demo-orgs/current/context", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ context }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "No se pudo actualizar el contexto DEMO");
+  return data as { org: DemoOrg; agents: StoredAgent[] };
+}
+
+export type DemoBusinessScenarioDto = {
+  title: string;
+  businessProblem: string;
+  seedAgentId: string;
+  scenarioHint?: string;
+  peerMessage?: { fromAgentId: string; toAgentId: string; body: string };
+  rationale: string;
+};
+
+export type DemoCommPatternsDto = {
+  edges: Array<{
+    from: string;
+    to: string;
+    about: string;
+    frequencyHint: string;
+  }>;
+  notes: string;
+};
+
+export type DemoChainActionDto = {
+  kind: "scenarioHint" | "peerMessage";
+  label: string;
+  seedAgentId: string;
+  scenarioHint?: string;
+  peerMessage?: { fromAgentId: string; toAgentId: string; body: string };
+};
+
+export type DemoChainAttackDesignDto = {
+  attackSurface: string;
+  actions: DemoChainActionDto[];
+  successCriteria: string;
+  rationale: string;
+};
+
+export type DemoChainEvalDto = {
+  empty: boolean;
+  surface: string;
+  failuresAmplifications: string[];
+  actionableRemediations: string[];
+  scoreSummary: string;
+};
+
+export type DemoChainDiagnosisDto = {
+  whyEmpty: string;
+  llmInteractionReview: string;
+  improvedHackPrompt: string;
+};
+
+async function demoPipelinePost<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`/api/demo-pipeline${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? `Falló ${path}`);
+  return data as T;
+}
+
+export async function designDemoCommScenario(body?: {
+  avoidTitles?: string[];
+}): Promise<{
+  scenario: DemoBusinessScenarioDto;
+  agents: StoredAgent[];
+  companyName: string;
+  context: string;
+  model: string;
+}> {
+  return demoPipelinePost("/comm-learn/design", body);
+}
+
+export async function analyzeDemoCommPatterns(runId: string): Promise<{
+  patterns: DemoCommPatternsDto;
+  tracePreview: string;
+  model: string;
+}> {
+  return demoPipelinePost("/comm-learn/analyze", { runId });
+}
+
+export async function finalizeDemoCommLearn(
+  patternsBatches: DemoCommPatternsDto[],
+): Promise<{
+  org: DemoOrg;
+  agents: StoredAgent[];
+  trendsBlock: string;
+  trendsMarkdown: string;
+}> {
+  return demoPipelinePost("/comm-learn/finalize", { patternsBatches });
+}
+
+export async function designDemoChainAttack(body?: {
+  hackPrompt?: string;
+}): Promise<{
+  design: DemoChainAttackDesignDto;
+  model: string;
+  hackPrompt: string;
+}> {
+  return demoPipelinePost("/chain-attack/design", body);
+}
+
+export async function evaluateDemoChainAttack(body: {
+  design: DemoChainAttackDesignDto;
+  runIds: string[];
+}): Promise<{ evaluation: DemoChainEvalDto; model: string; traces: string }> {
+  return demoPipelinePost("/chain-attack/evaluate", body);
+}
+
+export async function diagnoseDemoChainAttack(body: {
+  design: DemoChainAttackDesignDto;
+  evaluation: DemoChainEvalDto;
+  llmLog: string;
+  hackPrompt?: string;
+}): Promise<{ diagnosis: DemoChainDiagnosisDto; model: string }> {
+  return demoPipelinePost("/chain-attack/diagnose", body);
+}
+
+/** Poll until run completes or fails. */
+export async function waitForStoredRun(
+  runId: string,
+  opts?: { timeoutMs?: number; intervalMs?: number },
+): Promise<Awaited<ReturnType<typeof fetchRun>>> {
+  const timeoutMs = opts?.timeoutMs ?? 180_000;
+  const intervalMs = opts?.intervalMs ?? 1500;
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const data = await fetchRun(runId);
+    if (data.run.status === "completed" || data.run.status === "failed") {
+      return data;
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(`Timeout esperando run ${runId}`);
 }
 
 export type EverydayProblem = {
@@ -692,3 +930,79 @@ export function saveDemoSimFinding(body: {
 }): Promise<{ finding: DemoSimFinding }> {
   return postJson("/api/demo-sim/findings", body);
 }
+
+/** Who talks to whom, summed over every saved run (weights for the org map). */
+export async function getCommGraph(): Promise<CommGraph> {
+  const res = await fetch("/api/comm-graph");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error ?? "No se pudo cargar el grafo de comunicación");
+  return data.graph as CommGraph;
+}
+
+/** Re-count every saved run's messages (admin write). */
+export async function rebuildCommGraph(): Promise<{ runs: number; pairs: number; graph: CommGraph }> {
+  const res = await fetch("/api/comm-graph/rebuild", { method: "POST", headers: writeHeaders(true), body: "{}" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error ?? "No se pudo recontar");
+  return data;
+}
+
+export type VulnBatchOptions = {
+  agentIds?: string[];
+  iterations: number;
+  maxTurnsPerAgent: number;
+  concurrency: number;
+};
+
+async function batchJson<T>(res: Response, fallback: string): Promise<T> {
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error ?? fallback);
+  return data as T;
+}
+
+export async function listVulnBatches(): Promise<VulnBatch[]> {
+  const res = await fetch("/api/vuln-batches");
+  return (await batchJson<{ batches: VulnBatch[] }>(res, "No se pudieron cargar los lotes")).batches;
+}
+
+export async function estimateVulnBatch(options: VulnBatchOptions): Promise<VulnBatchEstimate> {
+  const res = await fetch("/api/vuln-batches/estimate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(options),
+  });
+  return (await batchJson<{ estimate: VulnBatchEstimate }>(res, "No se pudo estimar el costo")).estimate;
+}
+
+export async function startVulnBatch(options: VulnBatchOptions): Promise<VulnBatch> {
+  const res = await fetch("/api/vuln-batches", {
+    method: "POST",
+    headers: writeHeaders(true),
+    body: JSON.stringify(options),
+  });
+  return (await batchJson<{ batch: VulnBatch }>(res, "No se pudo iniciar el lote")).batch;
+}
+
+export async function reportVulnBatchAgent(
+  batchId: string,
+  agentId: string,
+  body: { status: "ok" | "failed"; error?: string },
+): Promise<VulnBatch> {
+  const res = await fetch(`/api/vuln-batches/${batchId}/agents/${encodeURIComponent(agentId)}`, {
+    method: "POST",
+    headers: writeHeaders(true),
+    body: JSON.stringify({ ...body, error: body.error?.slice(0, 1000) }),
+  });
+  return (await batchJson<{ batch: VulnBatch }>(res, "No se pudo guardar el resultado")).batch;
+}
+
+export async function finishVulnBatch(
+  batchId: string,
+  status: "completed" | "stopped" | "failed",
+): Promise<VulnBatch> {
+  const res = await fetch(`/api/vuln-batches/${batchId}/finish`, {
+    method: "POST",
+    headers: writeHeaders(true),
+    body: JSON.stringify({ status }),
+  });
+  return (await batchJson<{ batch: VulnBatch }>(res, "No se pudo cerrar el lote")).batch;}

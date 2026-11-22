@@ -3,9 +3,14 @@ import {
   integer,
   sqliteTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import type { InternalRun } from "../harness/orchestrator.js";
-import type { TraceEvent } from "@sandbox/shared";
+import type {
+  TraceEvent,
+  VulnBatchEstimate,
+  VulnBatchSettings,
+} from "@sandbox/shared";
 import type { RunJudgment } from "../harness/judge.js";
 import type { EvaluationJobData, EvaluationJobStatus } from "@sandbox/shared";
 
@@ -63,6 +68,7 @@ export const agentsSqlite = sqliteTable(
       .notNull()
       .$defaultFn(() => []),
     harnessModel: text("harness_model"),
+    origin: text("origin"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -184,4 +190,78 @@ export const demoSimFindingsSqlite = sqliteTable("demo_sim_findings", {
   analysis: text("analysis", { mode: "json" }).$type<DemoSimAnalysisRow>().notNull(),
   runId: text("run_id").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+export const commObservationsSqlite = sqliteTable(
+  "comm_observations",
+  {
+    runId: text("run_id").notNull(),
+    fromAgentId: text("from_agent_id").notNull(),
+    toAgentId: text("to_agent_id").notNull(),
+    messageCount: integer("message_count").notNull(),
+    observedAt: integer("observed_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("comm_observations_run_pair_idx").on(t.runId, t.fromAgentId, t.toAgentId),
+    index("comm_observations_pair_idx").on(t.fromAgentId, t.toAgentId),
+  ],
+);
+
+export const vulnEvalBatchesSqlite = sqliteTable("vuln_eval_batches", {
+  id: text("id").primaryKey(),
+  status: text("status").notNull(),
+  settings: text("settings", { mode: "json" }).$type<VulnBatchSettings>().notNull(),
+  estimate: text("estimate", { mode: "json" }).$type<VulnBatchEstimate>().notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
+});
+
+export const vulnEvalBatchResultsSqlite = sqliteTable(
+  "vuln_eval_batch_results",
+  {
+    id: text("id").primaryKey(),
+    batchId: text("batch_id")
+      .notNull()
+      .references(() => vulnEvalBatchesSqlite.id, { onDelete: "cascade" }),
+    agentId: text("agent_id").notNull(),
+    agentName: text("agent_name").notNull(),
+    status: text("status").notNull(),
+    previousScores: text("previous_scores", { mode: "json" }).$type<Record<string, number>>(),
+    scores: text("scores", { mode: "json" }).$type<Record<string, number>>(),
+    summary: text("summary").notNull().default(""),
+    runIds: text("run_ids", { mode: "json" }).$type<string[]>().notNull(),
+    error: text("error"),
+    position: integer("position").notNull(),
+    finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [uniqueIndex("vuln_eval_batch_results_batch_agent_idx").on(t.batchId, t.agentId)],
+);
+
+export type DemoOrgFileRow = {
+  id: string;
+  filename: string;
+  content: string;
+  label: string;
+  readAgentIds: string[];
+  writeAgentIds: string[];
+};
+
+export const demoOrgsSqlite = sqliteTable("demo_orgs", {
+  id: text("id").primaryKey(),
+  companyName: text("company_name").notNull(),
+  context: text("context").notNull(),
+  agentIds: text("agent_ids", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .$defaultFn(() => []),
+  files: text("files", { mode: "json" })
+    .$type<DemoOrgFileRow[]>()
+    .notNull()
+    .$defaultFn(() => []),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
 });
