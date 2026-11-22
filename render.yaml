@@ -27,6 +27,10 @@ services:
       # random value in the dashboard; writes (agents, fleets, saved profiles) then need it.
       - key: ADMIN_TOKEN
         sync: false
+      # Writes (agents, companies, saved profiles) open to everyone, no token needed.
+      # Delete this to require ADMIN_TOKEN again.
+      - key: ALLOW_PUBLIC_WRITES
+        value: "1"
       - key: RATE_LIMIT_PER_MINUTE
         value: "3"
       - key: MAX_RUNS_PER_DAY

@@ -24,6 +24,7 @@ export function isAdmin(
 }
 
 export function isAdminRequest(c: Context): boolean {
+  if (config.publicWrites) return true;
   return isAdmin(c.req.header(ADMIN_HEADER), config.adminToken, config.adminFailClosed);
 }
 

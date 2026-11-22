@@ -110,6 +110,11 @@ export const config = {
    * opening them, so a forgotten dashboard variable cannot leave the public store writable.
    */
   adminFailClosed: Boolean(process.env.RENDER?.trim()) || flagEnv("REQUIRE_ADMIN_TOKEN"),
+  /**
+   * ALLOW_PUBLIC_WRITES=1: every write is open to anyone, even with ADMIN_TOKEN set or on
+   * Render. Only for a demo whose stored data is disposable.
+   */
+  publicWrites: flagEnv("ALLOW_PUBLIC_WRITES"),
   /** Git-ignored real-mailbox scenario files are hidden from the HTTP API unless this is set. */
   allowRealEmailFiles: flagEnv("ALLOW_REAL_EMAIL_FILES"),
   databaseUrl,

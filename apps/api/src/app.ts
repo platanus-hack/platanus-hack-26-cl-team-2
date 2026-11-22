@@ -180,9 +180,10 @@ app.get("/health", async (c) => {
     database: db.ok ? db : { ...db, error: db.error ? errorMessage(db.error) : undefined },
     model: config.model,
     refineModel: refineModelId(),
-    writesNeedAdminToken: Boolean(config.adminToken),
+    writesPublic: config.publicWrites,
+    writesNeedAdminToken: !config.publicWrites && Boolean(config.adminToken),
     /** Deployed without ADMIN_TOKEN: writes are blocked for everyone (fail closed). */
-    writesDisabled: config.adminFailClosed && !config.adminToken,
+    writesDisabled: !config.publicWrites && config.adminFailClosed && !config.adminToken,
   });
 });
 
