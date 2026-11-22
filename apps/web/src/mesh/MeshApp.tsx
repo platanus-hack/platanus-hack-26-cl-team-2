@@ -6,12 +6,14 @@ import { ScenarioPlotPanel } from "../BatchResults";
 import { BUSINESS_SCENARIOS } from "../businessScenarios";
 import { GeneratorPage } from "../generator/GeneratorPage";
 import { DemoSetupPage } from "./DemoSetupPage";
+import { LabPage } from "../LabPage";
 
-const navigation = ["Evaluaciones", "Simulaciones", "Empresa y agentes", "DEMO SETUP"];
-const navIcons = ["▤", "⌁", "⊕", "▣"];
+const navigation = ["Evaluaciones", "Simulaciones", "Laboratorio", "Empresa y agentes", "DEMO SETUP"];
+const navIcons = ["▤", "⌁", "◎", "⊕", "▣"];
 const subtitles: Record<string, string> = {
   "Evaluaciones": "Correos de fraude de negocio contra agentes reales: qué pasó en cada uno, paso a paso.",
   "Simulaciones": "Un ejemplo paso a paso de cómo un correo falso pasa de agente en agente hasta el sistema de pagos.",
+  "Laboratorio": "Lanza una corrida en vivo: elige agentes, quién tiene herramientas de finanzas y el correo de entrada.",
   "Empresa y agentes": "Define la empresa y crea agentes con su prompt, uno a uno o masivamente con JSON.",
   "DEMO SETUP": "Elige una empresa cargada. Espacio A queda arriba y Espacio B abajo, ambos vacíos.",
 };
@@ -43,6 +45,8 @@ export function MeshApp() {
         ) : (
           <ScenarioPlotPanel set="business" title="Fraude de negocio" scenarios={BUSINESS_SCENARIOS} />
         )
+      ) : page === "Laboratorio" ? (
+        <LabPage hasApiKey={Boolean(health?.hasApiKey)} />
       ) : page === "DEMO SETUP" ? (
         <DemoSetupPage hasDatabase={Boolean(health?.database?.ok)} />
       ) : <GeneratorPage hasDatabase={Boolean(health?.database?.ok)} onOpenEvals={openAgentEvals} />}

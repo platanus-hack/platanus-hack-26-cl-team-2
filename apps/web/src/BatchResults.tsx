@@ -103,12 +103,18 @@ export function ScenarioPlotPanel({ set, title, scenarios }: { set: BatchResultS
   const [picked, setPicked] = useState<{ id: string; fix: string } | null>(null);
   const [selectedRunId, setSelectedRunId] = useState("");
   const [search, setSearch] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
+    setLoadError("");
     fetchBatchResults(set)
       .then((r) => !cancelled && setResults(r))
-      .catch(() => !cancelled && setResults(null));
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setLoadError(e instanceof Error ? e.message : String(e));
+        setResults(null);
+      });
     return () => {
       cancelled = true;
     };
@@ -118,7 +124,9 @@ export function ScenarioPlotPanel({ set, title, scenarios }: { set: BatchResultS
     return (
       <section className="panel">
         <h2>{title}</h2>
-        <p className="hint">{results === undefined ? "Cargando resultados…" : "Todavía no hay resultados publicados."}</p>
+        {loadError
+          ? <p className="error" role="alert">No se pudieron cargar los resultados: {loadError}</p>
+          : <p className="hint">{results === undefined ? "Cargando resultados…" : "Todavía no hay resultados publicados."}</p>}
       </section>
     );
   }
