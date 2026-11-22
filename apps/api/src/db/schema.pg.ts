@@ -169,6 +169,7 @@ export type DemoSimAnalysisRow = {
   failuresAmplifications: string[];
   actionableRemediations: string[];
   scoreSummary: string;
+  empty?: boolean;
 };
 
 /** A satisfactory DEMO SIM iteration, listed in Evaluaciones. */

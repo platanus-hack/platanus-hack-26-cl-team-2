@@ -37,15 +37,19 @@ export async function listDemoSimFindings(): Promise<DemoSimFinding[]> {
   return rows.map(toFinding);
 }
 
-/** Stores one iteration that found a vector. An empty evaluation is not a finding. */
+/**
+ * Stores one iteration in Evaluaciones.
+ * An empty evaluation stays out unless the user asks to publish it, to check that the response lands there.
+ */
 export async function saveDemoSimFinding(input: {
   companyName: string;
   prompt: string;
   attackSurface: string;
   runId: string;
   evaluation: DemoSimEval;
+  allowEmpty?: boolean;
 }): Promise<DemoSimFinding> {
-  if (input.evaluation.empty) throw new Error("La iteración no encontró un vector.");
+  if (input.evaluation.empty && !input.allowEmpty) throw new Error("La iteración no encontró un vector.");
   const stored = await loadRun(input.runId);
   if (!stored) throw new Error("Ejecución no encontrada");
   const names: Record<string, string> = {};
@@ -60,7 +64,10 @@ export async function saveDemoSimFinding(input: {
       surface: input.evaluation.surface,
       failuresAmplifications: input.evaluation.failuresAmplifications,
       actionableRemediations: input.evaluation.actionableRemediations,
-      scoreSummary: input.evaluation.scoreSummary,
+      scoreSummary: input.evaluation.scoreSummary || (input.evaluation.empty
+        ? "La iteración no encontró un vector. Esta fila es la respuesta de esa corrida, para verla en Evaluaciones."
+        : ""),
+      empty: input.evaluation.empty || undefined,
     },
     runId: input.runId,
     createdAt: new Date(),

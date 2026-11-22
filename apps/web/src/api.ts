@@ -911,6 +911,7 @@ export type DemoSimFinding = {
     failuresAmplifications: string[];
     actionableRemediations: string[];
     scoreSummary: string;
+    empty?: boolean;
   };
 };
 
@@ -927,6 +928,7 @@ export function saveDemoSimFinding(body: {
   attackSurface: string;
   runId: string;
   evaluation: DemoSimEval;
+  allowEmpty?: boolean;
 }): Promise<{ finding: DemoSimFinding }> {
   return postJson("/api/demo-sim/findings", body);
 }

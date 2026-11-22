@@ -185,7 +185,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
       if (judged.evaluation.empty) {
         setLastEval(judged.evaluation);
         setLastRunId(done.id);
-        setNotice("Esta iteración no encontró un vector. Profundiza el prompt o ajústalo y vuelve a iterar.");
+        setNotice("Esta iteración no encontró un vector. Puedes profundizar el prompt, o generar la evaluación y dejarla en Evaluaciones.");
         log(judged.evaluation.scoreSummary || "Sin vector", "info");
         setPhase("Sin vector");
       } else {
@@ -212,6 +212,34 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
         setPhase("Error");
         log(message, "err");
       }
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function publishEmptyEvaluation() {
+    if (!canRun || running || !company || !lastEval?.empty || !lastRunId || prompt.trim().length < 20) return;
+    setRunning(true);
+    setError("");
+    setPhase("Guardando");
+    try {
+      log("Armando la evaluación de esta corrida para dejarla en Evaluaciones");
+      await saveDemoSimFinding({
+        companyName: company,
+        prompt: prompt.trim(),
+        attackSurface: surface || lastEval.surface || "Iteración sin vector",
+        runId: lastRunId,
+        evaluation: lastEval,
+        allowEmpty: true,
+      });
+      setNotice("La evaluación quedó en la pestaña Evaluaciones, con el vector de la corrida, los pasos de la IA y el análisis.");
+      log("Evaluación guardada. Quedó en Evaluaciones.", "ok");
+      setPhase("En Evaluaciones");
+    } catch (failure) {
+      const message = failure instanceof Error ? failure.message : String(failure);
+      setError(message);
+      setPhase("Error");
+      log(message, "err");
     } finally {
       setRunning(false);
     }
@@ -301,7 +329,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
           <div className="demo-run">
             <p className="demo-run-note">
               {hasApiKey
-                ? "Un solo prompt, y se puede iterar. Los pesos son sugerencias: mientras más alto, más tira ese camino. Si no encuentra un vector, ajústalo e itera. Si lo encuentra, la evaluación pasa a Evaluaciones."
+                ? "Un solo prompt, y se puede iterar. Los pesos son sugerencias: mientras más alto, más tira ese camino. Si encuentra un vector, la evaluación pasa a Evaluaciones. Si no, Generar evaluación deja igual esa respuesta ahí."
                 : "Falta la API key: no se puede simular."}
             </p>
             <label className="demo-sim-prompt">
@@ -331,6 +359,16 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
               >
                 Profundizar vector
               </button>
+              {lastEval?.empty ? (
+                <button
+                  type="button"
+                  className="btn ghost"
+                  disabled={!canRun || running || !lastRunId || prompt.trim().length < 20}
+                  onClick={() => void publishEmptyEvaluation()}
+                >
+                  Generar evaluación
+                </button>
+              ) : null}
               {running ? (
                 <button type="button" className="btn ghost" onClick={() => { stopRef.current = true; }}>
                   Detener

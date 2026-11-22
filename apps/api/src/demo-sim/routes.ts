@@ -139,6 +139,7 @@ const findingBody = z.object({
   attackSurface: z.string().max(2000),
   runId: z.string().min(1).max(80),
   evaluation: evaluationBody,
+  allowEmpty: z.boolean().optional(),
 });
 
 demoSimRoutes.get("/findings", async (c) => {

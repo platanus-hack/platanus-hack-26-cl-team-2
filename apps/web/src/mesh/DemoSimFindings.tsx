@@ -27,7 +27,7 @@ export function DemoSimFindings() {
   return (
     <section className="panel">
       <h2>Caminos explotados</h2>
-      <p className="hint">{findings.length} vector{findings.length === 1 ? "" : "es"} encontrado{findings.length === 1 ? "" : "s"} al iterar un prompt sobre el grafo.</p>
+      <p className="hint">{findings.length} evaluación{findings.length === 1 ? "" : "es"} de DEMO SIM. Cada fila trae el vector de la corrida, los pasos de la IA y el análisis.</p>
       <div className="eval-list">
         {findings.map((finding) => {
           const open = openId === finding.id;
@@ -45,7 +45,9 @@ export function DemoSimFindings() {
                     {finding.attackSurface}
                     <small>{finding.companyName}</small>
                   </span>
-                  <span className="verdict-bad">Vector encontrado</span>
+                  <span className={finding.analysis.empty ? "verdict-warn" : "verdict-bad"}>
+                    {finding.analysis.empty ? "Sin vector" : "Vector encontrado"}
+                  </span>
                 </button>
               </h3>
               <div hidden={!open}>

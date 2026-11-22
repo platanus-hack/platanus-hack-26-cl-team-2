@@ -49,6 +49,8 @@ export type DemoSimFinding = {
     failuresAmplifications: string[];
     actionableRemediations: string[];
     scoreSummary: string;
+    /** Set when the user published an iteration that found no vector, to check the handoff. */
+    empty?: boolean;
   };
 };
 
