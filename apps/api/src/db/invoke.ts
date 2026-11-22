@@ -25,7 +25,7 @@ export function buildInvokePayload(agent: StoredAgent) {
     projection: {
       agentSpecInput: {
         ...agentSpecInput,
-        role: `${agentSpecInput.role}${contextBlock}`.slice(0, 12000),
+        role: `${agentSpecInput.role}${contextBlock}`.slice(0, 36000),
       },
       systemPrompt,
       tools: agent.harnessTools,

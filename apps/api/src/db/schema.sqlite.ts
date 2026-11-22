@@ -148,3 +148,40 @@ export const agentVulnAssessmentsSqlite = sqliteTable(
   },
   (t) => [index("agent_vuln_assessments_agent_idx").on(t.agentId)],
 );
+
+export type FlowGraphNodeRow = { agentId: string; label: string; weight: number };
+export type FlowGraphEdgeRow = {
+  fromAgentId: string;
+  toAgentId: string;
+  from: string;
+  to: string;
+  weight: number;
+};
+
+/** Latest directed communication graph for one company. */
+export const flowGraphsSqlite = sqliteTable("flow_graphs", {
+  companyName: text("company_name").primaryKey(),
+  nodes: text("nodes", { mode: "json" }).$type<FlowGraphNodeRow[]>().notNull(),
+  edges: text("edges", { mode: "json" }).$type<FlowGraphEdgeRow[]>().notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+export type DemoSimVectorRow = { title: string; detail: string };
+export type DemoSimAnalysisRow = {
+  surface: string;
+  failuresAmplifications: string[];
+  actionableRemediations: string[];
+  scoreSummary: string;
+};
+
+/** A satisfactory DEMO SIM iteration, listed in Evaluaciones. */
+export const demoSimFindingsSqlite = sqliteTable("demo_sim_findings", {
+  id: text("id").primaryKey(),
+  companyName: text("company_name").notNull(),
+  prompt: text("prompt").notNull(),
+  attackSurface: text("attack_surface").notNull(),
+  vector: text("vector", { mode: "json" }).$type<DemoSimVectorRow[]>().notNull(),
+  analysis: text("analysis", { mode: "json" }).$type<DemoSimAnalysisRow>().notNull(),
+  runId: text("run_id").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});

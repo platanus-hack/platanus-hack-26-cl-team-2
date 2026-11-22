@@ -518,3 +518,177 @@ export async function fetchBatchResults(set: BatchResultSet = "latest"): Promise
   if (!res.ok) throw new Error(data.error ?? "No se pudieron cargar los resultados del lote");
   return data.results ?? null;
 }
+
+export type EverydayProblem = {
+  title: string;
+  scenarioHint: string;
+};
+
+export type FlowGraphNode = {
+  agentId: string;
+  label: string;
+  weight: number;
+};
+
+export type FlowGraphEdge = {
+  fromAgentId: string;
+  toAgentId: string;
+  from: string;
+  to: string;
+  weight: number;
+};
+
+export type FlowGraph = {
+  companyName: string;
+  nodes: FlowGraphNode[];
+  edges: FlowGraphEdge[];
+};
+
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 429 && attempt < 5) {
+      const retry = Number(res.headers.get("Retry-After") ?? "15");
+      const wait = Number.isFinite(retry) ? Math.min(Math.max(retry, 1), 60) : 15;
+      await new Promise((resolve) => setTimeout(resolve, wait * 1000));
+      continue;
+    }
+    if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : `La API respondió ${res.status}`);
+    return data as T;
+  }
+  throw new Error("Demasiados intentos");
+}
+
+export function designEverydayProblems(body: {
+  seedAgentId: string;
+  agentIds: string[];
+  count: number;
+  avoidTitles?: string[];
+}): Promise<{ problems: EverydayProblem[] }> {
+  return postJson("/api/characterize/problems", body);
+}
+
+export function startCharacterizeRuns(
+  runs: Array<{
+    agentIds: string[];
+    seedAgentId: string;
+    scenarioHint: string;
+    maxTurnsPerAgent?: number;
+  }>,
+): Promise<{ runs: RunSummary[] }> {
+  return postJson("/api/characterize/runs", { runs });
+}
+
+export function summarizeFlows(body: {
+  companyName: string;
+  runs: Array<{ runId: string; seedAgentId: string; names: Record<string, string> }>;
+}): Promise<{ graph: FlowGraph }> {
+  return postJson("/api/characterize/flows", body);
+}
+
+export async function fetchFlowGraph(companyName: string): Promise<FlowGraph | null> {
+  const res = await fetch(`/api/characterize/graph?company=${encodeURIComponent(companyName)}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "No se pudo cargar el grafo");
+  return (data.graph as FlowGraph | null) ?? null;
+}
+
+export type DemoSimAction = {
+  kind: "scenarioHint" | "peerMessage";
+  label: string;
+  seedAgentId: string;
+  scenarioHint?: string;
+  peerMessage?: { fromAgentId: string; toAgentId: string; body: string };
+};
+
+export type DemoSimDesign = {
+  attackSurface: string;
+  actions: DemoSimAction[];
+  successCriteria: string;
+  rationale: string;
+};
+
+export type DemoSimEval = {
+  empty: boolean;
+  surface: string;
+  failuresAmplifications: string[];
+  actionableRemediations: string[];
+  scoreSummary: string;
+};
+
+export function designRiskPrompts(companyName: string): Promise<{ design: DemoSimDesign; model: string }> {
+  return postJson("/api/demo-sim/design", { companyName });
+}
+
+export function startRiskRuns(body: {
+  companyName: string;
+  actions: DemoSimAction[];
+}): Promise<{ runs: RunSummary[] }> {
+  return postJson("/api/demo-sim/runs", body);
+}
+
+export function evaluateRiskRun(body: {
+  companyName: string;
+  design: DemoSimDesign;
+  runIds: string[];
+}): Promise<{ evaluation: DemoSimEval; model: string }> {
+  return postJson("/api/demo-sim/evaluate", body);
+}
+
+export type DemoSimDeepen = {
+  changes: string[];
+  attackSurface: string;
+  prompt: string;
+  seedAgentId: string;
+};
+
+export function deepenRiskPrompt(body: {
+  companyName: string;
+  prompt: string;
+  seedAgentId?: string;
+  attackSurface?: string;
+  runId?: string;
+  evaluation: DemoSimEval;
+}): Promise<{ deepen: DemoSimDeepen; model: string }> {
+  return postJson("/api/demo-sim/deepen", body);
+}
+
+export type DemoSimVectorStep = { title: string; detail: string };
+
+export type DemoSimFinding = {
+  id: string;
+  companyName: string;
+  createdAt: string;
+  prompt: string;
+  attackSurface: string;
+  vector: DemoSimVectorStep[];
+  runId: string;
+  analysis: {
+    surface: string;
+    failuresAmplifications: string[];
+    actionableRemediations: string[];
+    scoreSummary: string;
+  };
+};
+
+export async function fetchDemoSimFindings(): Promise<DemoSimFinding[]> {
+  const res = await fetch("/api/demo-sim/findings");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "No se pudieron cargar las evaluaciones");
+  return (data.findings as DemoSimFinding[]) ?? [];
+}
+
+export function saveDemoSimFinding(body: {
+  companyName: string;
+  prompt: string;
+  attackSurface: string;
+  runId: string;
+  evaluation: DemoSimEval;
+}): Promise<{ finding: DemoSimFinding }> {
+  return postJson("/api/demo-sim/findings", body);
+}

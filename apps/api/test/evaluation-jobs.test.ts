@@ -96,4 +96,46 @@ test("durable asynchronous evaluation queue", async (t) => {
     assert.equal(response.status, 200);
     assert.ok((await response.json()).jobs.length > 0);
   });
+  await t.test("agents run together while each agent's iterations stay in order", async () => {
+    const other = await upsertAgent(composeProfile({ areaId: "finance", name: "Finanzas", knobs: { seniority: "mid", motivation: "quality", proactivity: "medium" } }));
+    const roster = [agent, other];
+    const job = await repo.createEvaluationJob({
+      company: "Prueba",
+      iterations: 2,
+      agents: roster.map((member) => ({ id: member.id, name: member.name, version: member.updatedAt })),
+      completedSteps: 0,
+      totalSteps: 28,
+      phase: "En cola",
+      agentStatus: {},
+      logs: [],
+    });
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const order: string[] = [];
+    await processEvaluationJob(job.id, {
+      design: async (agentId) => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        inFlight -= 1;
+        order.push(`design:${agentId}`);
+        return { agent: roster.find((member) => member.id === agentId) ?? agent, brief };
+      },
+      run: async ({ agentId, scenario, iteration }) => {
+        order.push(`${agentId}:${iteration}:${scenario.category}`);
+        return { category: scenario.category, runId: `parallel-${agentId}-${iteration}-${scenario.category}`, status: "completed", trace: "No se ejecutaron acciones sensibles." };
+      },
+      finalize: steps.finalize,
+    });
+    assert.equal(maxInFlight, 2);
+    for (const member of roster) {
+      const runs = order.filter((entry) => entry.startsWith(`${member.id}:`));
+      const firstSecond = runs.findIndex((entry) => entry.startsWith(`${member.id}:2:`));
+      assert.ok(firstSecond > 0);
+      assert.ok(runs.slice(0, firstSecond).every((entry) => entry.startsWith(`${member.id}:1:`)));
+    }
+    const done = await repo.getEvaluationJob(job.id);
+    assert.equal(done?.status, "completed", done?.phase);
+    assert.equal(done?.completedSteps, 28);
+  });
 });

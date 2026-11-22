@@ -57,8 +57,8 @@ const profileSchema = z.object({
     "finance",
   ]),
   knobs: knobsSchema,
-  // 12000: a direct-prompt agent keeps its whole prompt here (PromptAgent's limit).
-  systemContext: z.string().min(1).max(12000),
+  // 36000: a direct-prompt agent keeps company context plus its prompt here.
+  systemContext: z.string().min(1).max(36000),
   operatingStyle: z.array(z.string().max(600)).min(1).max(12),
   goalTemplate: z.string().min(1).max(2000),
   rawCompose: z

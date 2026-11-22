@@ -70,8 +70,398 @@
 .demo-attributes th, .demo-attributes td { padding: 12px; border-bottom: 1px solid var(--edge, var(--line)); }
 .demo-attributes meter { width: 80px; accent-color: #20c9b7; }
 
+.demo-space-characterize {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  overflow: auto;
+  text-align: center;
+}
+
+.demo-space-characterize h2,
+.demo-space-evaluate h2,
+.demo-space-sim h2 {
+  width: 100%;
+  text-align: center;
+}
+
+.demo-space-evaluate {
+  overflow: auto;
+}
+
+.demo-eval-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: end;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.demo-eval-controls label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.demo-eval-controls input {
+  width: 88px;
+  padding: 8px 10px;
+  text-align: center;
+  font-size: 18px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.demo-eval-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 24px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.demo-eval-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--edge, var(--line));
+  text-align: left;
+  overflow: hidden;
+}
+
+.mesh-shell .demo-eval-card .demo-agent-name {
+  font-size: clamp(20px, 1.5vw, 28px);
+}
+
+.demo-eval-card .demo-agent-title,
+.demo-eval-card .demo-agent-fn {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.demo-eval-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.demo-eval-body pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.demo-eval-card > .btn {
+  flex: none;
+  margin-top: auto;
+}
+
+@media (max-width: 1100px) {
+  .demo-eval-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.demo-roster {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 28px 36px;
+  width: 100%;
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.demo-agent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: min(280px, 100%);
+}
+
+.demo-agent-icon {
+  width: 84px;
+  height: 84px;
+  color: var(--ink);
+}
+
+.mesh-shell .demo-agent-name {
+  margin: 0;
+  font-size: clamp(28px, 2.6vw, 40px);
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  line-height: 1.05;
+  color: var(--ink);
+}
+
+.demo-agent-title {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.demo-agent-fn {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.3;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.mesh-shell .demo-agent-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: center;
+}
+
+.demo-agent.selected .demo-agent-pick {
+  outline: 1px solid var(--accent);
+  outline-offset: 10px;
+}
+
+.mesh-shell .demo-agent-score {
+  width: 88px;
+  margin-top: 14px;
+  padding: 8px 10px;
+  text-align: center;
+  font-size: 18px;
+}
+
+.demo-run {
+  width: min(760px, 100%);
+  margin-top: 28px;
+  text-align: left;
+}
+
+.demo-run-note {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.demo-run-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.demo-console {
+  margin-top: 14px;
+}
+
+.demo-console > p {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.mesh-shell .demo-console pre {
+  max-height: 148px;
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--edge, var(--line));
+  background: color-mix(in srgb, var(--bg-0, #060606) 92%, transparent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  text-transform: none;
+  white-space: pre-wrap;
+}
+
+.demo-run-log {
+  max-height: 240px;
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 1px solid var(--edge, var(--line));
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.demo-run-line.ok {
+  color: var(--ink);
+}
+
+.demo-run-line.err {
+  color: var(--danger, #c44);
+}
+
+.demo-graph {
+  position: relative;
+  width: min(920px, 100%);
+  margin: 8px auto 0;
+}
+
+.demo-graph svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  color: var(--ink);
+}
+
+.demo-graph-edge {
+  fill: none;
+  stroke: var(--accent, var(--ink));
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.demo-graph-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 18;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+
+.demo-graph-node circle {
+  fill: var(--bg-0, #060606);
+  stroke: var(--ink);
+  stroke-width: 1.6;
+}
+
+.demo-graph-bot {
+  color: var(--ink);
+}
+
+.demo-graph-bot .entity-glyph {
+  stroke: var(--ink);
+  stroke-width: 2.2;
+}
+
+.demo-graph-bot .entity-glyph circle {
+  fill: var(--ink);
+}
+
+.mesh-shell .demo-graph-node text {
+  fill: var(--ink);
+  font-family: var(--font-display, inherit);
+  font-size: 52px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.demo-graph-tip {
+  position: absolute;
+  z-index: 2;
+  padding: 6px 8px;
+  border: 1px solid var(--edge, var(--line));
+  background: var(--bg-0, #111);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 10px));
+}
+
+.mesh-shell .demo-flow h3 {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: center;
+}
+
+.demo-space-sim {
+  flex: 1;
+  justify-content: flex-start;
+  overflow: auto;
+}
+
+.demo-sim-prompt {
+  display: grid;
+  gap: 8px;
+  width: min(920px, 100%);
+  margin: 0 auto 14px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.demo-sim-prompt textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+}
+
+.demo-sim-changes {
+  width: min(920px, 100%);
+  margin: 0 auto 14px;
+  padding-left: 18px;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.45;
+}
+
+.demo-sim-changes li {
+  margin: 0 0 6px;
+}
+
+.eval-vector {
+  margin: 0 0 1rem;
+  padding-left: 1.2rem;
+}
+
+.eval-vector li {
+  margin: 0 0 0.8rem;
+  line-height: 1.5;
+}
+
+.eval-vector strong {
+  display: block;
+}
+
 @media (max-width: 720px) {
   .demo-space {
     min-height: 240px;
+  }
+
+  .demo-eval-grid {
+    grid-template-columns: 1fr;
   }
 }

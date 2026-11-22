@@ -24,6 +24,8 @@ import { BATCH_RESULT_SETS, batchResultSetPath, isBatchResultSet, readBatchResul
 import { loadPublishedRun } from "./published-traces.js";
 import { pingDatabase } from "./db/client.js";
 import { isRealMailFile, listEmailScenarios } from "./email/scenarios.js";
+import { characterizeRoutes } from "./characterize/routes.js";
+import { demoSimRoutes } from "./demo-sim/routes.js";
 import { enterpriseRoutes } from "./enterprise/routes.js";
 import { profileRoutes } from "./profiles/routes.js";
 import { refineModelId } from "./profiles/refine.js";
@@ -181,6 +183,8 @@ app.route("/api/profiles", profileRoutes);
 app.route("/api/agents", agentRoutes);
 app.route("/api/evaluation-jobs", evaluationJobRoutes);
 app.route("/api/enterprise", enterpriseRoutes);
+app.route("/api/characterize", characterizeRoutes);
+app.route("/api/demo-sim", demoSimRoutes);
 
 app.get("/api/runs", async (c) => c.json({ runs: await listRuns() }));
 

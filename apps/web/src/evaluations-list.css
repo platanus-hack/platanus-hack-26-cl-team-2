@@ -9,5 +9,8 @@
 .eval-chevron { color: var(--accent); font-size: 1.3rem; }
 .eval-row-title { flex: 1; line-height: 1.5; }.eval-row-title small { display: block; font-size: .78rem; font-weight: 400; color: var(--muted); margin-top: .3rem; }
 .eval-row > span:last-child { font-size: .85rem; }.eval-expanded { padding: 0 1.2rem 1.2rem; border-top: 1px solid var(--line); }.eval-expanded > p { color: var(--muted); line-height: 1.6; }
+.eval-vector { margin: .4rem 0 1rem; padding-left: 1.2rem; }
+.eval-vector li { margin: 0 0 .8rem; line-height: 1.5; }
+.eval-vector strong { display: block; }
 .eval-overview { margin-bottom: 1.5rem; }.eval-overview summary { cursor: pointer; padding: .7rem 0; }
 @media(max-width:700px) { .eval-row { flex-wrap: wrap; gap: .5rem; }.eval-row-title { min-width: 70%; }.eval-row > span:last-child { margin-left: 1.5rem; } }

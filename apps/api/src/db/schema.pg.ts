@@ -137,3 +137,40 @@ export const agentVulnAssessments = pgTable(
   },
   (t) => [index("agent_vuln_assessments_agent_idx").on(t.agentId)],
 );
+
+export type FlowGraphNodeRow = { agentId: string; label: string; weight: number };
+export type FlowGraphEdgeRow = {
+  fromAgentId: string;
+  toAgentId: string;
+  from: string;
+  to: string;
+  weight: number;
+};
+
+/** Latest directed communication graph for one company. */
+export const flowGraphs = pgTable("flow_graphs", {
+  companyName: text("company_name").primaryKey(),
+  nodes: jsonb("nodes").$type<FlowGraphNodeRow[]>().notNull(),
+  edges: jsonb("edges").$type<FlowGraphEdgeRow[]>().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});
+
+export type DemoSimVectorRow = { title: string; detail: string };
+export type DemoSimAnalysisRow = {
+  surface: string;
+  failuresAmplifications: string[];
+  actionableRemediations: string[];
+  scoreSummary: string;
+};
+
+/** A satisfactory DEMO SIM iteration, listed in Evaluaciones. */
+export const demoSimFindings = pgTable("demo_sim_findings", {
+  id: text("id").primaryKey(),
+  companyName: text("company_name").notNull(),
+  prompt: text("prompt").notNull(),
+  attackSurface: text("attack_surface").notNull(),
+  vector: jsonb("vector").$type<DemoSimVectorRow[]>().notNull(),
+  analysis: jsonb("analysis").$type<DemoSimAnalysisRow>().notNull(),
+  runId: text("run_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+});

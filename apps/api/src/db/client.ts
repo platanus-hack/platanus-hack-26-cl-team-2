@@ -124,6 +124,24 @@ function ensureSqliteTables(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS agent_vuln_assessments_agent_idx
       ON agent_vuln_assessments (agent_id);
+
+    CREATE TABLE IF NOT EXISTS flow_graphs (
+      company_name TEXT PRIMARY KEY NOT NULL,
+      nodes TEXT NOT NULL,
+      edges TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS demo_sim_findings (
+      id TEXT PRIMARY KEY NOT NULL,
+      company_name TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      attack_surface TEXT NOT NULL,
+      vector TEXT NOT NULL,
+      analysis TEXT NOT NULL,
+      run_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
   `);
 }
 

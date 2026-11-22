@@ -344,3 +344,5 @@ export type BatchResults = {
 
 export * from "./prototypes/index.js";
 export * from "./vuln.js";
+export * from "./flow-chains.js";
+export * from "./demo-sim.js";

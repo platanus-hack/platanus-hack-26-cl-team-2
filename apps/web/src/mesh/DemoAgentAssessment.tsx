@@ -9,6 +9,15 @@ const labels: Record<VulnCategory, string> = {
   tool_misuse: "Abuso de herramientas", data_exfiltration: "Exfiltración de datos",
   social_engineering: "Ingeniería social", secret_handling: "Manejo de secretos",
 };
+function agentFace(agent: StoredAgent): { name: string; role: string } {
+  const raw = agent.name.trim();
+  const [person, ...rest] = raw.split(/\s+[—–-]\s+/);
+  const fromName = rest.join(" — ").trim();
+  const stored = agent.title.trim();
+  const role = stored && stored !== raw && stored !== person ? stored : fromName;
+  return { name: person || raw, role };
+}
+
 const jobLabels: Record<EvaluationJobStatus, string> = {
   queued: "En cola", running: "Analizando", cancelling: "Deteniendo",
   completed: "Completado", failed: "Falló o fue interrumpido", cancelled: "Detenido",
@@ -76,15 +85,11 @@ export function DemoAgentAssessment({ agents, hasApiKey }: { agents: StoredAgent
   const busyAgent = (id: string) => activeJobs.some((j) => j.agents.some((a) => a.id === id));
   const classificationFor = (agent: StoredAgent) => assessments[agent.id]?.designerBrief?.classification;
   const areaFor = (agent: StoredAgent) => classificationFor(agent)?.areaId ?? agent.areaId;
-  const groups = [...new Set(agents.map(areaFor))];
   return <div className="demo-assessment">
-    <p>El análisis se ejecuta en segundo plano. Puedes cambiar de empresa, navegar o cerrar la pestaña y consultar sus resultados al volver.</p>
-    <p>La evaluación clasifica la función desde el prompt y contexto de empresa y después asigna los seis atributos usando las trazas de las pruebas.</p>
-    <div className="demo-assessment-controls">
-      <label>Repeticiones por atributo<input type="number" min={1} max={3} value={iterations} disabled={actionBusy} onChange={(e) => setIterations(Math.max(1, Math.min(3, Number(e.target.value) || 1)))} /></label>
-      <button className="btn" type="button" disabled={actionBusy || queueLoading || !hasApiKey || !agents.length || agents.length > 24 || agents.some((a) => busyAgent(a.id))} onClick={() => void schedule(agents)}>Programar análisis de {agents.length} agente(s)</button>
+    <div className="demo-eval-controls">
+      <label>Repeticiones<input type="number" min={1} max={3} value={iterations} disabled={actionBusy} onChange={(e) => setIterations(Math.max(1, Math.min(3, Number(e.target.value) || 1)))} /></label>
+      <button className="btn" type="button" disabled={actionBusy || queueLoading || !hasApiKey || !agents.length || agents.length > 24 || agents.some((a) => busyAgent(a.id))} onClick={() => void schedule(agents)}>Analizar todos</button>
     </div>
-    <p className="hint">Consume API de IA: diseño, seis pruebas por repetición y evaluación por agente. Máximo 24 agentes por trabajo. Mayor puntaje = mayor vulnerabilidad; la duración no aumenta el puntaje.</p>
     {!hasApiKey && <p className="error">Falta configurar la API key para ejecutar pruebas.</p>}
     {(loading || queueLoading) && <LoadingProgress label="Recuperando análisis y atributos guardados…" />}
     {actionBusy && <LoadingProgress label="Actualizando la cola de análisis…" />}
@@ -100,21 +105,28 @@ export function DemoAgentAssessment({ agents, hasApiKey }: { agents: StoredAgent
       <small>Creado: {new Date(job.createdAt).toLocaleString("es-CL")} · {job.id}</small>
       <details><summary>Registro y estado por agente</summary><ul>{Object.entries(job.agentStatus).map(([id, status]) => <li key={id}>{status}</li>)}</ul><pre className="demo-assessment-log">{job.logs.join("\n") || "Esperando ejecución"}</pre></details>
     </article>)}</section>}
-    {groups.map((area) => <section key={area} className="demo-function-group"><h3>{areaLabel(area)}</h3>
-      {agents.filter((agent) => areaFor(agent) === area).map((agent) => {
+    <ul className="demo-eval-grid">
+      {agents.map((agent) => {
         const assessment = assessments[agent.id];
-        return <article className="demo-agent-card" key={agent.id}>
-          <header><div><h4>{agent.name}</h4><p>{agent.title}</p></div><button className="btn ghost" type="button" disabled={actionBusy || queueLoading || !hasApiKey || busyAgent(agent.id)} onClick={() => void schedule([agent])}>{busyAgent(agent.id) ? "Análisis pendiente" : "Analizar agente"}</button></header>
-          <details><summary>Función y contexto de {agent.orgHints?.companyName}</summary><pre>{agent.systemContext}</pre></details>
-          {classificationFor(agent) ? <p><strong>Función clasificada:</strong> {classificationFor(agent)?.function}<br />{classificationFor(agent)?.rationale}</p> : <p className="hint">Función pendiente de clasificación.</p>}
-          <p>Herramientas: {agent.harnessTools.join(", ") || "Sin herramientas"}</p>
-          {assessment ? <><p>{assessment.summary}</p>
-            <div className="demo-attributes"><table><thead><tr><th>Atributo</th><th>Vulnerabilidad</th><th>Evidencia / observación</th></tr></thead><tbody>
-              {VULN_CATEGORIES.map((cat) => <tr key={cat}><th scope="row">{labels[cat]}</th><td><meter min={1} max={100} value={assessment.scores[cat]} /> {assessment.scores[cat]}/100</td><td>{assessment.categoryNotes[cat] || "Sin observación registrada"}</td></tr>)}
-            </tbody></table></div><p className="hint">{assessment.runIds.length} ejecuciones · {assessment.model} · {new Date(assessment.updatedAt).toLocaleString("es-CL")}</p>
-          </> : <p className="hint">Sin evaluar: los atributos aún no tienen puntajes.</p>}
-        </article>;
+        const card = agentFace(agent);
+        const classified = classificationFor(agent);
+        return <li key={agent.id} className="demo-eval-card">
+          <h3 className="demo-agent-name">{card.name}</h3>
+          {card.role ? <p className="demo-agent-title">{card.role}</p> : null}
+          <p className="demo-agent-fn">{areaLabel(areaFor(agent))}</p>
+          <div className="demo-eval-body">
+            <details><summary>Descripción</summary><pre>{agent.systemContext}</pre></details>
+            {classified ? <p><strong>{classified.function}</strong><br />{classified.rationale}</p> : <p className="hint">Función pendiente de clasificación.</p>}
+            <p>Herramientas: {agent.harnessTools.join(", ") || "Sin herramientas"}</p>
+            {assessment ? <><p>{assessment.summary}</p>
+              <div className="demo-attributes"><table><thead><tr><th>Atributo</th><th>Vulnerabilidad</th><th>Evidencia</th></tr></thead><tbody>
+                {VULN_CATEGORIES.map((cat) => <tr key={cat}><th scope="row">{labels[cat]}</th><td><meter min={1} max={100} value={assessment.scores[cat]} /> {assessment.scores[cat]}/100</td><td>{assessment.categoryNotes[cat] || "Sin observación"}</td></tr>)}
+              </tbody></table></div>
+            </> : <p className="hint">Sin evaluar.</p>}
+          </div>
+          <button className="btn ghost" type="button" disabled={actionBusy || queueLoading || !hasApiKey || busyAgent(agent.id)} onClick={() => void schedule([agent])}>{busyAgent(agent.id) ? "Análisis pendiente" : "Analizar"}</button>
+        </li>;
       })}
-    </section>)}
+    </ul>
   </div>;
 }

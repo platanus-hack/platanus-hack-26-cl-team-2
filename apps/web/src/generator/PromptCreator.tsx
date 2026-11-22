@@ -30,7 +30,7 @@ export function parsePromptImport(raw: string, requireCompany = false): AgentPro
   if (!data || typeof data !== "object") throw new Error("Usa un objeto con agents o una lista de agentes.");
   const root = data as Record<string, unknown>;
   const companyName = textField(root.companyName, "Nombre de empresa", 120, requireCompany);
-  const context = textField(root.context, "Contexto de empresa", 11000, false);
+  const context = textField(root.context, "Contexto de empresa", 33000, false);
   const agents = Array.isArray(data) ? data : root.agents;
   if (!Array.isArray(agents) || agents.length < 1 || agents.length > 100) {
     throw new Error("agents debe ser una lista de entre 1 y 100 agentes.");
@@ -39,13 +39,13 @@ export function parsePromptImport(raw: string, requireCompany = false): AgentPro
     if (!item || typeof item !== "object") throw new Error(`Agente ${i + 1}: formato inválido.`);
     const row = item as Record<string, unknown>;
     const name = textField(row.name, `Agente ${i + 1}: nombre`, 64);
-    const prompt = textField(row.prompt, `${name}: prompt`, 12000);
+    const prompt = textField(row.prompt, `${name}: prompt`, 36000);
     const areaId = row.areaId ?? "cs";
     if (!AREA_LIST.some((area) => area.id === areaId)) {
       throw new Error(`${name}: areaId inválida. Usa ${AREA_LIST.map((a) => a.id).join(", ")}.`);
     }
     const systemContext = context ? `${context}\n\n${prompt}` : prompt;
-    if (systemContext.length > 12000) throw new Error(`${name}: contexto y prompt superan 12000 caracteres.`);
+    if (systemContext.length > 36000) throw new Error(`${name}: contexto y prompt superan 36000 caracteres.`);
     return {
       id: crypto.randomUUID(), name, title: name, areaId: areaId as AreaId,
       knobs: { seniority: "mid", motivation: "quality", proactivity: "medium" },
@@ -105,16 +105,16 @@ export function PromptCreator({ hasDatabase, onSaved }: Props) {
     </label>
     {!bulk ? <>
       <label>Nombre de empresa (opcional)<input value={companyName} maxLength={120} disabled={locked} onChange={(e) => { setCompanyName(e.target.value); resetPreview(); }} /></label>
-      <label>Contexto de empresa (opcional)<textarea rows={4} value={context} maxLength={11000} disabled={locked} onChange={(e) => { setContext(e.target.value); resetPreview(); }} /></label>
+      <label>Contexto de empresa (opcional)<textarea rows={4} value={context} maxLength={33000} disabled={locked} onChange={(e) => { setContext(e.target.value); resetPreview(); }} /></label>
       <label>Nombre<input value={name} maxLength={64} disabled={locked} onChange={(e) => { setName(e.target.value); resetPreview(); }} /></label>
       <label>Área<select value={areaId} disabled={locked} onChange={(e) => { setAreaId(e.target.value as AreaId); resetPreview(); }}>
         {AREA_LIST.map((a) => <option key={a.id} value={a.id}>{areaLabel(a.id)}</option>)}
       </select></label>
-      <label>Prompt del agente<textarea rows={8} value={prompt} maxLength={12000} disabled={locked} onChange={(e) => { setPrompt(e.target.value); resetPreview(); }} /></label>
+      <label>Prompt del agente<textarea rows={8} value={prompt} maxLength={36000} disabled={locked} onChange={(e) => { setPrompt(e.target.value); resetPreview(); }} /></label>
     </> : <>
       <label>JSON de empresa y agentes<textarea rows={14} value={json} disabled={locked} placeholder={example} onChange={(e) => { setJson(e.target.value); resetPreview(); }} /></label>
       <button type="button" className="linkish" disabled={locked} onClick={() => { setJson(example); resetPreview(); }}>Cargar ejemplo de 3 agentes</button>
-      <p>Formato: companyName, context y agents con name, prompt y areaId opcional. Máximo 100 agentes; 12000 caracteres de contexto y prompt por agente.</p>
+      <p>Formato: companyName, context y agents con name, prompt y areaId opcional. Máximo 100 agentes; 36000 caracteres de contexto y prompt por agente.</p>
     </>}
     <div className="controls">
       <button className="btn" type="button" disabled={locked} onClick={preview}>Validar y previsualizar</button>
