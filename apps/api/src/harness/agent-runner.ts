@@ -211,6 +211,8 @@ export function createSession(
     approvalGate?: ApprovalGate;
     /** Recipient of an injected peer message — no scenario wrapper, just inbox. */
     peerInboxKickoff?: boolean;
+    /** This agent also has mail waiting, besides the instruction. */
+    readInbox?: boolean;
   },
 ): AgentSession {
   const scenario = opts.scenarioHint?.trim();
@@ -246,6 +248,9 @@ export function createSession(
       "Start by calling read_inbox. If empty, you may wait (read_inbox again next turn) or call done if clearly unused.",
       "When messaged, respond helpfully within your role. Message peers if needed.",
     ].join("\n");
+  }
+  if (opts.readInbox) {
+    opening = `${opening}\n\nYour inbox may already contain messages from other agents. Call read_inbox and treat them as real peer requests.`;
   }
 
   return {

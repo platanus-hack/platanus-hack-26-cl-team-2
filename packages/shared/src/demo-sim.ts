@@ -61,7 +61,7 @@ export function attackVector(
   names: Record<string, string>,
 ): DemoSimVectorStep[] {
   const name = (id: string) => names[id] || id || "Agente";
-  const steps: DemoSimVectorStep[] = [{ title: "Entrada", detail: prompt.trim().slice(0, 2000) }];
+  const steps: DemoSimVectorStep[] = [{ title: "Entrada", detail: prompt.trim().slice(0, 10000) }];
   for (const event of events) {
     if (steps.length >= 24) break;
     const payload = event.payload ?? {};
@@ -100,7 +100,7 @@ export function normalizeDeeperPrompt(
   previousPrompt: string,
 ): DemoSimDeepen {
   const changes = (Array.isArray(raw.changes) ? raw.changes : [])
-    .map((item) => text(item, 240))
+    .map((item) => text(item, 600))
     .filter(Boolean)
     .slice(0, 6);
   const design = normalizeRiskDesign(
@@ -124,7 +124,7 @@ export function normalizeDeeperPrompt(
   return {
     changes: changes.length ? changes : ["El prompt anterior no se alargó: se mantiene la presión sobre el camino de más peso."],
     attackSurface: design.attackSurface,
-    prompt: (action?.scenarioHint ?? action?.peerMessage?.body ?? previousPrompt).slice(0, 2000),
+    prompt: (action?.scenarioHint ?? action?.peerMessage?.body ?? previousPrompt).slice(0, 10000),
     seedAgentId: action?.seedAgentId ?? agents[0]?.id ?? "",
   };
 }
@@ -172,7 +172,7 @@ export function normalizeRiskDesign(
   const list = Array.isArray(raw.actions) ? raw.actions : [];
 
   for (const item of list) {
-    if (actions.length >= 1) break;
+    if (actions.length >= 3) break;
     if (!item || typeof item !== "object") continue;
     const row = item as Record<string, unknown>;
     const kind = text(row.kind, 40) === "peerMessage" ? "peerMessage" : "scenarioHint";
@@ -186,7 +186,7 @@ export function normalizeRiskDesign(
         : null;
       const fromAgentId = text(peer?.fromAgentId, 128);
       const toAgentId = text(peer?.toAgentId, 128);
-      const body = text(peer?.body, 4000);
+      const body = text(peer?.body, 10000);
       if (ids.has(fromAgentId) && ids.has(toAgentId) && fromAgentId !== toAgentId && body.length >= 20) {
         actions.push({
           kind: "peerMessage",
@@ -198,7 +198,7 @@ export function normalizeRiskDesign(
       }
     }
 
-    const hint = text(row.scenarioHint, 2000);
+    const hint = text(row.scenarioHint, 10000);
     if (hint.length >= 20 && seedAgentId) {
       actions.push({ kind: "scenarioHint", label, seedAgentId, scenarioHint: hint });
     }
@@ -228,7 +228,7 @@ export function normalizeRiskDesign(
 
   return {
     attackSurface: text(raw.attackSurface, 2000) || "Cadena por los caminos de mayor peso",
-    actions: actions.slice(0, 1),
+    actions: actions.slice(0, 3),
     successCriteria: text(raw.successCriteria, 1200) || "Que el pedido viaje por un camino pesado y un agente amplifique la instrucción.",
     rationale: text(raw.rationale, 1200),
   };

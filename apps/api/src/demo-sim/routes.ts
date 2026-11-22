@@ -17,11 +17,11 @@ const actionBody = z.object({
   kind: z.enum(["scenarioHint", "peerMessage"]),
   label: z.string().max(120),
   seedAgentId: id,
-  scenarioHint: z.string().max(2000).optional(),
+  scenarioHint: z.string().max(10000).optional(),
   peerMessage: z.object({
     fromAgentId: id,
     toAgentId: id,
-    body: z.string().min(20).max(4000),
+    body: z.string().min(20).max(10000),
   }).optional(),
 });
 
@@ -29,7 +29,7 @@ const designBody = z.object({
   attackSurface: z.string().max(2000),
   successCriteria: z.string().max(1200),
   rationale: z.string().max(1200),
-  actions: z.array(actionBody).length(1),
+  actions: z.array(actionBody).min(1).max(3),
 });
 
 function statusFor(err: unknown, message: string): 400 | 429 | 502 | 503 {
@@ -60,7 +60,7 @@ demoSimRoutes.post("/runs", async (c) => {
   const json = await c.req.json().catch(() => null);
   const parsed = z.object({
     companyName: z.string().min(1).max(120),
-    actions: z.array(actionBody).length(1),
+    actions: z.array(actionBody).min(1).max(3),
     maxTurns: z.number().int().min(1).max(1000).optional(),
   }).safeParse(json);
   if (!parsed.success) return c.json({ error: "Cuerpo inválido", details: parsed.error.flatten() }, 400);
@@ -71,22 +71,40 @@ demoSimRoutes.post("/runs", async (c) => {
     const bundle = await loadCompanySim(parsed.data.companyName);
     const ids = bundle.agents.map((agent) => agent.id);
     const edges: FlowGraphEdge[] = bundle.graph.edges;
-    const prepared = await Promise.all(parsed.data.actions.map((action) => {
-      const peer = action.kind === "peerMessage" ? action.peerMessage : undefined;
-      const required = [peer?.fromAgentId, peer?.toAgentId ?? action.seedAgentId].filter((agentId): agentId is string => Boolean(agentId));
-      const agentIds = [...required, ...ids.filter((agentId) => !required.includes(agentId))].slice(0, 8);
-      return prepareStoredRun({
-        agentIds,
-        seedAgentId: peer?.toAgentId ?? action.seedAgentId,
-        maxTurnsPerAgent: parsed.data.maxTurns ?? 5,
-        scenarioHint: peer ? undefined : action.scenarioHint,
-        peerMessage: peer,
-      });
+    const hints = parsed.data.actions.filter((action) => action.kind === "scenarioHint" && (action.scenarioHint ?? "").trim().length >= 20);
+    const peers = parsed.data.actions.flatMap((action) => action.kind === "peerMessage" && action.peerMessage ? [action.peerMessage] : []);
+    const primaryHint = hints[0];
+    const primaryPeer = primaryHint ? undefined : peers[0];
+    const openings = hints.slice(primaryHint ? 1 : 0).map((action) => ({
+      agentId: action.seedAgentId,
+      scenarioHint: action.scenarioHint!.trim(),
     }));
+    const extraPeerMessages = primaryHint ? peers : peers.slice(1);
+    const required = [
+      primaryHint?.seedAgentId,
+      primaryPeer?.fromAgentId,
+      primaryPeer?.toAgentId,
+      ...openings.map((opening) => opening.agentId),
+      ...extraPeerMessages.flatMap((message) => [message.fromAgentId, message.toAgentId]),
+    ].filter((agentId): agentId is string => Boolean(agentId));
+    const agentIds = [...new Set([...required, ...ids])].slice(0, 8);
+    const seedAgentId = primaryHint?.seedAgentId ?? primaryPeer?.toAgentId ?? agentIds[0];
+    if (!seedAgentId) throw new Error("No salió un mensaje.");
+    const prepared = await prepareStoredRun({
+      agentIds,
+      seedAgentId,
+      maxTurnsPerAgent: parsed.data.maxTurns ?? 5,
+      scenarioHint: primaryHint?.scenarioHint,
+      peerMessage: primaryPeer,
+    });
     const turns = Math.min(1000, Math.max(1, parsed.data.maxTurns ?? 5));
-    const biased = prepared.map((run) => ({ ...run, maxTurns: turns, agents: applyPathBias(run.agents, edges) }));
-    const runs = await Promise.all(biased.map((run) => startPreparedRun(run)));
-    return c.json({ runs }, 201);
+    const run = await startPreparedRun({
+      ...prepared,
+      maxTurns: turns,
+      agents: applyPathBias(prepared.agents, edges),
+      opts: { ...prepared.opts, openings, extraPeerMessages },
+    });
+    return c.json({ runs: [run] }, 201);
   } catch (err) {
     const message = errorMessage(err);
     return c.json({ error: message }, statusFor(err, message));
@@ -124,7 +142,7 @@ demoSimRoutes.post("/deepen", async (c) => {
   const json = await c.req.json().catch(() => null);
   const parsed = z.object({
     companyName: z.string().min(1).max(120),
-    prompt: z.string().min(20).max(4000),
+    prompt: z.string().min(20).max(10000),
     seedAgentId: id.optional(),
     attackSurface: z.string().max(2000).optional(),
     runId: z.string().min(1).max(80).optional(),
@@ -143,7 +161,7 @@ demoSimRoutes.post("/deepen", async (c) => {
 
 const findingBody = z.object({
   companyName: z.string().min(1).max(120),
-  prompt: z.string().min(20).max(4000),
+  prompt: z.string().min(20).max(10000),
   attackSurface: z.string().max(2000),
   runId: z.string().min(1).max(80),
   evaluation: evaluationBody,

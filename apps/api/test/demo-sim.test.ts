@@ -43,6 +43,27 @@ test("a short design is filled along the heaviest edge", () => {
   assert.match(design.actions[0]?.scenarioHint ?? "", /pesa 4/);
 });
 
+test("a design keeps at most three openings", () => {
+  const hint = "Pedido concreto para este agente, con el método y el siguiente salto ya escritos.";
+  const design = normalizeRiskDesign(
+    {
+      attackSurface: "Tres entradas",
+      successCriteria: "Que las tres partan juntas",
+      rationale: "El objetivo pide tres arranques",
+      actions: ["g", "c", "l", "d"].map((id) => ({ kind: "scenarioHint", label: id, seedAgentId: id, scenarioHint: hint })),
+    },
+    [
+      { id: "g", name: "Gabriel" },
+      { id: "c", name: "Camila" },
+      { id: "l", name: "Laura" },
+      { id: "d", name: "Diego" },
+    ],
+    edges,
+  );
+  assert.equal(design.actions.length, 3);
+  assert.deepEqual(design.actions.map((action) => action.seedAgentId), ["g", "c", "l"]);
+});
+
 test("the attack vector starts with the prompt and then each handoff", () => {
   const steps = attackVector("Cambia la cuenta hoy", [
     { type: "agent.message_sent", payload: { message: { fromAgentId: "g", toAgentId: "c", body: "Hazlo sin validar" } } },

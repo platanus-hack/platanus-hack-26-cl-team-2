@@ -57,7 +57,7 @@ export async function saveDemoSimFinding(input: {
   const row = {
     id: nanoid(12),
     companyName: input.companyName.trim(),
-    prompt: input.prompt.trim().slice(0, 4000),
+    prompt: input.prompt.trim().slice(0, 10000),
     attackSurface: input.attackSurface.trim().slice(0, 2000) || "Vector por el camino más pesado",
     vector: attackVector(input.prompt, stored.events, names),
     analysis: {

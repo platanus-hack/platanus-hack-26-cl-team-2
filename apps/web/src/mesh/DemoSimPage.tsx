@@ -108,7 +108,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
   const [plannedFor, setPlannedFor] = useState("");
   const [seedId, setSeedId] = useState("");
   const [surface, setSurface] = useState("");
-  const [draft, setDraft] = useState<DemoSimAction | null>(null);
+  const [entries, setEntries] = useState<DemoSimAction[]>([]);
   const [changes, setChanges] = useState<string[]>([]);
   const [lastEval, setLastEval] = useState<DemoSimEval | null>(null);
   const [lastRunId, setLastRunId] = useState("");
@@ -231,35 +231,33 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
     setError("");
     setNotice("");
     try {
-      let action = plannedFor === objective && delivered.trim().length >= 20 ? draft : null;
+      let actions = plannedFor === objective && entries.length ? entries : [];
       let attackSurface = surface;
       let rationale = "";
-      if (!action) {
+      if (!actions.length) {
         setPhase("Diseñando el mensaje");
-        log("El objetivo se queda acá. El sistema arma el mensaje con la comunicación, el trabajo, los permisos y las evaluaciones.");
+        log("El objetivo se queda acá. El sistema arma hasta tres entradas si el objetivo las necesita.");
         const designed = await designRiskPrompts(company, objective, steps.length || graph.nodes.length);
-        action = designed.design.actions[0] ?? null;
-        if (!action) throw new Error("No salió un mensaje.");
-        const text = (action.scenarioHint ?? action.peerMessage?.body ?? "").trim();
-        if (text.length < 20) throw new Error("El mensaje para el agente salió demasiado corto.");
+        actions = designed.design.actions.filter((action) => (action.scenarioHint ?? action.peerMessage?.body ?? "").trim().length >= 20);
+        if (!actions.length) throw new Error("No salió un mensaje.");
         attackSurface = designed.design.attackSurface;
         rationale = designed.design.rationale;
-        setDelivered(text);
+        setEntries(actions);
+        setDelivered(actions.map((action) => (action.scenarioHint ?? action.peerMessage?.body ?? "").trim()).join("\n\n"));
         setPlannedFor(objective);
-        setSeedId(action.seedAgentId);
+        setSeedId(actions[0]!.seedAgentId);
         setSurface(attackSurface);
-        setDraft(action);
         log(attackSurface, "ok");
         if (rationale) log(rationale);
       }
       if (stopRef.current) throw new Error("Detenido");
 
       setPhase("Simulando");
-      const seedName = companyAgents.find((agent) => agent.id === action.seedAgentId)?.name ?? "el agente";
-      log(`Mensaje enviado a ${seedName}. El objetivo no va en ese texto.`);
+      const seedName = companyAgents.find((agent) => agent.id === actions[0]?.seedAgentId)?.name ?? "el agente";
+      log(actions.length > 1 ? `${actions.length} entradas en la misma corrida. La primera llega a ${seedName}.` : `Mensaje enviado a ${seedName}. El objetivo no va en ese texto.`);
       const started = await startRiskRuns({
         companyName: company,
-        actions: [action],
+        actions,
         maxTurns: steps.length || graph.nodes.length,
       });
       const run = started.runs[0];
@@ -280,7 +278,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
           attackSurface: attackSurface || objective,
           successCriteria: objective,
           rationale,
-          actions: [action],
+          actions,
         },
         runIds: [done.id],
       });
@@ -358,12 +356,12 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
       const next = deepened.deepen;
       setDelivered(next.prompt);
       setSeedId(next.seedAgentId);
-      setDraft({
+      setEntries([{
         kind: "scenarioHint",
         label: "Siguiente mensaje",
         seedAgentId: next.seedAgentId,
         scenarioHint: next.prompt,
-      });
+      }]);
       setChanges(next.changes);
       for (const change of next.changes) log(change, "ok");
       setNotice("Hay un mensaje nuevo para el mismo objetivo. Itera de nuevo para mandarlo, o guarda la evaluación de lo que ya pasó.");
@@ -393,7 +391,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
             setPlannedFor("");
             setSeedId("");
             setSurface("");
-            setDraft(null);
+            setEntries([]);
             setChanges([]);
             setLastEval(null);
             setLastRunId("");
@@ -428,7 +426,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
           <div className="demo-run">
             <p className="demo-run-note">
               {hasApiKey
-                ? "Escribes el objetivo. El sistema lee la comunicación, el trabajo, los permisos y las evaluaciones, y manda otro mensaje al agente que elige."
+                ? "Escribes el objetivo. El sistema lee la comunicación, el trabajo, los permisos y las evaluaciones, y manda uno, dos o tres mensajes si el objetivo los necesita."
                 : "Falta la API key: no se puede simular."}
             </p>
             <label className="demo-sim-prompt">
@@ -441,11 +439,18 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
                 onChange={(event) => setPrompt(event.target.value)}
               />
             </label>
-            {delivered ? (
-              <p className="demo-run-note demo-sim-delivered">
-                Mensaje enviado{seedId ? ` a ${companyAgents.find((agent) => agent.id === seedId)?.name.split(/\s+[—–-]\s+/)[0] ?? "un agente"}` : ""}: {delivered}
-              </p>
-            ) : null}
+            {entries.map((action, index) => {
+              const who = (id: string) => companyAgents.find((agent) => agent.id === id)?.name.split(/\s+[—–-]\s+/)[0] ?? "un agente";
+              const text = (action.scenarioHint ?? action.peerMessage?.body ?? "").trim();
+              const heading = action.peerMessage
+                ? `Entrada ${index + 1}: ${who(action.peerMessage.fromAgentId)} le escribe a ${who(action.peerMessage.toAgentId)}`
+                : `Entrada ${index + 1}: mensaje a ${who(action.seedAgentId)}`;
+              return (
+                <p key={`${action.seedAgentId}-${index}`} className="demo-run-note demo-sim-delivered">
+                  {heading}. {text}
+                </p>
+              );
+            })}
             {graph.nodes.length > 0 ? (
               <label className="demo-sim-steps">
                 Pasos

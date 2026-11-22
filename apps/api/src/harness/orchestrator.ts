@@ -257,6 +257,8 @@ async function startRun(
     scenarioHint?: string;
     email?: RunEmailInfo;
     peerMessage?: PeerMessageScenario;
+    openings?: { agentId: string; scenarioHint: string }[];
+    extraPeerMessages?: PeerMessageScenario[];
     roster?: RunRosterEntry[];
     commCounts?: CommCount[];
     skipCommRecording?: boolean;
@@ -321,12 +323,12 @@ async function startRun(
     agents.map((a) => a.id),
   );
 
-  if (opts?.peerMessage) {
-    const { fromAgentId, toAgentId, body } = opts.peerMessage;
-    const msg = messageBus.send(runId, fromAgentId, toAgentId, body);
+  const injected = [...(opts?.peerMessage ? [opts.peerMessage] : []), ...(opts?.extraPeerMessages ?? [])];
+  for (const message of injected) {
+    const msg = messageBus.send(runId, message.fromAgentId, message.toAgentId, message.body);
     // Same trace shape as a real send_message tool call, so the UI/judge see a peer edge.
-    traceBus.emit(runId, "agent.message_sent", { message: msg, injected: true }, fromAgentId);
-    traceBus.emit(runId, "agent.message_received", { message: msg, injected: true }, toAgentId);
+    traceBus.emit(runId, "agent.message_sent", { message: msg, injected: true }, message.fromAgentId);
+    traceBus.emit(runId, "agent.message_received", { message: msg, injected: true }, message.toAgentId);
   }
 
   const execution = executeRun(run, maxTurns, {
@@ -334,6 +336,8 @@ async function startRun(
     scenarioHint: opts?.scenarioHint,
     email: opts?.email,
     peerMessage: opts?.peerMessage,
+    openings: opts?.openings,
+    extraPeerMessages: opts?.extraPeerMessages,
   });
   if (process.env.VERCEL) await execution;
   else void execution.catch(error => console.error("No se pudo persistir la ejecución", error));
@@ -364,6 +368,8 @@ export type PreparedStoredRun = {
     scenarioHint?: string;
     email?: RunEmailInfo;
     peerMessage?: PeerMessageScenario;
+    openings?: { agentId: string; scenarioHint: string }[];
+    extraPeerMessages?: PeerMessageScenario[];
     roster: RunRosterEntry[];
     commCounts?: CommCount[];
     skipCommRecording?: boolean;
@@ -557,6 +563,8 @@ async function executeRun(
     scenarioHint?: string;
     email?: RunEmailInfo;
     peerMessage?: PeerMessageScenario;
+    openings?: { agentId: string; scenarioHint: string }[];
+    extraPeerMessages?: PeerMessageScenario[];
   },
 ): Promise<void> {
   run.status = "running";
@@ -591,15 +599,29 @@ async function executeRun(
     ? { refundLimit: opts.email.approvalRefundLimit ?? approvalRefundLimit() }
     : undefined;
   const signal = AbortSignal.timeout(process.env.VERCEL ? 240_000 : 600_000);
-  const peerKickoffId = opts.peerMessage?.toAgentId;
+  const openings = new Map<string, string>();
+  for (const opening of opts.openings ?? []) {
+    const previous = openings.get(opening.agentId);
+    openings.set(opening.agentId, previous ? `${previous}\n\n${opening.scenarioHint}` : opening.scenarioHint);
+  }
+  const inbox = new Set<string>();
+  if (opts.peerMessage) inbox.add(opts.peerMessage.toAgentId);
+  for (const message of opts.extraPeerMessages ?? []) inbox.add(message.toAgentId);
+  const hintFor = (agentId: string) => {
+    const parts: string[] = [];
+    if (agentId === opts.seedAgentId && opts.scenarioHint) parts.push(opts.scenarioHint);
+    const extra = openings.get(agentId);
+    if (extra) parts.push(extra);
+    return parts.join("\n\n");
+  };
   const sessions = run.agents.map((agent) => {
     const peers = run.agents.filter((a) => a.id !== agent.id);
-    const isKickoff = agent.id === opts.seedAgentId;
+    const hint = hintFor(agent.id);
     return createSession(agent, peers, {
-      isSeed: isKickoff && !peerKickoffId,
-      scenarioHint:
-        isKickoff && !peerKickoffId ? opts.scenarioHint : undefined,
-      peerInboxKickoff: Boolean(peerKickoffId && agent.id === peerKickoffId),
+      isSeed: Boolean(hint),
+      scenarioHint: hint || undefined,
+      peerInboxKickoff: inbox.has(agent.id) && !hint,
+      readInbox: inbox.has(agent.id) && Boolean(hint),
       provenanceTag: tag,
       approvalGate: gate,
     });
