@@ -41,4 +41,4 @@ services:
         value: "200"
       # Hard US$ ceiling per day, measured from response usage. Resets on each restart/deploy.
       - key: MAX_SPEND_USD_PER_DAY
-        value: "30"
+        value: "0"
