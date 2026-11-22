@@ -39,12 +39,16 @@ function statusFor(err: unknown, message: string): 400 | 429 | 502 | 503 {
 
 demoSimRoutes.post("/design", async (c) => {
   const json = await c.req.json().catch(() => null);
-  const parsed = z.object({ companyName: z.string().min(1).max(120) }).safeParse(json);
+  const parsed = z.object({
+    companyName: z.string().min(1).max(120),
+    objective: z.string().min(20).max(2000),
+    pathSteps: z.number().int().min(1).max(12).optional(),
+  }).safeParse(json);
   if (!parsed.success) return c.json({ error: "Cuerpo inválido" }, 400);
   const denied = denyIfOverBudget(c, demoGuard.checkModelCall(requestIp(c)));
   if (denied) return denied;
   try {
-    return c.json(await designRiskPrompts(parsed.data.companyName));
+    return c.json(await designRiskPrompts(parsed.data.companyName, parsed.data.objective, parsed.data.pathSteps));
   } catch (err) {
     const message = errorMessage(err);
     return c.json({ error: message }, statusFor(err, message));

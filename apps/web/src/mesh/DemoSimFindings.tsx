@@ -4,22 +4,23 @@ import { AgentFlow } from "../AgentFlow";
 import "../evaluations-list.css";
 
 /** One finished descriptive line, then the risk sentence underneath. */
-export function splitAnalysis(item: string): { line: string; risk: string } {
-  const match = item.match(/^([\s\S]*?)\s+Riesgo\s*:\s*([\s\S]*)$/i);
-  if (!match?.[1]?.trim()) return { line: item.trim(), risk: "" };
-  return { line: match[1].trim(), risk: match[2].trim() };
+export function splitAnalysis(item: string): { line: string; risk: string; label: string } {
+  const match = item.match(/^([\s\S]*?)\s+(Riesgo|Objetivo)\s*:\s*([\s\S]*)$/i);
+  if (!match?.[1]?.trim()) return { line: item.trim(), risk: "", label: "" };
+  const label = /^objetivo$/i.test(match[2] ?? "") ? "OBJETIVO" : "RIESGO";
+  return { line: match[1].trim(), risk: match[3].trim(), label };
 }
 
 export function AnalysisList({ items }: { items: string[] }) {
   return (
     <ol className="eval-vector">
       {items.map((item) => {
-        const { line, risk } = splitAnalysis(item);
+        const { line, risk, label } = splitAnalysis(item);
         const clear = /^no\b/i.test(risk);
         return (
           <li key={item}>
             <span className="eval-step-line">{line}</span>
-            {risk ? <span className={clear ? "eval-step-risk is-clear" : "eval-step-risk"}>RIESGO: {risk}</span> : null}
+            {risk ? <span className={clear ? "eval-step-risk is-clear" : "eval-step-risk"}>{label}: {risk}</span> : null}
           </li>
         );
       })}

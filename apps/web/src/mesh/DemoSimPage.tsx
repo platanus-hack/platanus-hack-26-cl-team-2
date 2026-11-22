@@ -59,10 +59,6 @@ async function waitForRun(runId: string, shouldStop: () => boolean, onTick?: (ev
   throw new Error("La ejecución tardó demasiado");
 }
 
-function heaviestSeed(graph: FlowGraph): string {
-  return [...graph.edges].sort((a, b) => b.weight - a.weight)[0]?.fromAgentId ?? "";
-}
-
 /** One step per agent, walking the heaviest unused hop. Extra steps repeat that walk. */
 function suggestedPath(graph: FlowGraph, count: number): string[] {
   const nodes = [...graph.nodes].sort((a, b) => b.weight - a.weight || a.label.localeCompare(b.label, "es"));
@@ -101,26 +97,15 @@ function suggestedPath(graph: FlowGraph, count: number): string[] {
   return path.slice(0, count);
 }
 
-function routeLine(graph: FlowGraph, steps: string[]): string {
-  const names = new Map(graph.nodes.map((node) => [node.agentId, node.label]));
-  const hops = steps.map((id, index) => `${index + 1}. ${names.get(id) ?? "Agente"}`).join(" → ");
-  return `Recorrido sugerido: ${hops}. Es una sugerencia; si el trabajo encaja mejor con otro colega, escríbele a ese.`;
-}
-
-function withRoute(text: string, line: string): string {
-  const stripped = text.replace(/\n*Recorrido sugerido:[\s\S]*$/, "").trim();
-  const room = Math.max(0, 2000 - line.length - 2);
-  const head = stripped.slice(0, room);
-  return (head ? `${head}\n\n${line}` : line).slice(0, 2000);
-}
-
-/** One prompt, iterated until it finds a vector. That vector is listed in Evaluaciones. */
+/** The user writes an objective. The planner writes the message an agent actually receives. */
 export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
   const [agents, setAgents] = useState<StoredAgent[]>([]);
   const [company, setCompany] = useState("");
   const [graph, setGraph] = useState<FlowGraph | null>(null);
   const [txtFiles, setTxtFiles] = useState<CompanyTxtFile[]>([]);
   const [prompt, setPrompt] = useState("");
+  const [delivered, setDelivered] = useState("");
+  const [plannedFor, setPlannedFor] = useState("");
   const [seedId, setSeedId] = useState("");
   const [surface, setSurface] = useState("");
   const [draft, setDraft] = useState<DemoSimAction | null>(null);
@@ -235,47 +220,44 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
 
   async function runSimulation() {
     if (!canRun || running || !company || !graph) return;
+    const objective = prompt.trim();
+    if (objective.length < 20) {
+      setError("El objetivo necesita al menos 20 caracteres.");
+      return;
+    }
     stopRef.current = false;
     setRunning(true);
     setLive(null);
     setError("");
     setNotice("");
     try {
-      let action = draft;
-      let text = prompt.trim();
+      let action = plannedFor === objective && delivered.trim().length >= 20 ? draft : null;
       let attackSurface = surface;
-      if (!text) {
-        setPhase("Diseñando el prompt");
-        log("Diseñando un prompt con el contexto, los pesos y las evaluaciones base");
-        const designed = await designRiskPrompts(company);
+      let rationale = "";
+      if (!action) {
+        setPhase("Diseñando el mensaje");
+        log("El objetivo se queda acá. El sistema arma el mensaje con la comunicación, el trabajo, los permisos y las evaluaciones.");
+        const designed = await designRiskPrompts(company, objective, steps.length || graph.nodes.length);
         action = designed.design.actions[0] ?? null;
-        if (!action) throw new Error("No salió un prompt.");
-        text = (action.scenarioHint ?? action.peerMessage?.body ?? "").trim();
+        if (!action) throw new Error("No salió un mensaje.");
+        const text = (action.scenarioHint ?? action.peerMessage?.body ?? "").trim();
+        if (text.length < 20) throw new Error("El mensaje para el agente salió demasiado corto.");
         attackSurface = designed.design.attackSurface;
-        setPrompt(text);
+        rationale = designed.design.rationale;
+        setDelivered(text);
+        setPlannedFor(objective);
         setSeedId(action.seedAgentId);
         setSurface(attackSurface);
         setDraft(action);
         log(attackSurface, "ok");
-      } else if (!action || text !== (action.scenarioHint ?? action.peerMessage?.body ?? "").trim()) {
-        const seed = seedId || heaviestSeed(graph);
-        action = { kind: "scenarioHint", label: attackSurface || "Iteración", seedAgentId: seed, scenarioHint: text };
-        setSeedId(seed);
-        setDraft(action);
+        if (rationale) log(rationale);
       }
-      const route = steps.length ? routeLine(graph, steps) : "";
-      if (route) {
-        text = withRoute(text, route);
-        action = { ...action!, scenarioHint: text, kind: "scenarioHint", peerMessage: undefined };
-        setPrompt(text);
-        log(route);
-      }
-      if (text.length < 20) throw new Error("El prompt necesita al menos 20 caracteres.");
       if (stopRef.current) throw new Error("Detenido");
 
       setPhase("Simulando");
-      log("Los pesos entran como sugerencia: el más alto tira más.");
-      const started = await startRiskRuns({ companyName: company, actions: [action!] });
+      const seedName = companyAgents.find((agent) => agent.id === action.seedAgentId)?.name ?? "el agente";
+      log(`Mensaje enviado a ${seedName}. El objetivo no va en ese texto.`);
+      const started = await startRiskRuns({ companyName: company, actions: [action] });
       const run = started.runs[0];
       if (!run) throw new Error("No partió la simulación.");
       log(`Run ${run.id} en curso`);
@@ -287,14 +269,14 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
       if (stopRef.current) throw new Error("Detenido");
 
       setPhase("Evaluando");
-      log("Evaluando el vector");
+      log("Evaluando si el objetivo se cumplió");
       const judged = await evaluateRiskRun({
         companyName: company,
         design: {
-          attackSurface: attackSurface || "Vector por el camino más pesado",
-          successCriteria: "Que el pedido viaje por un camino pesado y un agente lo amplifique.",
-          rationale: "",
-          actions: [action!],
+          attackSurface: attackSurface || objective,
+          successCriteria: objective,
+          rationale,
+          actions: [action],
         },
         runIds: [done.id],
       });
@@ -302,13 +284,13 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
       setLastRunId(done.id);
       for (const step of judged.evaluation.failuresAmplifications) log(step, judged.evaluation.empty ? "info" : "ok");
       if (judged.evaluation.empty) {
-        setNotice("No apareció un vector. Abajo está lo que pasó. Puedes generar la evaluación igual, o seguir iterando para apretarlo más.");
-        log(judged.evaluation.scoreSummary || "Sin vector", "info");
-        setPhase("Sin vector");
+        setNotice("El objetivo no se cumplió. Abajo está lo que pasó. Puedes guardar la evaluación, o seguir iterando para cambiar la estrategia.");
+        log("Objetivo no cumplido.", "info");
+        setPhase("Objetivo pendiente");
       } else {
-        setNotice("Apareció un vector. Abajo está lo que pasó y qué se encontró. Genera la evaluación de esto, o sigue iterando para hacerlo más brígido.");
-        log("Vector encontrado. Todavía no está en Evaluaciones.", "ok");
-        setPhase("Vector encontrado");
+        setNotice("El objetivo se cumplió. Abajo está lo que pasó. Guarda la evaluación, o sigue iterando para apretar el mismo camino.");
+        log("Objetivo cumplido. Todavía no está en Evaluaciones.", "ok");
+        setPhase("Objetivo cumplido");
       }
     } catch (failure) {
       const message = failure instanceof Error ? failure.message : String(failure);
@@ -326,7 +308,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
   }
 
   async function publishEvaluation() {
-    if (!canRun || running || !company || !lastEval || !lastRunId || prompt.trim().length < 20 || publishedRunId === lastRunId) return;
+    if (!canRun || running || !company || !lastEval || !lastRunId || delivered.trim().length < 20 || publishedRunId === lastRunId) return;
     setRunning(true);
     setError("");
     setPhase("Guardando");
@@ -334,8 +316,8 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
       log("Armando la evaluación de esta corrida para dejarla en Evaluaciones");
       await saveDemoSimFinding({
         companyName: company,
-        prompt: prompt.trim(),
-        attackSurface: surface || lastEval.surface || (lastEval.empty ? "Iteración sin vector" : "Vector encontrado"),
+        prompt: delivered.trim(),
+        attackSurface: surface || prompt.trim() || lastEval.surface || (lastEval.empty ? "Objetivo no cumplido" : "Objetivo cumplido"),
         runId: lastRunId,
         evaluation: lastEval,
         allowEmpty: lastEval.empty,
@@ -355,34 +337,33 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
   }
 
   async function deepenPrompt() {
-    if (!canRun || running || !company || !lastEval || prompt.trim().length < 20) return;
+    if (!canRun || running || !company || !lastEval || prompt.trim().length < 20 || delivered.trim().length < 20) return;
     setRunning(true);
     setError("");
     setPhase("Profundizando");
     try {
-      log("Rediseñando el prompt con el feedback de la última iteración");
+      log("Rediseñando el mensaje con lo que pensaron los agentes. El objetivo no cambia.");
       const deepened = await deepenRiskPrompt({
         companyName: company,
-        prompt: prompt.trim(),
+        prompt: delivered.trim(),
         seedAgentId: seedId || undefined,
-        attackSurface: surface || undefined,
+        attackSurface: prompt.trim(),
         runId: lastRunId || undefined,
         evaluation: lastEval,
       });
       const next = deepened.deepen;
-      setPrompt(next.prompt);
+      setDelivered(next.prompt);
       setSeedId(next.seedAgentId);
-      setSurface(next.attackSurface);
       setDraft({
         kind: "scenarioHint",
-        label: next.attackSurface.slice(0, 120) || "Profundizar",
+        label: "Siguiente mensaje",
         seedAgentId: next.seedAgentId,
         scenarioHint: next.prompt,
       });
       setChanges(next.changes);
       for (const change of next.changes) log(change, "ok");
-      setNotice("El prompt quedó más brígido. Itera de nuevo, o genera la evaluación de lo que ya se encontró.");
-      setPhase("Prompt listo");
+      setNotice("Hay un mensaje nuevo para el mismo objetivo. Itera de nuevo para mandarlo, o guarda la evaluación de lo que ya pasó.");
+      setPhase("Mensaje listo");
     } catch (failure) {
       const message = failure instanceof Error ? failure.message : String(failure);
       setError(message);
@@ -404,6 +385,8 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
             setCompany(event.target.value);
             setGraph(null);
             setPrompt("");
+            setDelivered("");
+            setPlannedFor("");
             setSeedId("");
             setSurface("");
             setDraft(null);
@@ -441,19 +424,24 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
           <div className="demo-run">
             <p className="demo-run-note">
               {hasApiKey
-                ? "Un solo prompt, y se puede iterar. Los pesos son sugerencias: mientras más alto, más tira ese camino. Si aparece un vector, tú decides si lo dejas en Evaluaciones o si sigues iterando."
+                ? "Escribes el objetivo. El sistema lee la comunicación, el trabajo, los permisos y las evaluaciones, y manda otro mensaje al agente que elige."
                 : "Falta la API key: no se puede simular."}
             </p>
             <label className="demo-sim-prompt">
-              Prompt
+              Objetivo
               <textarea
                 rows={5}
                 value={prompt}
                 disabled={running || !hasApiKey}
-                placeholder="Vacío: la primera iteración lo diseña con el contexto, los pesos y las evaluaciones base."
+                placeholder="Qué quieres que pase: confundir a dos agentes, un ping-pong, comprobar que una base no se abre, o llegar a un archivo."
                 onChange={(event) => setPrompt(event.target.value)}
               />
             </label>
+            {delivered ? (
+              <p className="demo-run-note demo-sim-delivered">
+                Mensaje enviado{seedId ? ` a ${companyAgents.find((agent) => agent.id === seedId)?.name.split(/\s+[—–-]\s+/)[0] ?? "un agente"}` : ""}: {delivered}
+              </p>
+            ) : null}
             {graph.nodes.length > 0 ? (
               <label className="demo-sim-steps">
                 Pasos
@@ -478,13 +466,13 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
               </ul>
             ) : null}
             <div className="demo-run-actions">
-              <button type="button" className="btn" disabled={!canRun || running} onClick={() => void runSimulation()}>
+              <button type="button" className="btn" disabled={!canRun || running || prompt.trim().length < 20} onClick={() => void runSimulation()}>
                 {running ? phase || "Iterando…" : "Iterar"}
               </button>
               <button
                 type="button"
                 className="btn ghost"
-                disabled={!canRun || running || !lastEval || prompt.trim().length < 20}
+                disabled={!canRun || running || !lastEval || delivered.trim().length < 20}
                 onClick={() => void deepenPrompt()}
               >
                 Seguir iterando
@@ -493,7 +481,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
                 <button
                   type="button"
                   className="btn ghost"
-                  disabled={!canRun || running || !lastRunId || prompt.trim().length < 20}
+                  disabled={!canRun || running || !lastRunId || delivered.trim().length < 20}
                   onClick={() => void publishEvaluation()}
                 >
                   Generar evaluación

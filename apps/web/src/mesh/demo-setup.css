@@ -483,6 +483,12 @@
   overflow: auto;
 }
 
+.demo-sim-delivered {
+  text-transform: none;
+  letter-spacing: 0;
+  text-align: left;
+}
+
 .demo-sim-prompt {
   display: grid;
   gap: 8px;

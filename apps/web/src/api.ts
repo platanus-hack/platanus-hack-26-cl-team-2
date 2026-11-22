@@ -886,8 +886,12 @@ export type DemoSimEval = {
   scoreSummary: string;
 };
 
-export function designRiskPrompts(companyName: string): Promise<{ design: DemoSimDesign; model: string }> {
-  return postJson("/api/demo-sim/design", { companyName });
+export function designRiskPrompts(
+  companyName: string,
+  objective: string,
+  pathSteps?: number,
+): Promise<{ design: DemoSimDesign; model: string }> {
+  return postJson("/api/demo-sim/design", { companyName, objective, pathSteps });
 }
 
 export function startRiskRuns(body: {
