@@ -12,14 +12,18 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { traceBus } from "../events.js";
 
-const DEMO_FILES_DIR = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../mock-db/demo",
-);
+// On a read-only serverless filesystem (e.g. Vercel) the package dir under
+// /var/task is not writable, so mkdir there throws ENOENT/EROFS and any demo
+// endpoint that syncs files returns 500. Fall back to the OS temp dir there;
+// locally we keep the repo-relative path so the folder is easy to inspect.
+const DEMO_FILES_DIR = process.env.VERCEL
+  ? join(tmpdir(), "mesh-mock-db-demo")
+  : resolve(dirname(fileURLToPath(import.meta.url)), "../../mock-db/demo");
 
 export type DemoFileSpec = {
   id: string;
