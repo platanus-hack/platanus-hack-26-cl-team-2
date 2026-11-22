@@ -42,7 +42,7 @@ demoSimRoutes.post("/design", async (c) => {
   const parsed = z.object({
     companyName: z.string().min(1).max(120),
     objective: z.string().min(20).max(2000),
-    pathSteps: z.number().int().min(1).max(12).optional(),
+    pathSteps: z.number().int().min(1).max(1000).optional(),
   }).safeParse(json);
   if (!parsed.success) return c.json({ error: "Cuerpo inválido" }, 400);
   const denied = denyIfOverBudget(c, demoGuard.checkModelCall(requestIp(c)));
@@ -61,6 +61,7 @@ demoSimRoutes.post("/runs", async (c) => {
   const parsed = z.object({
     companyName: z.string().min(1).max(120),
     actions: z.array(actionBody).length(1),
+    maxTurns: z.number().int().min(1).max(1000).optional(),
   }).safeParse(json);
   if (!parsed.success) return c.json({ error: "Cuerpo inválido", details: parsed.error.flatten() }, 400);
   const spend = spendMeter.check();
@@ -77,12 +78,13 @@ demoSimRoutes.post("/runs", async (c) => {
       return prepareStoredRun({
         agentIds,
         seedAgentId: peer?.toAgentId ?? action.seedAgentId,
-        maxTurnsPerAgent: 5,
+        maxTurnsPerAgent: parsed.data.maxTurns ?? 5,
         scenarioHint: peer ? undefined : action.scenarioHint,
         peerMessage: peer,
       });
     }));
-    const biased = prepared.map((run) => ({ ...run, agents: applyPathBias(run.agents, edges) }));
+    const turns = Math.min(1000, Math.max(1, parsed.data.maxTurns ?? 5));
+    const biased = prepared.map((run) => ({ ...run, maxTurns: turns, agents: applyPathBias(run.agents, edges) }));
     const runs = await Promise.all(biased.map((run) => startPreparedRun(run)));
     return c.json({ runs }, 201);
   } catch (err) {

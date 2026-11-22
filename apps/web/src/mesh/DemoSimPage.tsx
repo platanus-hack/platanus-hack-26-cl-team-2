@@ -257,7 +257,11 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
       setPhase("Simulando");
       const seedName = companyAgents.find((agent) => agent.id === action.seedAgentId)?.name ?? "el agente";
       log(`Mensaje enviado a ${seedName}. El objetivo no va en ese texto.`);
-      const started = await startRiskRuns({ companyName: company, actions: [action] });
+      const started = await startRiskRuns({
+        companyName: company,
+        actions: [action],
+        maxTurns: steps.length || graph.nodes.length,
+      });
       const run = started.runs[0];
       if (!run) throw new Error("No partió la simulación.");
       log(`Run ${run.id} en curso`);
@@ -448,13 +452,13 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
                 <input
                   type="number"
                   min={1}
-                  max={12}
+                  max={1000}
                   aria-label="Pasos"
                   value={steps.length || graph.nodes.length}
                   disabled={running}
                   onChange={(event) => {
                     const next = Number(event.target.value);
-                    if (!Number.isInteger(next) || next < 1 || next > 12) return;
+                    if (!Number.isInteger(next) || next < 1 || next > 1000) return;
                     setSteps(suggestedPath(graph, next));
                   }}
                 />

@@ -897,6 +897,7 @@ export function designRiskPrompts(
 export function startRiskRuns(body: {
   companyName: string;
   actions: DemoSimAction[];
+  maxTurns?: number;
 }): Promise<{ runs: RunSummary[] }> {
   return postJson("/api/demo-sim/runs", body);
 }
