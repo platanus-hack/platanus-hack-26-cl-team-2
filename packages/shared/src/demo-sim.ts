@@ -235,13 +235,14 @@ export function normalizeRiskDesign(
 }
 
 export function normalizeRiskEval(raw: Record<string, unknown>): DemoSimEval {
-  const list = (value: unknown) =>
-    Array.isArray(value) ? value.map((item) => text(item, 500)).filter(Boolean).slice(0, 12) : [];
+  const list = (value: unknown, max: number) =>
+    Array.isArray(value) ? value.map((item) => text(item, max)).filter(Boolean).slice(0, 12) : [];
+  const steps = list(raw.failuresAmplifications, 180);
   return {
     empty: Boolean(raw.empty),
-    surface: text(raw.surface, 2500),
-    failuresAmplifications: list(raw.failuresAmplifications),
-    actionableRemediations: list(raw.actionableRemediations),
-    scoreSummary: text(raw.scoreSummary, 1500),
+    surface: steps.length ? "" : text(raw.surface, 2500),
+    failuresAmplifications: steps,
+    actionableRemediations: steps.length ? [] : list(raw.actionableRemediations, 500),
+    scoreSummary: steps.length ? "" : text(raw.scoreSummary, 1500),
   };
 }

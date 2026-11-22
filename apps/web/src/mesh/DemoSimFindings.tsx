@@ -66,18 +66,21 @@ export function DemoSimFindings() {
                     <h4>Pasos de la IA</h4>
                     <AgentFlow runId={finding.runId} attack />
                     <h4>Análisis</h4>
-                    {finding.analysis.scoreSummary ? <p>{finding.analysis.scoreSummary}</p> : null}
-                    {finding.analysis.surface ? <p>{finding.analysis.surface}</p> : null}
                     {finding.analysis.failuresAmplifications.length > 0 ? (
-                      <ul className="eval-vector">
+                      <ol className="eval-vector">
                         {finding.analysis.failuresAmplifications.map((item) => <li key={item}>{item}</li>)}
-                      </ul>
-                    ) : null}
-                    {finding.analysis.actionableRemediations.length > 0 ? (
-                      <ul className="eval-vector">
-                        {finding.analysis.actionableRemediations.map((item) => <li key={item}>{item}</li>)}
-                      </ul>
-                    ) : null}
+                      </ol>
+                    ) : (
+                      <>
+                        {finding.analysis.scoreSummary ? <p>{finding.analysis.scoreSummary}</p> : null}
+                        {finding.analysis.surface ? <p>{finding.analysis.surface}</p> : null}
+                        {finding.analysis.actionableRemediations.length > 0 ? (
+                          <ul className="eval-vector">
+                            {finding.analysis.actionableRemediations.map((item) => <li key={item}>{item}</li>)}
+                          </ul>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                 ) : null}
               </div>

@@ -474,6 +474,9 @@
 }
 
 .demo-sim-steps {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   width: min(920px, 100%);
   margin: 0 auto 14px;
   color: var(--muted);
@@ -482,57 +485,11 @@
   text-transform: uppercase;
 }
 
-.demo-sim-steps-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-
-.demo-sim-steps-head label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.demo-sim-steps-head input {
+.demo-sim-steps input {
   width: 72px;
   margin: 0;
   padding: 6px 8px;
   font-size: 14px;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.demo-sim-steps p {
-  margin: 8px 0 10px;
-  letter-spacing: 0;
-  text-transform: none;
-  line-height: 1.4;
-}
-
-.demo-sim-steps ol {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-
-.demo-sim-steps li {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-}
-
-.demo-sim-steps li span {
-  color: var(--accent);
-}
-
-.demo-sim-steps select {
-  width: 100%;
-  margin: 0;
   letter-spacing: 0;
   text-transform: none;
 }
@@ -560,6 +517,20 @@
 
 .demo-sim-changes li {
   margin: 0 0 6px;
+}
+
+.demo-sim-feedback {
+  width: min(920px, 100%);
+  margin: 0 auto 14px;
+  padding-left: 22px;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.45;
+}
+
+.demo-sim-feedback li {
+  margin: 0 0 8px;
 }
 
 .demo-txt {

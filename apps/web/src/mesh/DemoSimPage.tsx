@@ -125,6 +125,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
   const [changes, setChanges] = useState<string[]>([]);
   const [lastEval, setLastEval] = useState<DemoSimEval | null>(null);
   const [lastRunId, setLastRunId] = useState("");
+  const [publishedRunId, setPublishedRunId] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(hasDatabase);
   const [running, setRunning] = useState(false);
@@ -295,25 +296,17 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
         },
         runIds: [done.id],
       });
+      setLastEval(judged.evaluation);
+      setLastRunId(done.id);
+      for (const step of judged.evaluation.failuresAmplifications) log(step, judged.evaluation.empty ? "info" : "ok");
       if (judged.evaluation.empty) {
-        setLastEval(judged.evaluation);
-        setLastRunId(done.id);
-        setNotice("Esta iteración no encontró un vector. Puedes profundizar el prompt, o generar la evaluación y dejarla en Evaluaciones.");
+        setNotice("No apareció un vector. Abajo está lo que pasó. Puedes generar la evaluación igual, o seguir iterando para apretarlo más.");
         log(judged.evaluation.scoreSummary || "Sin vector", "info");
         setPhase("Sin vector");
       } else {
-        setLastEval(judged.evaluation);
-        setLastRunId(done.id);
-        await saveDemoSimFinding({
-          companyName: company,
-          prompt: text,
-          attackSurface: attackSurface || judged.evaluation.surface,
-          runId: done.id,
-          evaluation: judged.evaluation,
-        });
-        setNotice("La evaluación quedó en la pestaña Evaluaciones, con el vector, los pasos de la IA y el análisis.");
-        log("Vector encontrado. Quedó en Evaluaciones.", "ok");
-        setPhase("En Evaluaciones");
+        setNotice("Apareció un vector. Abajo está lo que pasó y qué se encontró. Genera la evaluación de esto, o sigue iterando para hacerlo más brígido.");
+        log("Vector encontrado. Todavía no está en Evaluaciones.", "ok");
+        setPhase("Vector encontrado");
       }
     } catch (failure) {
       const message = failure instanceof Error ? failure.message : String(failure);
@@ -330,8 +323,8 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
     }
   }
 
-  async function publishEmptyEvaluation() {
-    if (!canRun || running || !company || !lastEval?.empty || !lastRunId || prompt.trim().length < 20) return;
+  async function publishEvaluation() {
+    if (!canRun || running || !company || !lastEval || !lastRunId || prompt.trim().length < 20 || publishedRunId === lastRunId) return;
     setRunning(true);
     setError("");
     setPhase("Guardando");
@@ -340,12 +333,13 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
       await saveDemoSimFinding({
         companyName: company,
         prompt: prompt.trim(),
-        attackSurface: surface || lastEval.surface || "Iteración sin vector",
+        attackSurface: surface || lastEval.surface || (lastEval.empty ? "Iteración sin vector" : "Vector encontrado"),
         runId: lastRunId,
         evaluation: lastEval,
-        allowEmpty: true,
+        allowEmpty: lastEval.empty,
       });
-      setNotice("La evaluación quedó en la pestaña Evaluaciones, con el vector de la corrida, los pasos de la IA y el análisis.");
+      setPublishedRunId(lastRunId);
+      setNotice("La evaluación quedó en la pestaña Evaluaciones.");
       log("Evaluación guardada. Quedó en Evaluaciones.", "ok");
       setPhase("En Evaluaciones");
     } catch (failure) {
@@ -385,7 +379,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
       });
       setChanges(next.changes);
       for (const change of next.changes) log(change, "ok");
-      setNotice("Prompt reescrito. Itera para probar el vector más largo.");
+      setNotice("El prompt quedó más brígido. Itera de nuevo, o genera la evaluación de lo que ya se encontró.");
       setPhase("Prompt listo");
     } catch (failure) {
       const message = failure instanceof Error ? failure.message : String(failure);
@@ -414,6 +408,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
             setChanges([]);
             setLastEval(null);
             setLastRunId("");
+            setPublishedRunId("");
             setNotice("");
             setLogs([]);
             setPhase("");
@@ -444,7 +439,7 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
           <div className="demo-run">
             <p className="demo-run-note">
               {hasApiKey
-                ? "Un solo prompt, y se puede iterar. Los pesos son sugerencias: mientras más alto, más tira ese camino. Si encuentra un vector, la evaluación pasa a Evaluaciones. Si no, Generar evaluación deja igual esa respuesta ahí."
+                ? "Un solo prompt, y se puede iterar. Los pesos son sugerencias: mientras más alto, más tira ese camino. Si aparece un vector, tú decides si lo dejas en Evaluaciones o si sigues iterando."
                 : "Falta la API key: no se puede simular."}
             </p>
             <label className="demo-sim-prompt">
@@ -458,50 +453,22 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
               />
             </label>
             {graph.nodes.length > 0 ? (
-              <div className="demo-sim-steps">
-                <div className="demo-sim-steps-head">
-                  <span>Pasos</span>
-                  <label>
-                    Cantidad
-                    <input
-                      type="number"
-                      min={1}
-                      max={12}
-                      value={steps.length || graph.nodes.length}
-                      disabled={running}
-                      onChange={(event) => {
-                        const next = Number(event.target.value);
-                        if (!Number.isInteger(next) || next < 1 || next > 12) return;
-                        setSteps((prev) => {
-                          const base = suggestedPath(graph, next);
-                          return base.map((id, index) => prev[index] ?? id);
-                        });
-                      }}
-                    />
-                  </label>
-                </div>
-                <p>Parte con un paso por agente, siguiendo el camino más pesado. Cámbialos antes de iterar.</p>
-                <ol>
-                  {steps.map((id, index) => (
-                    <li key={`${index}-${id}`}>
-                      <span>{index + 1}</span>
-                      <select
-                        aria-label={`Paso ${index + 1}`}
-                        value={id}
-                        disabled={running}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setSteps((prev) => prev.map((item, itemIndex) => (itemIndex === index ? value : item)));
-                        }}
-                      >
-                        {graph.nodes.map((node) => (
-                          <option key={node.agentId} value={node.agentId}>{node.label}</option>
-                        ))}
-                      </select>
-                    </li>
-                  ))}
-                </ol>
-              </div>
+              <label className="demo-sim-steps">
+                Pasos
+                <input
+                  type="number"
+                  min={1}
+                  max={12}
+                  aria-label="Pasos"
+                  value={steps.length || graph.nodes.length}
+                  disabled={running}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    if (!Number.isInteger(next) || next < 1 || next > 12) return;
+                    setSteps(suggestedPath(graph, next));
+                  }}
+                />
+              </label>
             ) : null}
             {changes.length > 0 ? (
               <ul className="demo-sim-changes">
@@ -518,14 +485,14 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
                 disabled={!canRun || running || !lastEval || prompt.trim().length < 20}
                 onClick={() => void deepenPrompt()}
               >
-                Profundizar vector
+                Seguir iterando
               </button>
-              {lastEval?.empty ? (
+              {lastEval && publishedRunId !== lastRunId ? (
                 <button
                   type="button"
                   className="btn ghost"
                   disabled={!canRun || running || !lastRunId || prompt.trim().length < 20}
-                  onClick={() => void publishEmptyEvaluation()}
+                  onClick={() => void publishEvaluation()}
                 >
                   Generar evaluación
                 </button>
@@ -550,6 +517,11 @@ export function DemoSimPage({ hasDatabase, hasApiKey }: Props) {
               </div>
             ) : null}
             {notice ? <p className="demo-run-note">{notice}</p> : null}
+            {lastEval && lastEval.failuresAmplifications.length > 0 ? (
+              <ol className="demo-sim-feedback">
+                {lastEval.failuresAmplifications.map((step) => <li key={step}>{step}</li>)}
+              </ol>
+            ) : null}
           </div>
         ) : null}
       </div>
