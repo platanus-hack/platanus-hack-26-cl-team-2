@@ -1,6 +1,6 @@
 /*
  * Brutalist poster theme. Loaded last (main.tsx), so it overrides styles.css, mesh.css and
- * debugger.css without touching them. Black ground, thin 1px line art, flat pastel-green
+ * mesh.css without touching them. Black ground, thin 1px line art, flat pastel-green
  * blocks with black condensed type, hatched stripes, barcodes and a speckled grid.
  * Delete the import to go back.
  */
